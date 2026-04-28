@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{ title }}</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --fg: #1a1a1a;
+    --muted: #666;
+    --border: #ddd;
+    --pass: #1f7a3a;
+    --warn: #a86200;
+    --fail: #a8331f;
+    --skipped: #666;
+    --pass-bg: #e8f5ec;
+    --warn-bg: #fcf3e3;
+    --fail-bg: #fbe9e7;
+    --skipped-bg: #f0f0f0;
+  }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+         color: var(--fg); background: var(--bg); margin: 2rem auto; max-width: 1100px; padding: 0 1.5rem; }
+  h1 { margin: 0 0 0.5rem 0; font-size: 1.6rem; }
+  .meta { color: var(--muted); font-size: 0.9rem; margin-bottom: 1.5rem; }
+  .meta span { margin-right: 1.2rem; }
+  .verdict { padding: 1rem 1.25rem; border-radius: 8px; font-weight: 600; font-size: 1.2rem; margin: 1rem 0 1.5rem; }
+  .verdict.pass { background: var(--pass-bg); color: var(--pass); }
+  .verdict.warn { background: var(--warn-bg); color: var(--warn); }
+  .verdict.fail { background: var(--fail-bg); color: var(--fail); }
+  table { width: 100%; border-collapse: collapse; margin: 0.5rem 0 1.5rem; }
+  th, td { text-align: left; padding: 0.55rem 0.7rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tbody tr:nth-child(even) { background: #fafafa; }
+  .badge { display: inline-block; padding: 0.15rem 0.55rem; border-radius: 4px; font-size: 0.8rem; font-weight: 600; }
+  .badge.pass { background: var(--pass-bg); color: var(--pass); }
+  .badge.warn { background: var(--warn-bg); color: var(--warn); }
+  .badge.fail { background: var(--fail-bg); color: var(--fail); }
+  .badge.error { background: var(--fail-bg); color: var(--fail); }
+  .badge.skipped { background: var(--skipped-bg); color: var(--skipped); }
+  section.check { margin: 2rem 0; page-break-inside: avoid; }
+  section.check h2 { margin: 0 0 0.25rem 0; font-size: 1.2rem; }
+  .check-desc { color: var(--muted); margin: 0 0 0.75rem 0; }
+  .tiles { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.75rem 0 1rem; }
+  .tile { background: #f6f6f6; border: 1px solid var(--border); padding: 0.4rem 0.7rem; border-radius: 6px; font-size: 0.85rem; }
+  .tile b { display: block; font-size: 1rem; }
+  .error-box { background: var(--fail-bg); color: var(--fail); border: 1px solid var(--fail); padding: 0.75rem 1rem; border-radius: 6px; }
+  .skipped-box { background: var(--skipped-bg); color: var(--skipped); border: 1px solid var(--border); padding: 0.75rem 1rem; border-radius: 6px; }
+  details { margin: 0.25rem 0; }
+  pre { background: #f4f4f4; padding: 0.5rem 0.75rem; border-radius: 4px; overflow-x: auto; font-size: 0.8rem; }
+  footer { color: var(--muted); font-size: 0.85rem; margin-top: 3rem; border-top: 1px solid var(--border); padding-top: 1rem; }
+  a { color: var(--fg); }
+</style>
+</head>
+<body>
+<h1>{{ title }}</h1>
+<div class="meta">
+  <span><b>Generated:</b> {{ generated_at_local }} ({{ generated_at_utc }} UTC)</span>
+  <span><b>Console:</b> {{ base_url_host }}</span>
+  <span><b>Version:</b> {{ tool_version }}</span>
+</div>
+
+<div class="verdict {{ verdict_class }}">{{ verdict_label }}</div>
+
+<h2>Summary</h2>
+<table>
+  <thead>
+    <tr><th>Check</th><th>Status</th><th>Findings</th><th>Duration</th></tr>
+  </thead>
+  <tbody>
+  {% for r in results %}
+    <tr>
+      <td><a href="#check-{{ loop.index }}">{{ r.name }}</a></td>
+      <td><span class="badge {{ r.status }}">{{ r.status|upper }}</span></td>
+      <td>{{ r.findings|length }} ({{ r.findings|selectattr('severity','equalto','fail')|list|length }} fail / {{ r.findings|selectattr('severity','equalto','warn')|list|length }} warn)</td>
+      <td>{{ r.duration_ms }} ms</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+{% for r in results %}
+<section class="check" id="check-{{ loop.index }}">
+  <h2>{{ r.name }} <span class="badge {{ r.status }}">{{ r.status|upper }}</span></h2>
+  <p class="check-desc">{{ r.description }}</p>
+
+  {% if r.status == "error" %}
+    <div class="error-box"><b>Check failed to run:</b> {{ r.error }}</div>
+  {% elif r.status == "skipped" %}
+    <div class="skipped-box">This check is disabled in <code>config.yaml</code>.</div>
+  {% else %}
+    {% if r.summary %}
+    <div class="tiles">
+      {% for k, v in r.summary.items() %}
+        <div class="tile"><b>{{ v }}</b>{{ k }}</div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if r.findings %}
+    <table>
+      <thead><tr><th>Severity</th><th>Message</th></tr></thead>
+      <tbody>
+      {% for f in r.findings %}
+        <tr>
+          <td><span class="badge {{ 'fail' if f.severity == 'fail' else 'warn' if f.severity == 'warn' else 'pass' }}">{{ f.severity|upper }}</span></td>
+          <td>
+            {{ f.message }}
+            {% if f.details %}
+              <details><summary>details</summary><pre>{{ f.details_json }}</pre></details>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+      <p>No issues found.</p>
+    {% endif %}
+  {% endif %}
+</section>
+{% endfor %}
+
+<footer>
+  <p>Config: <code>{{ config_path }}</code></p>
+  {% if thresholds_table %}
+  <p>Thresholds applied:</p>
+  <table>
+    <thead><tr><th>Setting</th><th>Value</th></tr></thead>
+    <tbody>
+    {% for key, value in thresholds_table %}
+      <tr><td><code>{{ key }}</code></td><td>{{ value }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</footer>
+</body>
+</html>
