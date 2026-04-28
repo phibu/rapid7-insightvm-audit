@@ -96,6 +96,7 @@ class Rapid7Client:
             body = self._request(method, path, params=page_params, json_body=json_body)
             for resource in body.get("resources", []):
                 yield resource
+            # If `page.totalPages` is missing or 0, treat as a single-page (or empty) response and stop.
             meta = body.get("page", {})
             total_pages = int(meta.get("totalPages", 0))
             if page + 1 >= total_pages:

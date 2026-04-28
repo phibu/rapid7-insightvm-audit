@@ -195,3 +195,65 @@ def test_run_check_exception_becomes_error_status(tmp_path, monkeypatch):
     html = out_path.read_text(encoding="utf-8")
     assert "ERROR" in html  # status badge
     assert "simulated check failure" in html
+
+
+def test_api_key_never_leaks_to_stderr_or_report(tmp_path, monkeypatch, caplog):
+    """Whatever the run does, the API key must not end up in logs or the rendered HTML.
+
+    This is a guardrail: the value goes into `Rapid7Client._headers["X-Api-Key"]` and
+    nowhere else by design. If a future change starts logging request bodies/URLs/headers
+    or stuffs the key into the report context, this test will catch it.
+    """
+    secret = "supersecretapikey-zZyx123-DO-NOT-LEAK"
+
+    body = textwrap.dedent(f"""
+        rapid7:
+          base_url: https://us.api.insight.rapid7.com
+          verify_tls: true
+          request_timeout_seconds: 30
+          max_retries: 3
+        report:
+          output_dir: {tmp_path / "reports"}
+          filename_pattern: "rapid7-health-{{timestamp}}.html"
+          title: "T"
+        thresholds:
+          scan_engines:
+            last_contact_warn_hours: 2
+            last_contact_fail_hours: 24
+          scan_activity:
+            recent_window_days: 7
+            stuck_scan_hours: 24
+            site_no_scan_days: 14
+          asset_coverage:
+            stale_asset_days: 30
+            flag_unscanned_assets: true
+          data_quality:
+            flag_missing_os: true
+            flag_empty_sites: true
+        checks:
+          scan_engines: false
+          scan_activity: false
+          asset_coverage: false
+          data_quality: false
+    """).strip()
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text(body, encoding="utf-8")
+    monkeypatch.setenv("R7_API_KEY", secret)
+
+    out = tmp_path / "report.html"
+    with patch("rapid7_healthcheck.__main__.Rapid7Client") as MockClient:
+        MockClient.return_value.connect.return_value = None
+        with caplog.at_level("DEBUG", logger="rapid7_healthcheck"):
+            code = run(["--config", str(cfg), "--output", str(out), "--verbose"])
+
+    assert code == EXIT_HEALTHY
+
+    # API key must not appear in the rendered report.
+    html = out.read_text(encoding="utf-8")
+    assert secret not in html, "API key leaked into the HTML report"
+
+    # API key must not appear in any log record (message, args, or formatted output).
+    for record in caplog.records:
+        assert secret not in record.getMessage(), (
+            f"API key leaked into log record: {record.name} {record.levelname}"
+        )

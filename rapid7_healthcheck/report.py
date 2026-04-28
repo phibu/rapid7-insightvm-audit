@@ -33,7 +33,15 @@ def _verdict(results: list[CheckResult]) -> tuple[str, str]:
 
 
 def _annotate_findings(results: list[CheckResult]) -> None:
-    """Attach a pre-serialized JSON string for each finding's details."""
+    """Attach a pre-serialized JSON string for each finding's details.
+
+    `Finding` is `frozen=True`, so attribute assignment is normally blocked.
+    `object.__setattr__` bypasses that to attach a `details_json` slot used by
+    the Jinja template. We pre-serialize here (rather than in the template) so
+    autoescape treats the JSON as plain text — `<` characters in details would
+    otherwise break the HTML. The mutation is intentional and confined to the
+    render path; downstream code does not rely on `Finding` immutability.
+    """
     for r in results:
         for f in r.findings:
             if f.details is not None:
