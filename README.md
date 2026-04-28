@@ -57,6 +57,29 @@ The CLI prints the absolute path of the written report on success.
 | 3 | Startup failure — bad config, missing API key, auth failed, network unreachable |
 | 4 | Internal error in the tool |
 
+## Configuration Audit
+
+In addition to the four operational health checks, the tool runs a **Configuration Audit**: eight best-practice rules sourced from official Rapid7 documentation, each grounded in a public Rapid7 source URL.
+
+Rules:
+
+| Rule | Default severity | Source |
+|------|-----------------:|--------|
+| Insight Agent asset scanned without authentication | fail | docs.rapid7.com Console Best Practices, 6.6.229 release notes |
+| Vulnerability template without credentials | fail | Scan Template Best Practices, Configuring Scan Credentials |
+| Credential failure in recent scans | warn | Configuring Site-Specific Scan Credentials |
+| Overlapping scan windows or blackout conflicts | warn | Scan Blackouts, Console Best Practices |
+| Single scan engine overloaded | warn | Console Best Practices |
+| Discovery template on production site | warn (heuristic) | Scan Template Best Practices |
+| Policy and Vulnerability in same template | warn | Scan Template Best Practices |
+| Store invulnerable results enabled | info | Scan Template Best Practices |
+
+Per-rule severity and enable/disable live in the `audit:` block of `config.yaml`. Each finding in the report links back to the Rapid7 source documenting the rule.
+
+**Sampling.** Some rules need to inspect every asset (or every schedule). To keep API load predictable on large environments, expensive rules sample up to `audit.sample_size` entities (default 500) per rule. The report explicitly notes which rules used sampling and how many entities were checked vs total. Set `audit.full_scan: true` to enumerate everything (slower, higher API load).
+
+See `config.example.yaml` for the full audit configuration block.
+
 ## Scheduling
 
 **Windows Task Scheduler (PowerShell):**
