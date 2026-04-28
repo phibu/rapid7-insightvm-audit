@@ -26,7 +26,7 @@ Read-only health check for a Rapid7 InsightVM environment. Calls the Insight Pla
    cp .env.example .env
    # edit .env and set R7_API_KEY=<your key>
 
-   cp config.example.yaml config.yaml
+   cp docs/examples/config.yaml config.yaml
    # edit config.yaml — at minimum set rapid7.base_url to the right region
    ```
 
@@ -78,7 +78,7 @@ Per-rule severity and enable/disable live in the `audit:` block of `config.yaml`
 
 **Sampling.** Some rules need to inspect every asset (or every schedule). To keep API load predictable on large environments, expensive rules sample up to `audit.sample_size` entities (default 500) per rule. The report explicitly notes which rules used sampling and how many entities were checked vs total. Set `audit.full_scan: true` to enumerate everything (slower, higher API load).
 
-See `config.example.yaml` for the full audit configuration block.
+See `docs/examples/config.yaml` for the full audit configuration block.
 
 ## Scheduling
 
