@@ -1,8 +1,8 @@
 # Rapid7 InsightVM Best-Practice Audit Rules — Research Notes
 
 ## Summary
-- **8 sourced rules** + 3 dropped candidates documented
-- **Sources covered:** docs.rapid7.com (Security Console Best Practices, Scan Template Best Practices, Configuring Scan Credentials, Scan Blackouts, Correlate Assets with Insight Agent UUIDs, Using the Insight Agent with InsightVM, Release Notes 6.6.229), discuss.rapid7.com forum
+- **12 sourced rules** + 3 dropped candidates documented (R9–R12 added 2026-04-28 after re-evaluation against current `/api/3` surface via Context7)
+- **Sources covered:** docs.rapid7.com (Security Console Best Practices, Scan Template Best Practices, Configuring Scan Credentials, Scan Blackouts, Correlate Assets with Insight Agent UUIDs, Using the Insight Agent with InsightVM, Release Notes 6.6.229), discuss.rapid7.com forum, Rapid7 InsightVM API v3 reference (asset-group, tag, scan-engine, report, administration endpoints)
 - **Coverage gaps:** No single Rapid7 doc explicitly says "do not run unauthenticated scans against Insight Agent assets" as a hard anti-pattern. The closest authoritative position is the Console Best Practices recommendation ("use Agent for authenticated/local, engine scans for unauthenticated/remote") plus the 6.6.229 release note that the console now overrides unauth findings with agent data — the rule is therefore framed as "redundant unauth scan against agent-managed asset" rather than "data-overwrite bug." A community post on discuss.rapid7.com documents the practitioner workaround (dynamic asset group `Site Group - Not Rapid7 Insight Agents` excluded from sites) which corroborates the anti-pattern.
 
 ---
@@ -93,11 +93,73 @@
 
 ---
 
+## Rule 9: Local Scan Engine carrying production-sized scope
+- **What:** The console-co-located Local Scan Engine is bound to one or more sites whose combined asset count exceeds a configurable threshold (Rapid7 cites ~1,000 assets as the production tipping point).
+- **Why bad:** Per Security Console Best Practices: *"For most production environments, especially those with more than 1,000 assets, we highly recommend using one or more distributed Scan Engines."* The Local engine shares CPU/RAM/disk with the console UI and the embedded PostgreSQL database; large or concurrent scans on it cause UI latency, scan slowdowns, and OOM events on the console host.
+- **Detection (API):** Enumerate engines via `GET /api/3/scan_engines`. The `ScanEngine` schema has no explicit `local|distributed` flag, so detect heuristically: `address ∈ {"localhost", "127.0.0.1", "::1"}` OR engine `name` matches the default "Local scan engine" (case-insensitive). For each matching engine, sum asset counts across `engine.sites[]` using `GET /api/3/sites/{id}/assets` page metadata (`page.totalResources`). Flag if combined assets exceed the threshold (default 1,000) AND the engine is referenced by ≥1 site that is not a tiny utility/test site.
+- **Confidence:** medium (no first-class local/distributed flag in the API schema; heuristic relies on default naming and loopback address — operators who renamed the local engine to a hostname will require config-side overrides)
+- **Sources:**
+  - https://docs.rapid7.com/insightvm/security-console-best-practices/ — *"For most production environments, especially those with more than 1,000 assets, we highly recommend using one or more distributed Scan Engines... Running scans from the local Scan Engine can cause resource contention with the Security Console and PostgreSQL database."*
+  - Rapid7 InsightVM API v3 — `GET /api/3/scan_engines` returns `address`, `name`, `sites[]`; no engine-type discriminator field is documented.
+
+---
+
+## Rule 10: Excessive dynamic asset groups, or nested / circular tag references
+- **What:** The deployment has (a) an unusually high count of dynamic asset groups relative to total assets, (b) dynamic asset groups whose `searchCriteria` reference tags that are themselves dynamic (creating tag→group→tag re-evaluation chains), or (c) tags whose `searchCriteria` reference other custom/location/owner tags (potential circular evaluation).
+- **Why bad:** Per Security Console Best Practices, dynamic groups and dynamic tags re-evaluate on every relevant asset change. *"Avoid creating tags that reference other tags, especially if they form circular dependencies — this can cause exponential database load and console slowdowns or crashes."* Static groups/tags should be preferred where membership is stable.
+- **Detection (API):**
+  - Count dynamic groups: `GET /api/3/asset_groups?type=dynamic` → `page.totalResources`. Compare to `GET /api/3/asset_groups?type=static` and total asset count from `GET /api/3/assets`. Flag if dynamic-group-to-asset ratio exceeds a configurable threshold, or if absolute dynamic-group count exceeds Rapid7's soft ceiling.
+  - Detect tag references in groups: for each dynamic group, `GET /api/3/asset_groups/{id}/search_criteria` and inspect filters where `field ∈ {criticality-tag, custom-tag, location-tag, owner-tag}`. Build a directed graph of group-references-tag.
+  - Detect tag-references-tag: `GET /api/3/tags` (paginated), inspect each tag's `searchCriteria.filters[]` for `*-tag` field references. Add tag→tag edges to the graph. Run cycle detection (Tarjan/DFS) and flag any strongly connected component of size ≥ 2, or any tag whose criteria references another *dynamic* custom tag.
+- **Confidence:** high (all data is in `/api/3`; both `/api/3/asset_groups/{id}/search_criteria` and per-tag `searchCriteria` are documented in the v3 reference with filter field enums including `criticality-tag`, `custom-tag`, `location-tag`, `owner-tag`)
+- **Sources:**
+  - https://docs.rapid7.com/insightvm/security-console-best-practices/ — Asset Groups and Tags section: recommends static where possible, warns about nested/circular tag references and exponential database cost.
+  - Rapid7 InsightVM API v3 — `GET /api/3/asset_groups`, `GET /api/3/asset_groups/{id}/search_criteria`, `GET /api/3/tags` (each tag carries its own `searchCriteria`), tag-search-criteria field reference lists `criticality-tag`/`custom-tag`/`location-tag`/`owner-tag` as queryable fields.
+
+---
+
+## Rule 11: Scan and report schedules overlap on shared scope
+- **What:** A scheduled report's run window coincides with a scheduled scan whose target scope (sites, asset groups, or tags) intersects the report's scope, OR multiple report schedules fire simultaneously against overlapping scope.
+- **Why bad:** Per Security Console Best Practices: *"Running scans and reports at the same time can impact console resources... we recommend staggering scan and report schedules."* Reports query the same PostgreSQL database that ingests scan results; concurrent execution prolongs both, can stall the report queue, and amplifies the engine-OOM risk already covered in R4.
+- **Detection (API):**
+  - Pull report schedules via `GET /api/3/reports` then per-report config (`frequency.start`, `frequency.repeat.every`, `frequency.repeat.interval`, `frequency.repeat.dayOfWeek`, `frequency.nextRuntimes[]`) and scope (`scope.sites`, `scope.assetGroups`, `scope.tags`, `scope.assets`).
+  - Pull scan schedules via the R4 logic (`GET /api/3/sites/{id}/scan_schedules`) and resolve each site's targets via `GET /api/3/sites/{id}/included_targets` and `included_asset_groups`.
+  - Compute wall-clock windows for both scan and report schedules over a forward window (e.g. next 14 days) using `nextRuntimes[]` where present, otherwise expanding `repeat`. Flag any (report, scan) pair where windows intersect AND scope intersects (site-id overlap, asset-group-id overlap, or tag-id overlap). Flag any (report, report) pair with the same intersection criteria.
+- **Confidence:** high (Report schema documents `frequency.start`, `frequency.repeat`, `frequency.nextRuntimes[]`, and `scope.{sites,assetGroups,tags,assets}` directly; combines cleanly with R4's scan-schedule data)
+- **Sources:**
+  - https://docs.rapid7.com/insightvm/security-console-best-practices/ — *"Running scans and reports at the same time can impact console resources... stagger your scan and report schedules."*
+  - Rapid7 InsightVM API v3 — `Report` object example shows `frequency.start`, `frequency.repeat.{every,interval,dayOfWeek,weekOfMonth}`, `frequency.nextRuntimes`, and `scope.{sites,assetGroups,tags,assets,scan}`.
+
+---
+
+## Rule 12: Scan Engine version drift or stale content refresh vs console
+- **What:** A scan engine's `productVersion` or `contentVersion` lags the console's by more than one minor revision, OR `lastRefreshedDate` / `lastUpdatedDate` is older than a configurable freshness threshold (default 7 days, since Rapid7 publishes content updates on a roughly weekly cadence).
+- **Why bad:** Per Security Console Best Practices: *"Scan Engines should be updated automatically and kept current with the Security Console... a Scan Engine running older content will produce incomplete or inaccurate findings."* Engine drift is a silent quality regression: scans complete successfully but miss recently published vulnerability checks. Note: this rule covers **engine** currency only — host OS patch state is intentionally out of scope, since `/api/3` does not expose it.
+- **Detection (API):**
+  - Console version: `GET /api/3/administration/properties` → `EnvironmentProperties.properties` (host/version info).
+  - Per-engine: `GET /api/3/scan_engines/{id}` → `productVersion`, `contentVersion`, `lastRefreshedDate`, `lastUpdatedDate`, `status`.
+  - Flag any engine where: (a) `productVersion` differs from console `productVersion` by more than a configurable tolerance, OR (b) `contentVersion` differs from console `contentVersion`, OR (c) `lastRefreshedDate` is older than threshold (default 7 days), OR (d) `status` is not `active`/`up` (schema example shows `status` as a free-form string — check exact enum from a live console before pinning values).
+- **Confidence:** medium (version fields are documented in the `ScanEngine` schema, but the exact format/comparability of `productVersion` and `contentVersion` strings, and the enum of `status`, are not fully specified in the v3 reference — implementation should normalize defensively and treat unknown values as info-level rather than error-level)
+- **Sources:**
+  - https://docs.rapid7.com/insightvm/security-console-best-practices/ — *"Product updates are typically released weekly... enable automatic updates for Scan Engines so they remain in sync with the Security Console."*
+  - Rapid7 InsightVM API v3 — `ScanEngine` object exposes `productVersion`, `contentVersion`, `lastRefreshedDate`, `lastUpdatedDate`, `status`; `GET /api/3/administration/properties` returns console `EnvironmentProperties` for cross-comparison.
+
+---
+
 ## Rules considered but dropped
 
 - **"Link Assets Across Sites" disabled when not needed** — surfaced in https://discuss.rapid7.com/t/problem-with-conflicting-ip-fo-assets-home-office/10539 as a fix for VPN/RFC1918 collisions, but it's a console-wide setting not exposed in `/api/3` site objects in a way that maps cleanly to a per-site rule. Detection not feasible in read-only `/api/3`.
 - **Maximum-assets-simultaneous out of recommended bounds for engine sizing** — the doc gives recommended values per CPU/RAM tier, but engine CPU/RAM isn't reliably exposed via `/api/3/scan_engines`. Would require platform-level data outside the API surface.
 - **Scanning Diagnostic checks disabled when credentials configured** — Rapid7 *recommends* enabling Scanning Diagnostics when troubleshooting, but it's not a clear anti-pattern (it inflates the asset's vuln count with diagnostic findings). Skipping to avoid noisy false positives.
+- **VM console without reserved memory** — Rapid7 warns shared/ballooned memory can OOM the console, but hypervisor reservations are not exposed in `/api/3`. Out-of-band data source required.
+- **Console product-update cadence at 6 hours / daytime updates** — recommendation is real, but the update schedule is not exposed in `/api/3`. Web-admin UI only.
+- **Web-server session timeout left at 600 seconds** — security-console web config, not in `/api/3`.
+- **Default self-signed HTTPS console certificate still in use** — would require an out-of-band TLS handshake against the console host; outside the documented `/api/3`-only data source.
+- **Platform Login not enabled** — platform/cloud toggle, not surfaced in `/api/3`.
+- **Data retention defaults never tuned** — Context7 re-check (2026-04-28) confirmed no `/api/3` endpoint for retention settings. `/api/3/administration/properties` returns `EnvironmentProperties` (host/version) only. Drop until a retention API surface is documented.
+- **Tune Assistant not rerun after RAM increase** — requires resource-change history and Tune Assistant state; neither is in `/api/3`.
+- **Manual database maintenance for >50k-asset, high-churn deployments** — total asset count is queryable (`GET /api/3/assets` `page.totalResources`), but "performance is slowing" is the trigger Rapid7 specifies, and console-performance metrics aren't in `/api/3`. Rule would fire on size alone, which over-flags healthy large environments. Reconsider if a perf-metric surface becomes available.
+- **Underlying console OS not patched** — OS patch state not in `/api/3`. The engine-currency portion is covered by R12; OS-currency is dropped.
 
 ## What I searched for and didn't find
 

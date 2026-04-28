@@ -59,7 +59,7 @@ The CLI prints the absolute path of the written report on success.
 
 ## Configuration Audit
 
-In addition to the four operational health checks, the tool runs a **Configuration Audit**: eight best-practice rules sourced from official Rapid7 documentation, each grounded in a public Rapid7 source URL.
+In addition to the four operational health checks, the tool runs a **Configuration Audit**: twelve best-practice rules sourced from official Rapid7 documentation, each grounded in a public Rapid7 source URL.
 
 Rules:
 
@@ -73,6 +73,10 @@ Rules:
 | Discovery template on production site | warn (heuristic) | Scan Template Best Practices |
 | Policy and Vulnerability in same template | warn | Scan Template Best Practices |
 | Store invulnerable results enabled | info | Scan Template Best Practices |
+| Local Scan Engine carrying production-sized scope | warn (heuristic) | Console Best Practices |
+| Excessive dynamic asset groups or nested tag references | warn | Console Best Practices |
+| Scan and report schedules overlap on shared scope | warn | Console Best Practices |
+| Scan engine version drift or stale content refresh | warn | Console Best Practices |
 
 Per-rule severity and enable/disable live in the `audit:` block of `config.yaml`. Each finding in the report links back to the Rapid7 source documenting the rule.
 

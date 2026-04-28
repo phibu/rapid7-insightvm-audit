@@ -13,14 +13,20 @@ import rapid7_healthcheck.audit.rules.single_engine_overload  # noqa: F401
 import rapid7_healthcheck.audit.rules.discovery_template_on_prod_site  # noqa: F401
 import rapid7_healthcheck.audit.rules.policy_and_vuln_in_same_template  # noqa: F401
 import rapid7_healthcheck.audit.rules.store_invulnerable_results  # noqa: F401
+import rapid7_healthcheck.audit.rules.local_engine_production_scope  # noqa: F401
+import rapid7_healthcheck.audit.rules.dynamic_groups_and_nested_tags  # noqa: F401
+import rapid7_healthcheck.audit.rules.scan_report_schedule_overlap  # noqa: F401
+import rapid7_healthcheck.audit.rules.engine_version_drift  # noqa: F401
 
 
-def test_all_8_rules_registered():
+def test_all_rules_registered():
     expected = {
         "agent_unauth_collision", "site_vuln_template_no_creds",
         "credential_failure_in_recent_scans", "overlapping_scan_windows",
         "single_engine_overload", "discovery_template_on_prod_site",
         "policy_and_vuln_in_same_template", "store_invulnerable_results",
+        "local_engine_production_scope", "dynamic_groups_and_nested_tags",
+        "scan_report_schedule_overlap", "engine_version_drift",
     }
     assert set(_RULE_REGISTRY.keys()) == expected
 
@@ -42,6 +48,10 @@ def test_audit_skips_disabled_rules(app_config, fake_client, monkeypatch):
         enabled=True, full_scan=False, sample_size=500, rules=rules,
     ))
     fake_client.set_paginate("/api/3/sites", [])
+    fake_client.set_paginate("/api/3/asset_groups", [])
+    fake_client.set_paginate("/api/3/tags", [])
+    fake_client.set_paginate("/api/3/reports", [])
+    fake_client.set_get("/api/3/administration/properties", {"properties": {}})
     result = ConfigurationAuditCheck().run(fake_client, cfg)
     assert result.status == "pass"
     assert all(rr.status == "skipped" for rr in result.rule_results)
@@ -60,6 +70,10 @@ def test_one_rule_raising_does_not_break_others(app_config, fake_client, monkeyp
     fake_client.set_get("/api/3/scan_engines", {"resources": []})
     fake_client.set_get("/api/3/shared_credentials", {"resources": []})
     fake_client.set_get("/api/3/blackouts", {"resources": []})
+    fake_client.set_paginate("/api/3/asset_groups", [])
+    fake_client.set_paginate("/api/3/tags", [])
+    fake_client.set_paginate("/api/3/reports", [])
+    fake_client.set_get("/api/3/administration/properties", {"properties": {}})
 
     from rapid7_healthcheck.audit.rules.policy_and_vuln_in_same_template import (
         PolicyAndVulnInSameTemplateRule,

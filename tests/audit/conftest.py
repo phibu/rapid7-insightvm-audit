@@ -27,6 +27,12 @@ class FakeSnapshot:
         self._site_recent_scans: dict[int, list[dict]] = {}
         self._asset_samples: dict[int, tuple[list[dict], int]] = {}
         self._asset_history: dict[int, list[dict]] = {}
+        self._asset_groups: list[dict] = []
+        self._asset_group_search_criteria: dict[int, dict] = {}
+        self._tags: list[dict] = []
+        self._reports: list[dict] = []
+        self._administration_properties: dict = {}
+        self._total_asset_count: int = 0
 
     @property
     def full_scan(self) -> bool: return self._full_scan
@@ -48,6 +54,12 @@ class FakeSnapshot:
     def set_site_recent_scans(self, site_id: int, scans: list[dict]) -> None: self._site_recent_scans[site_id] = scans
     def set_asset_sample(self, site_id: int, assets: list[dict], total: int) -> None: self._asset_samples[site_id] = (assets, total)
     def set_asset_history(self, asset_id: int, history: list[dict]) -> None: self._asset_history[asset_id] = history
+    def set_asset_groups(self, groups: list[dict]) -> None: self._asset_groups = groups
+    def set_asset_group_search_criteria(self, group_id: int, sc: dict) -> None: self._asset_group_search_criteria[group_id] = sc
+    def set_tags(self, tags: list[dict]) -> None: self._tags = tags
+    def set_reports(self, reports: list[dict]) -> None: self._reports = reports
+    def set_administration_properties(self, props: dict) -> None: self._administration_properties = props
+    def set_total_asset_count(self, n: int) -> None: self._total_asset_count = n
 
     # ---- mirror of EnvSnapshot's public API ----
 
@@ -95,6 +107,18 @@ class FakeSnapshot:
         if asset_id not in self._asset_history:
             raise AssertionError(f"FakeSnapshot.asset_history({asset_id}) not registered")
         return self._asset_history[asset_id]
+
+    def asset_groups(self) -> list[dict]: return self._asset_groups
+
+    def asset_group_search_criteria(self, group_id: int) -> dict:
+        if group_id not in self._asset_group_search_criteria:
+            raise AssertionError(f"FakeSnapshot.asset_group_search_criteria({group_id}) not registered")
+        return self._asset_group_search_criteria[group_id]
+
+    def tags(self) -> list[dict]: return self._tags
+    def reports(self) -> list[dict]: return self._reports
+    def administration_properties(self) -> dict: return self._administration_properties
+    def total_asset_count(self) -> int: return self._total_asset_count
 
 
 @pytest.fixture

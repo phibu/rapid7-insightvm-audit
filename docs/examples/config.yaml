@@ -61,3 +61,22 @@ audit:
     store_invulnerable_results:
       enabled: true
       severity: info
+    local_engine_production_scope:
+      enabled: true
+      severity: warn
+      asset_count_threshold: 1000
+      # Override if you renamed the local engine away from "Local scan engine":
+      # additional_local_names: ["my-renamed-local-engine"]
+    dynamic_groups_and_nested_tags:
+      enabled: true
+      severity: warn
+      dynamic_group_limit: 50
+    scan_report_schedule_overlap:
+      enabled: true
+      severity: warn
+    engine_version_drift:
+      enabled: true
+      severity: warn
+      refresh_stale_days: 7
+      check_product_version: true
+      check_content_version: true

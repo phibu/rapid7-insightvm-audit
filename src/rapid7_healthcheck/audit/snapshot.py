@@ -25,6 +25,11 @@ class EnvSnapshot:
         self._site_recent_scans: dict[tuple[int, int], list[dict]] = {}
         self._asset_history: dict[int, list[dict]] = {}
         self._asset_samples: dict[int, tuple[list[dict], int]] = {}
+        self._asset_groups: list[dict] | None = None
+        self._tags: list[dict] | None = None
+        self._reports: list[dict] | None = None
+        self._administration_properties: dict | None = None
+        self._total_asset_count: int | None = None
 
     @property
     def full_scan(self) -> bool:
@@ -116,3 +121,59 @@ class EnvSnapshot:
             body = self._client.get(f"/api/3/assets/{asset_id}/history")
             self._asset_history[asset_id] = list(body.get("history", body.get("resources", [])))
         return self._asset_history[asset_id]
+
+    def asset_groups(self) -> list[dict]:
+        """All asset groups (static + dynamic). Each entry includes `searchCriteria`
+        for dynamic groups when the API populates it on the listing.
+
+        Callers that need the search criteria for a specific dynamic group should
+        prefer `asset_group_search_criteria(id)` because the listing endpoint may
+        return summary-only entries on some console versions.
+        """
+        if self._asset_groups is None:
+            self._asset_groups = list(self._client.paginate("/api/3/asset_groups"))
+        return self._asset_groups
+
+    def asset_group_search_criteria(self, group_id: int) -> dict:
+        body = self._client.get(f"/api/3/asset_groups/{group_id}/search_criteria")
+        # /search_criteria returns the SearchCriteria object directly per API v3.
+        return body if isinstance(body, dict) else {}
+
+    def tags(self) -> list[dict]:
+        """All tags. Each entry's `searchCriteria` may reference other tags via
+        the `criticality-tag`/`custom-tag`/`location-tag`/`owner-tag` fields,
+        which is what the nested-tag detection rule inspects.
+        """
+        if self._tags is None:
+            self._tags = list(self._client.paginate("/api/3/tags"))
+        return self._tags
+
+    def reports(self) -> list[dict]:
+        """All configured reports with their full body (`frequency`, `scope`,
+        `nextRuntimes`). Used to cross-check report schedules vs scan schedules.
+        """
+        if self._reports is None:
+            self._reports = list(self._client.paginate("/api/3/reports"))
+        return self._reports
+
+    def administration_properties(self) -> dict:
+        """Console host/version info from /api/3/administration/properties.
+
+        Returns the `properties` mapping (whatever the console populates).
+        Per API v3 the schema is loose (`EnvironmentProperties`), so callers
+        must be defensive about which keys are present.
+        """
+        if self._administration_properties is None:
+            body = self._client.get("/api/3/administration/properties")
+            props = body.get("properties") if isinstance(body, dict) else None
+            self._administration_properties = props if isinstance(props, dict) else {}
+        return self._administration_properties
+
+    def total_asset_count(self) -> int:
+        """Total assets in the deployment. Reads page metadata only — does not
+        enumerate the asset list.
+        """
+        if self._total_asset_count is None:
+            body = self._client.get("/api/3/assets", params={"size": 1})
+            self._total_asset_count = int(body.get("page", {}).get("totalResources", 0))
+        return self._total_asset_count
