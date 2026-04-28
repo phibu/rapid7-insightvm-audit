@@ -96,3 +96,85 @@ def test_finding_details_rendered_as_pretty_json():
     html = render_report(_ctx([r]))
     assert "\"k\":" in html
     assert "\"v\"" in html
+
+
+from rapid7_healthcheck.audit import RuleResult
+
+
+def test_audit_section_renders_per_rule_table():
+    rr = [
+        RuleResult(
+            rule_id="r1", rule_name="Rule One", description="rule one desc",
+            severity="warn", status="warn",
+            findings=[Finding(severity="warn", message="something off")],
+            sources=["https://docs.rapid7.com/foo"],
+        ),
+        RuleResult(
+            rule_id="r2", rule_name="Rule Two", description="rule two desc",
+            severity="info", status="pass",
+            sources=["https://docs.rapid7.com/bar"],
+        ),
+    ]
+    cr = CheckResult(
+        name="Configuration Audit", description="d",
+        status="warn",
+        findings=[Finding(severity="warn", message="something off")],
+        summary={"rules_total": 2, "rules_warn": 1, "rules_pass": 1,
+                 "rules_fail": 0, "rules_error": 0, "rules_skipped": 0},
+        rule_results=rr,
+    )
+    html = render_report(_ctx([cr]))
+    assert "Rule One" in html
+    assert "Rule Two" in html
+    assert "rule one desc" in html
+    assert "https://docs.rapid7.com/foo" in html
+    assert "https://docs.rapid7.com/bar" in html
+    assert 'href="https://docs.rapid7.com/foo"' in html
+    assert "<script" not in html
+
+
+def test_audit_section_shows_sampling_note():
+    rr = [
+        RuleResult(
+            rule_id="r1", rule_name="Rule One", description="d",
+            severity="warn", status="warn",
+            findings=[Finding(severity="warn", message="m")],
+            sampled=True, sample_info="checked 500 of 4200 assets",
+            sources=["https://docs.rapid7.com/foo"],
+        ),
+    ]
+    cr = CheckResult(
+        name="Configuration Audit", description="d",
+        status="warn", findings=[Finding(severity="warn", message="m")],
+        summary={"rules_total": 1, "rules_warn": 1, "rules_pass": 0,
+                 "rules_fail": 0, "rules_error": 0, "rules_skipped": 0},
+        rule_results=rr,
+    )
+    html = render_report(_ctx([cr]))
+    assert "checked 500 of 4200 assets" in html
+
+
+def test_audit_section_shows_rule_error():
+    rr = [
+        RuleResult(
+            rule_id="r1", rule_name="Rule One", description="d",
+            severity="fail", status="error",
+            error="boom: KeyError 'sites'",
+            sources=["https://docs.rapid7.com/foo"],
+        ),
+    ]
+    cr = CheckResult(
+        name="Configuration Audit", description="d",
+        status="fail",
+        summary={"rules_total": 1, "rules_warn": 0, "rules_pass": 0,
+                 "rules_fail": 0, "rules_error": 1, "rules_skipped": 0},
+        rule_results=rr,
+    )
+    html = render_report(_ctx([cr]))
+    assert "boom: KeyError" in html
+
+
+def test_non_audit_check_unchanged_when_rule_results_none():
+    cr = CheckResult(name="Scan Engines", description="d", status="pass", findings=[])
+    html = render_report(_ctx([cr]))
+    assert "Rule One" not in html

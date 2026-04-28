@@ -87,7 +87,77 @@
   {% elif r.status == "skipped" %}
     <div class="skipped-box">This check is disabled in <code>config.yaml</code>.</div>
   {% else %}
-    {% if r.summary %}
+    {% if r.rule_results %}
+      <div class="tiles">
+        <div class="tile"><b>{{ r.summary.rules_total }}</b> rules</div>
+        <div class="tile"><b>{{ r.summary.rules_pass }}</b> pass</div>
+        <div class="tile"><b>{{ r.summary.rules_warn }}</b> warn</div>
+        <div class="tile"><b>{{ r.summary.rules_fail }}</b> fail</div>
+        <div class="tile"><b>{{ r.summary.rules_error }}</b> error</div>
+        <div class="tile"><b>{{ r.summary.rules_skipped }}</b> skipped</div>
+      </div>
+
+      <table>
+        <thead><tr><th>Rule</th><th>Status</th><th>Findings</th><th>Notes</th></tr></thead>
+        <tbody>
+        {% for rr in r.rule_results %}
+          <tr>
+            <td><a href="#rule-{{ loop.index0 }}-{{ loop.index }}">{{ rr.rule_name }}</a></td>
+            <td><span class="badge {{ rr.status }}">{{ rr.status|upper }}</span></td>
+            <td>{{ rr.findings|length }}</td>
+            <td>{% if rr.sampled %}sampled{% endif %}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+
+      {% for rr in r.rule_results %}
+      <details id="rule-{{ loop.index0 }}-{{ loop.index }}">
+        <summary><b>{{ rr.rule_name }}</b> <span class="badge {{ rr.status }}">{{ rr.status|upper }}</span></summary>
+        <p class="check-desc">{{ rr.description }}</p>
+
+        {% if rr.status == "error" %}
+          <div class="error-box"><b>Rule failed to run:</b> {{ rr.error }}</div>
+        {% elif rr.status == "skipped" %}
+          <div class="skipped-box">This rule is disabled in <code>config.yaml</code> (audit.rules.{{ rr.rule_id }}.enabled: false).</div>
+        {% else %}
+          {% if rr.sampled %}
+            <p class="check-desc"><i>Note: {{ rr.sample_info }}</i></p>
+          {% endif %}
+          {% if rr.findings %}
+          <table>
+            <thead><tr><th>Severity</th><th>Message</th></tr></thead>
+            <tbody>
+            {% for f in rr.findings %}
+              <tr>
+                <td><span class="badge {{ 'fail' if f.severity == 'fail' else 'warn' if f.severity == 'warn' else 'pass' }}">{{ f.severity|upper }}</span></td>
+                <td>
+                  {{ f.message }}
+                  {% if f.details %}
+                    <details><summary>details</summary><pre>{{ f.details_json }}</pre></details>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+          {% else %}
+          <p>No findings.</p>
+          {% endif %}
+        {% endif %}
+
+        {% if rr.sources %}
+        <p class="check-desc"><b>Sources:</b></p>
+        <ul>
+          {% for src in rr.sources %}
+            <li><a href="{{ src }}" target="_blank" rel="noopener noreferrer">{{ src }}</a></li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+      </details>
+      {% endfor %}
+
+    {% elif r.summary %}
     <div class="tiles">
       {% for k, v in r.summary.items() %}
         <div class="tile"><b>{{ v }}</b> {{ k }}</div>
@@ -95,6 +165,7 @@
     </div>
     {% endif %}
 
+    {% if not r.rule_results %}
     {% if r.findings %}
     <table>
       <thead><tr><th>Severity</th><th>Message</th></tr></thead>
@@ -114,6 +185,7 @@
     </table>
     {% else %}
       <p>No issues found.</p>
+    {% endif %}
     {% endif %}
   {% endif %}
 </section>

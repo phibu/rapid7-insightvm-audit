@@ -42,13 +42,19 @@ def _annotate_findings(results: list[CheckResult]) -> None:
     otherwise break the HTML. The mutation is intentional and confined to the
     render path; downstream code does not rely on `Finding` immutability.
     """
+    def annotate_one(f: Finding) -> None:
+        if f.details is not None:
+            object.__setattr__(f, "details_json", json.dumps(f.details, indent=2, default=str))
+        else:
+            object.__setattr__(f, "details_json", "")
+
     for r in results:
         for f in r.findings:
-            if f.details is not None:
-                # Pre-serialize so the template stays simple and safe (autoescape escapes the string).
-                object.__setattr__(f, "details_json", json.dumps(f.details, indent=2, default=str))
-            else:
-                object.__setattr__(f, "details_json", "")
+            annotate_one(f)
+        if r.rule_results:
+            for rr in r.rule_results:
+                for f in rr.findings:
+                    annotate_one(f)
 
 
 def render_report(ctx: ReportContext) -> str:
