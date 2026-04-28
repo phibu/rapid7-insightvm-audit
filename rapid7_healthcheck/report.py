@@ -53,11 +53,12 @@ def render_report(ctx: ReportContext) -> str:
     template = env.get_template("report.html.j2")
     _annotate_findings(ctx.results)
     verdict_class, verdict_label = _verdict(ctx.results)
-    generated_at_utc = ctx.generated_at.astimezone().strftime("%Y-%m-%d %H:%M:%S")
+    generated_at_local_str = ctx.generated_at.astimezone().strftime("%Y-%m-%d %H:%M:%S")
+    generated_at_utc_str = ctx.generated_at.strftime("%Y-%m-%d %H:%M:%S")
     return template.render(
         title=ctx.title,
-        generated_at_utc=ctx.generated_at.strftime("%Y-%m-%d %H:%M:%S"),
-        generated_at_local=generated_at_utc,
+        generated_at_utc=generated_at_utc_str,
+        generated_at_local=generated_at_local_str,
         base_url_host=ctx.base_url_host,
         tool_version=ctx.tool_version,
         config_path=ctx.config_path,
@@ -81,7 +82,10 @@ def write_report(
         explicit_path.write_text(html, encoding="utf-8")
         return explicit_path
 
-    assert output_dir is not None and filename_pattern is not None
+    if output_dir is None or filename_pattern is None:
+        raise ValueError(
+            "write_report requires either explicit_path, or both output_dir and filename_pattern"
+        )
     output_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y-%m-%d_%H%M")
     filename = filename_pattern.replace("{timestamp}", timestamp)

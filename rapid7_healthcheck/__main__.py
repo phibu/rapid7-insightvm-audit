@@ -5,7 +5,7 @@ import logging
 import os
 import sys
 import time
-from dataclasses import asdict, fields, is_dataclass
+from dataclasses import fields
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -153,7 +153,7 @@ def run(argv: list[str] | None = None) -> int:
         generated_at=datetime.now(timezone.utc),
         base_url_host=urlparse(cfg.rapid7.base_url).hostname or cfg.rapid7.base_url,
         tool_version=__version__,
-        config_path=str(args.config),
+        config_path=args.config,
         results=results,
         thresholds_table=build_thresholds_table(cfg),
     )

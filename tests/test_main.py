@@ -140,3 +140,58 @@ def test_build_thresholds_table_includes_all_keys():
     assert "scan_engines.last_contact_warn_hours" in keys
     assert "asset_coverage.stale_asset_days" in keys
     assert "data_quality.flag_empty_sites" in keys
+
+
+def test_run_check_exception_becomes_error_status(tmp_path, monkeypatch):
+    # Arrange: enable scan_engines, but force its run() to raise.
+    body = textwrap.dedent(f"""
+        rapid7:
+          base_url: https://us.api.insight.rapid7.com
+          verify_tls: true
+          request_timeout_seconds: 30
+          max_retries: 3
+        report:
+          output_dir: {tmp_path / "reports"}
+          filename_pattern: "rapid7-health-{{timestamp}}.html"
+          title: "T"
+        thresholds:
+          scan_engines:
+            last_contact_warn_hours: 2
+            last_contact_fail_hours: 24
+          scan_activity:
+            recent_window_days: 7
+            stuck_scan_hours: 24
+            site_no_scan_days: 14
+          asset_coverage:
+            stale_asset_days: 30
+            flag_unscanned_assets: true
+          data_quality:
+            flag_missing_os: true
+            flag_empty_sites: true
+        checks:
+          scan_engines: true
+          scan_activity: false
+          asset_coverage: false
+          data_quality: false
+    """).strip()
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text(body, encoding="utf-8")
+    monkeypatch.setenv("R7_API_KEY", "k")
+
+    def boom(self, client, config):
+        raise RuntimeError("simulated check failure")
+
+    with patch("rapid7_healthcheck.__main__.Rapid7Client") as MockClient, \
+         patch(
+             "rapid7_healthcheck.__main__.ScanEnginesCheck.run",
+             new=boom,
+         ):
+        MockClient.return_value.connect.return_value = None
+        out_path = tmp_path / "out.html"
+        code = run(["--config", str(cfg), "--output", str(out_path)])
+
+    # Status was "error" → exit code is EXIT_FAIL (per pick_exit_code).
+    assert code == EXIT_FAIL
+    html = out_path.read_text(encoding="utf-8")
+    assert "ERROR" in html  # status badge
+    assert "simulated check failure" in html
