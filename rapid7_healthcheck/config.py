@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import typing
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Any
 
@@ -60,12 +60,45 @@ class Thresholds:
     data_quality: DataQualityThresholds
 
 
+_VALID_RULE_IDS = {
+    "agent_unauth_collision",
+    "site_vuln_template_no_creds",
+    "credential_failure_in_recent_scans",
+    "overlapping_scan_windows",
+    "single_engine_overload",
+    "discovery_template_on_prod_site",
+    "policy_and_vuln_in_same_template",
+    "store_invulnerable_results",
+}
+_VALID_SEVERITIES = {"info", "warn", "fail"}
+
+
+@dataclass(frozen=True)
+class RuleConfig:
+    enabled: bool
+    severity: str
+    knobs: dict
+
+
+@dataclass(frozen=True)
+class AuditConfig:
+    enabled: bool
+    full_scan: bool
+    sample_size: int
+    rules: dict  # str -> RuleConfig
+
+
+def _default_audit() -> AuditConfig:
+    return AuditConfig(enabled=False, full_scan=False, sample_size=500, rules={})
+
+
 @dataclass(frozen=True)
 class AppConfig:
     rapid7: Rapid7Config
     report: ReportConfig
     thresholds: Thresholds
-    checks: dict[str, bool]
+    checks: dict
+    audit: AuditConfig = field(default_factory=_default_audit)
 
 
 def _check_scalar(field_name: str, value: Any, expected: type, path: str) -> None:
@@ -140,12 +173,56 @@ def _build_thresholds(data: Any) -> Thresholds:
     )
 
 
+def _build_audit_config(data: dict | None) -> AuditConfig:
+    if data is None:
+        return AuditConfig(enabled=False, full_scan=False, sample_size=500, rules={})
+    if not isinstance(data, dict):
+        raise ConfigError("audit: expected mapping")
+    expected = {"enabled", "full_scan", "sample_size", "rules"}
+    unknown = set(data.keys()) - expected
+    if unknown:
+        raise ConfigError(f"audit: unknown key(s): {sorted(unknown)}")
+    if not isinstance(data.get("enabled"), bool):
+        raise ConfigError("audit.enabled: expected bool")
+    if not isinstance(data.get("full_scan"), bool):
+        raise ConfigError("audit.full_scan: expected bool")
+    if not isinstance(data.get("sample_size"), int) or isinstance(data.get("sample_size"), bool) or data["sample_size"] <= 0:
+        raise ConfigError("audit.sample_size: expected positive int")
+
+    raw_rules = data.get("rules") or {}
+    if not isinstance(raw_rules, dict):
+        raise ConfigError("audit.rules: expected mapping")
+    rules: dict[str, RuleConfig] = {}
+    for rule_id, rule_body in raw_rules.items():
+        if rule_id not in _VALID_RULE_IDS:
+            raise ConfigError(f"audit.rules: unknown rule id '{rule_id}'")
+        if not isinstance(rule_body, dict):
+            raise ConfigError(f"audit.rules.{rule_id}: expected mapping")
+        if not isinstance(rule_body.get("enabled"), bool):
+            raise ConfigError(f"audit.rules.{rule_id}.enabled: expected bool")
+        sev = rule_body.get("severity")
+        if sev not in _VALID_SEVERITIES:
+            raise ConfigError(
+                f"audit.rules.{rule_id}.severity: must be one of {sorted(_VALID_SEVERITIES)}"
+            )
+        knobs = {k: v for k, v in rule_body.items() if k not in ("enabled", "severity")}
+        rules[rule_id] = RuleConfig(enabled=rule_body["enabled"], severity=sev, knobs=knobs)
+
+    return AuditConfig(
+        enabled=data["enabled"],
+        full_scan=data["full_scan"],
+        sample_size=data["sample_size"],
+        rules=rules,
+    )
+
+
 def _build_app_config(data: dict) -> AppConfig:
-    expected_root = {"rapid7", "report", "thresholds", "checks"}
+    expected_root = {"rapid7", "report", "thresholds", "checks", "audit"}
     unknown = set(data.keys()) - expected_root
     if unknown:
         raise ConfigError(f"unknown root key(s): {sorted(unknown)}")
-    missing = expected_root - set(data.keys())
+    required_root = expected_root - {"audit"}  # audit is optional
+    missing = required_root - set(data.keys())
     if missing:
         raise ConfigError(f"missing required root key(s): {sorted(missing)}")
 
@@ -162,8 +239,12 @@ def _build_app_config(data: dict) -> AppConfig:
     checks = data["checks"]
     if not isinstance(checks, dict) or not all(isinstance(v, bool) for v in checks.values()):
         raise ConfigError("checks: expected mapping of name -> bool")
+    if "configuration_audit" not in checks:
+        checks = dict(checks)
+        checks["configuration_audit"] = True
 
-    return AppConfig(rapid7=rapid7, report=report, thresholds=thresholds, checks=checks)
+    audit = _build_audit_config(data.get("audit"))
+    return AppConfig(rapid7=rapid7, report=report, thresholds=thresholds, checks=checks, audit=audit)
 
 
 def load_config(path: Path | str) -> AppConfig:

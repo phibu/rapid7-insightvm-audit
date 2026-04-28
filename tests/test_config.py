@@ -142,3 +142,98 @@ def test_checks_value_must_be_bool(tmp_path):
     body = VALID_YAML.replace("scan_engines: true\n  scan_activity: true", "scan_engines: 1\n  scan_activity: true")
     with pytest.raises(ConfigError, match="checks"):
         load_config(write(tmp_path, body))
+
+
+AUDIT_BLOCK = textwrap.dedent("""
+    audit:
+      enabled: true
+      full_scan: false
+      sample_size: 500
+      rules:
+        agent_unauth_collision:
+          enabled: true
+          severity: fail
+        site_vuln_template_no_creds:
+          enabled: true
+          severity: fail
+        credential_failure_in_recent_scans:
+          enabled: true
+          severity: warn
+        overlapping_scan_windows:
+          enabled: true
+          severity: warn
+        single_engine_overload:
+          enabled: true
+          severity: warn
+          asset_count_threshold: 5000
+        discovery_template_on_prod_site:
+          enabled: true
+          severity: warn
+        policy_and_vuln_in_same_template:
+          enabled: true
+          severity: warn
+        store_invulnerable_results:
+          enabled: true
+          severity: info
+""")
+
+
+def _yaml_with_audit(checks_audit: bool = True) -> str:
+    body = VALID_YAML
+    body = body.replace(
+        "  data_quality: true",
+        "  data_quality: true\n  configuration_audit: " + ("true" if checks_audit else "false"),
+    )
+    return body + AUDIT_BLOCK
+
+
+def test_audit_config_loads(tmp_path):
+    cfg = load_config(write(tmp_path, _yaml_with_audit()))
+    assert cfg.audit.enabled is True
+    assert cfg.audit.full_scan is False
+    assert cfg.audit.sample_size == 500
+    assert cfg.audit.rules["agent_unauth_collision"].enabled is True
+    assert cfg.audit.rules["agent_unauth_collision"].severity == "fail"
+    assert cfg.audit.rules["single_engine_overload"].knobs["asset_count_threshold"] == 5000
+    assert cfg.checks["configuration_audit"] is True
+
+
+def test_audit_unknown_rule_id_raises(tmp_path):
+    body = _yaml_with_audit().replace(
+        "agent_unauth_collision:",
+        "not_a_real_rule:",
+        1,
+    )
+    with pytest.raises(ConfigError, match="not_a_real_rule"):
+        load_config(write(tmp_path, body))
+
+
+def test_audit_invalid_severity_raises(tmp_path):
+    body = _yaml_with_audit().replace(
+        "severity: fail",
+        "severity: catastrophic",
+        1,
+    )
+    with pytest.raises(ConfigError, match="severity"):
+        load_config(write(tmp_path, body))
+
+
+def test_audit_unknown_rule_knobs_silently_ignored(tmp_path):
+    body = _yaml_with_audit().replace(
+        "asset_count_threshold: 5000",
+        "asset_count_threshold: 5000\n      future_knob: 42",
+    )
+    cfg = load_config(write(tmp_path, body))
+    assert cfg.audit.rules["single_engine_overload"].knobs["asset_count_threshold"] == 5000
+    assert cfg.audit.rules["single_engine_overload"].knobs.get("future_knob") == 42
+
+
+def test_audit_missing_block_defaults_disabled(tmp_path):
+    cfg = load_config(write(tmp_path, VALID_YAML))
+    assert cfg.audit.enabled is False
+    assert cfg.audit.rules == {}
+
+
+def test_checks_configuration_audit_default_when_missing(tmp_path):
+    cfg = load_config(write(tmp_path, _yaml_with_audit()))
+    assert cfg.checks["configuration_audit"] is True

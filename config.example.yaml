@@ -29,3 +29,35 @@ checks:
   scan_activity: true
   asset_coverage: true
   data_quality: true
+  configuration_audit: true
+
+audit:
+  enabled: true
+  full_scan: false
+  sample_size: 500
+  rules:
+    agent_unauth_collision:
+      enabled: true
+      severity: fail
+    site_vuln_template_no_creds:
+      enabled: true
+      severity: fail
+    credential_failure_in_recent_scans:
+      enabled: true
+      severity: warn
+    overlapping_scan_windows:
+      enabled: true
+      severity: warn
+    single_engine_overload:
+      enabled: true
+      severity: warn
+      asset_count_threshold: 5000
+    discovery_template_on_prod_site:
+      enabled: true
+      severity: warn
+    policy_and_vuln_in_same_template:
+      enabled: true
+      severity: warn
+    store_invulnerable_results:
+      enabled: true
+      severity: info
