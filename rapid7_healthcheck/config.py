@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import typing
 from dataclasses import dataclass, fields
 from pathlib import Path
 from typing import Any
@@ -67,6 +68,34 @@ class AppConfig:
     checks: dict[str, bool]
 
 
+def _check_scalar(field_name: str, value: Any, expected: type, path: str) -> None:
+    # bool is a subclass of int, so handle it carefully.
+    if expected is int:
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ConfigError(
+                f"{path}.{field_name}: expected int, got {type(value).__name__}"
+            )
+        if value <= 0:
+            raise ConfigError(
+                f"{path}.{field_name}: must be a positive integer, got {value}"
+            )
+    elif expected is bool:
+        if not isinstance(value, bool):
+            raise ConfigError(
+                f"{path}.{field_name}: expected bool, got {type(value).__name__}"
+            )
+    elif expected is str:
+        if not isinstance(value, str):
+            raise ConfigError(
+                f"{path}.{field_name}: expected str, got {type(value).__name__}"
+            )
+    else:
+        # No other scalar types currently used.
+        raise ConfigError(
+            f"{path}.{field_name}: unsupported declared type {expected!r}"
+        )
+
+
 def _from_dict(cls: type, data: Any, path: str) -> Any:
     if not isinstance(data, dict):
         raise ConfigError(f"{path}: expected mapping, got {type(data).__name__}")
@@ -77,6 +106,11 @@ def _from_dict(cls: type, data: Any, path: str) -> Any:
     missing = expected - set(data.keys())
     if missing:
         raise ConfigError(f"{path}: missing required key(s): {sorted(missing)}")
+
+    hints = typing.get_type_hints(cls)
+    for f in fields(cls):
+        _check_scalar(f.name, data[f.name], hints[f.name], path)
+
     return cls(**{f.name: data[f.name] for f in fields(cls)})
 
 
@@ -115,7 +149,10 @@ def _build_app_config(data: dict) -> AppConfig:
     if missing:
         raise ConfigError(f"missing required root key(s): {sorted(missing)}")
 
-    rapid7 = _from_dict(Rapid7Config, data["rapid7"], "rapid7")
+    rapid7_data = dict(data["rapid7"]) if isinstance(data["rapid7"], dict) else data["rapid7"]
+    if isinstance(rapid7_data, dict) and isinstance(rapid7_data.get("base_url"), str):
+        rapid7_data["base_url"] = rapid7_data["base_url"].strip()
+    rapid7 = _from_dict(Rapid7Config, rapid7_data, "rapid7")
     if not rapid7.base_url.startswith("https://"):
         raise ConfigError("rapid7.base_url must start with https://")
 

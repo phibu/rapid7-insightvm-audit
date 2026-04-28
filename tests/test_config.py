@@ -90,3 +90,55 @@ def test_unknown_nested_key_raises(tmp_path):
 def test_missing_file_raises(tmp_path):
     with pytest.raises(ConfigError, match="not found"):
         load_config(tmp_path / "does_not_exist.yaml")
+
+
+def test_int_field_rejects_string(tmp_path):
+    body = VALID_YAML.replace("request_timeout_seconds: 30", "request_timeout_seconds: \"thirty\"")
+    with pytest.raises(ConfigError, match="request_timeout_seconds"):
+        load_config(write(tmp_path, body))
+
+
+def test_int_field_rejects_bool(tmp_path):
+    body = VALID_YAML.replace("request_timeout_seconds: 30", "request_timeout_seconds: true")
+    with pytest.raises(ConfigError, match="request_timeout_seconds"):
+        load_config(write(tmp_path, body))
+
+
+def test_bool_field_rejects_string(tmp_path):
+    body = VALID_YAML.replace("verify_tls: true", "verify_tls: \"yes\"")
+    with pytest.raises(ConfigError, match="verify_tls"):
+        load_config(write(tmp_path, body))
+
+
+def test_str_field_rejects_int(tmp_path):
+    body = VALID_YAML.replace("title: \"Rapid7 InsightVM Environment Health Check\"", "title: 42")
+    with pytest.raises(ConfigError, match="title"):
+        load_config(write(tmp_path, body))
+
+
+def test_negative_int_rejected(tmp_path):
+    body = VALID_YAML.replace("last_contact_warn_hours: 2", "last_contact_warn_hours: -1")
+    with pytest.raises(ConfigError, match="last_contact_warn_hours"):
+        load_config(write(tmp_path, body))
+
+
+def test_zero_int_rejected(tmp_path):
+    body = VALID_YAML.replace("recent_window_days: 7", "recent_window_days: 0")
+    with pytest.raises(ConfigError, match="recent_window_days"):
+        load_config(write(tmp_path, body))
+
+
+def test_base_url_whitespace_stripped(tmp_path):
+    body = VALID_YAML.replace(
+        "https://us.api.insight.rapid7.com",
+        "  https://us.api.insight.rapid7.com  ",
+    )
+    cfg = load_config(write(tmp_path, body))
+    assert cfg.rapid7.base_url == "https://us.api.insight.rapid7.com"
+
+
+def test_checks_value_must_be_bool(tmp_path):
+    # Existing behavior should continue to reject non-bool checks values
+    body = VALID_YAML.replace("scan_engines: true\n  scan_activity: true", "scan_engines: 1\n  scan_activity: true")
+    with pytest.raises(ConfigError, match="checks"):
+        load_config(write(tmp_path, body))
