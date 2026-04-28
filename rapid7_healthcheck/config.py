@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, fields, is_dataclass
+from dataclasses import dataclass, fields
 from pathlib import Path
 from typing import Any
 
@@ -77,22 +77,9 @@ def _from_dict(cls: type, data: Any, path: str) -> Any:
     missing = expected - set(data.keys())
     if missing:
         raise ConfigError(f"{path}: missing required key(s): {sorted(missing)}")
-    kwargs: dict[str, Any] = {}
-    for f in fields(cls):
-        value = data[f.name]
-        sub_path = f"{path}.{f.name}" if path else f.name
-        if is_dataclass(f.type) if isinstance(f.type, type) else False:
-            kwargs[f.name] = _from_dict(f.type, value, sub_path)
-        else:
-            kwargs[f.name] = value
-    return cls(**kwargs)
+    return cls(**{f.name: data[f.name] for f in fields(cls)})
 
 
-_NESTED = {
-    "rapid7": Rapid7Config,
-    "report": ReportConfig,
-    "thresholds": Thresholds,
-}
 _THRESHOLD_NESTED = {
     "scan_engines": ScanEngineThresholds,
     "scan_activity": ScanActivityThresholds,
