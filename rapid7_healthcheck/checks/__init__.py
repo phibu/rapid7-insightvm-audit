@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Literal, Protocol
+from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 from rapid7_healthcheck.config import AppConfig
+
+if TYPE_CHECKING:
+    from rapid7_healthcheck.audit import RuleResult
 
 
 Severity = Literal["info", "warn", "fail"]
@@ -26,6 +29,7 @@ class CheckResult:
     summary: dict[str, Any] = field(default_factory=dict)
     duration_ms: int = 0
     error: str | None = None
+    rule_results: list["RuleResult"] | None = None
 
 
 def rollup_status(findings: list[Finding]) -> Status:
