@@ -48,6 +48,7 @@ def _write_config(tmp_path: Path, base_url: str = "https://us.api.insight.rapid7
           scan_activity: false
           asset_coverage: false
           data_quality: false
+          configuration_audit: false
     """).strip()
     p = tmp_path / "config.yaml"
     p.write_text(body, encoding="utf-8")
@@ -173,6 +174,7 @@ def test_run_check_exception_becomes_error_status(tmp_path, monkeypatch):
           scan_activity: false
           asset_coverage: false
           data_quality: false
+          configuration_audit: false
     """).strip()
     cfg = tmp_path / "config.yaml"
     cfg.write_text(body, encoding="utf-8")
@@ -235,6 +237,7 @@ def test_api_key_never_leaks_to_stderr_or_report(tmp_path, monkeypatch, caplog):
           scan_activity: false
           asset_coverage: false
           data_quality: false
+          configuration_audit: false
     """).strip()
     cfg = tmp_path / "config.yaml"
     cfg.write_text(body, encoding="utf-8")
@@ -257,3 +260,83 @@ def test_api_key_never_leaks_to_stderr_or_report(tmp_path, monkeypatch, caplog):
         assert secret not in record.getMessage(), (
             f"API key leaked into log record: {record.name} {record.levelname}"
         )
+
+
+def test_run_with_audit_enabled_writes_audit_report(tmp_path, monkeypatch):
+    """End-to-end: enable audit + one rule, simulate a passing run, see the audit section appear."""
+    body = textwrap.dedent(f"""
+        rapid7:
+          base_url: https://us.api.insight.rapid7.com
+          verify_tls: true
+          request_timeout_seconds: 30
+          max_retries: 3
+        report:
+          output_dir: {tmp_path / "reports"}
+          filename_pattern: "rapid7-health-{{timestamp}}.html"
+          title: "T"
+        thresholds:
+          scan_engines:
+            last_contact_warn_hours: 2
+            last_contact_fail_hours: 24
+          scan_activity:
+            recent_window_days: 7
+            stuck_scan_hours: 24
+            site_no_scan_days: 14
+          asset_coverage:
+            stale_asset_days: 30
+            flag_unscanned_assets: true
+          data_quality:
+            flag_missing_os: true
+            flag_empty_sites: true
+        checks:
+          scan_engines: false
+          scan_activity: false
+          asset_coverage: false
+          data_quality: false
+          configuration_audit: true
+        audit:
+          enabled: true
+          full_scan: false
+          sample_size: 500
+          rules:
+            agent_unauth_collision:
+              enabled: false
+              severity: fail
+            site_vuln_template_no_creds:
+              enabled: true
+              severity: fail
+            credential_failure_in_recent_scans:
+              enabled: false
+              severity: warn
+            overlapping_scan_windows:
+              enabled: false
+              severity: warn
+            single_engine_overload:
+              enabled: false
+              severity: warn
+            discovery_template_on_prod_site:
+              enabled: false
+              severity: warn
+            policy_and_vuln_in_same_template:
+              enabled: false
+              severity: warn
+            store_invulnerable_results:
+              enabled: false
+              severity: info
+    """).strip()
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text(body, encoding="utf-8")
+    monkeypatch.setenv("R7_API_KEY", "k")
+
+    out_path = tmp_path / "out.html"
+    with patch("rapid7_healthcheck.__main__.Rapid7Client") as MockClient:
+        instance = MockClient.return_value
+        instance.connect.return_value = None
+        instance.paginate.side_effect = lambda path, **kw: iter([])
+        instance.get.side_effect = lambda path, **kw: {"resources": [], "page": {"totalResources": 0}}
+        code = run(["--config", str(cfg), "--output", str(out_path)])
+
+    assert code == EXIT_HEALTHY
+    html = out_path.read_text(encoding="utf-8")
+    assert "Configuration Audit" in html
+    assert "Vulnerability Template Without Credentials" in html

@@ -14,6 +14,16 @@ from urllib.parse import urlparse
 from dotenv import load_dotenv
 
 from rapid7_healthcheck import __version__
+from rapid7_healthcheck.audit import ConfigurationAuditCheck
+# Side-effect imports: register all 8 audit rules.
+import rapid7_healthcheck.audit.rules.agent_unauth_collision  # noqa: F401
+import rapid7_healthcheck.audit.rules.site_vuln_template_no_creds  # noqa: F401
+import rapid7_healthcheck.audit.rules.credential_failure_in_recent_scans  # noqa: F401
+import rapid7_healthcheck.audit.rules.overlapping_scan_windows  # noqa: F401
+import rapid7_healthcheck.audit.rules.single_engine_overload  # noqa: F401
+import rapid7_healthcheck.audit.rules.discovery_template_on_prod_site  # noqa: F401
+import rapid7_healthcheck.audit.rules.policy_and_vuln_in_same_template  # noqa: F401
+import rapid7_healthcheck.audit.rules.store_invulnerable_results  # noqa: F401
 from rapid7_healthcheck.checks import Check, CheckResult
 from rapid7_healthcheck.checks.asset_coverage import AssetCoverageCheck
 from rapid7_healthcheck.checks.data_quality import DataQualityCheck
@@ -38,6 +48,7 @@ _REGISTRY: dict[str, type[Check]] = {
     "scan_activity": ScanActivityCheck,
     "asset_coverage": AssetCoverageCheck,
     "data_quality": DataQualityCheck,
+    "configuration_audit": ConfigurationAuditCheck,
 }
 
 
