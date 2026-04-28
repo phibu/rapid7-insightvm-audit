@@ -35,7 +35,7 @@ Homepage = "https://github.com/phibu/rapid7-insightvm-audit"
 Issues = "https://github.com/phibu/rapid7-insightvm-audit/issues"
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0,<9"]
+dev = ["pytest>=8.0,<10"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
