@@ -3,10 +3,26 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "rapid7-healthcheck"
+name = "rapid7-insightvm-audit"
 version = "0.1.0"
-description = "Read-only health check for a Rapid7 InsightVM environment"
+description = "Read-only health check and configuration audit for a Rapid7 InsightVM environment"
+readme = "README.md"
+license = { text = "MIT" }
 requires-python = ">=3.11"
+authors = [{ name = "Phibu" }]
+keywords = ["rapid7", "insightvm", "vulnerability-management", "audit", "healthcheck", "security"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security",
+    "Topic :: System :: Systems Administration",
+]
 dependencies = [
     "requests>=2.32,<3",
     "PyYAML>=6.0,<7",
@@ -14,10 +30,15 @@ dependencies = [
     "python-dotenv>=1.0,<2",
 ]
 
+[project.urls]
+Homepage = "https://github.com/phibu/rapid7-insightvm-audit"
+Issues = "https://github.com/phibu/rapid7-insightvm-audit/issues"
+
 [project.optional-dependencies]
 dev = ["pytest>=8.0,<9"]
 
 [tool.setuptools.packages.find]
+where = ["src"]
 include = ["rapid7_healthcheck*"]
 
 [tool.setuptools.package-data]
