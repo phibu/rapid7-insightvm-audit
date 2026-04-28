@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rapid7-healthcheck"
+version = "0.1.0"
+description = "Read-only health check for a Rapid7 InsightVM environment"
+requires-python = ">=3.11"
+dependencies = [
+    "requests>=2.32,<3",
+    "PyYAML>=6.0,<7",
+    "Jinja2>=3.1,<4",
+    "python-dotenv>=1.0,<2",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0,<9"]
+
+[tool.setuptools.packages.find]
+include = ["rapid7_healthcheck*"]
+
+[tool.setuptools.package-data]
+rapid7_healthcheck = ["templates/*.j2"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
