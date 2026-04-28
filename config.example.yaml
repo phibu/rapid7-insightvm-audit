@@ -1,0 +1,31 @@
+rapid7:
+  base_url: https://us.api.insight.rapid7.com
+  verify_tls: true
+  request_timeout_seconds: 30
+  max_retries: 3
+
+report:
+  output_dir: ./reports
+  filename_pattern: "rapid7-health-{timestamp}.html"
+  title: "Rapid7 InsightVM Environment Health Check"
+
+thresholds:
+  scan_engines:
+    last_contact_warn_hours: 2
+    last_contact_fail_hours: 24
+  scan_activity:
+    recent_window_days: 7
+    stuck_scan_hours: 24
+    site_no_scan_days: 14
+  asset_coverage:
+    stale_asset_days: 30
+    flag_unscanned_assets: true
+  data_quality:
+    flag_missing_os: true
+    flag_empty_sites: true
+
+checks:
+  scan_engines: true
+  scan_activity: true
+  asset_coverage: true
+  data_quality: true
