@@ -88,14 +88,15 @@ def test_blackouts_endpoint_404_marks_unavailable():
         def get(self, path, params=None):
             if path == "/api/3/blackouts":
                 raise Rapid7ClientError(
-                    "HTTP 404 from GET /api/3/blackouts: not found"
+                    "HTTP 404 from GET /api/3/blackouts: not found",
+                    status_code=404,
                 )
             return super().get(path, params)
 
     c = _Client404()
     s = EnvSnapshot(c, full_scan=False, sample_size=500)
     assert s.blackouts() == []
-    assert s.blackouts_unavailable is True
+    assert s.is_blackouts_unavailable() is True
 
 
 def test_blackouts_endpoint_other_errors_propagate():
@@ -105,7 +106,10 @@ def test_blackouts_endpoint_other_errors_propagate():
     class _Client500(_FakeClient):
         def get(self, path, params=None):
             if path == "/api/3/blackouts":
-                raise Rapid7ClientError("HTTP 500 from GET /api/3/blackouts: oops")
+                raise Rapid7ClientError(
+                    "HTTP 500 from GET /api/3/blackouts: oops",
+                    status_code=500,
+                )
             return super().get(path, params)
 
     c = _Client500()
@@ -114,13 +118,45 @@ def test_blackouts_endpoint_other_errors_propagate():
         s.blackouts()
 
 
+def test_blackouts_500_with_404_in_message_does_not_falsely_trap():
+    """Regression guard: substring matching on the error message would have
+    swallowed this. The new status-code-based trap correctly propagates."""
+    from rapid7_healthcheck.client import Rapid7ClientError
+
+    class _Client500WithMisleadingBody(_FakeClient):
+        def get(self, path, params=None):
+            if path == "/api/3/blackouts":
+                # Body mentions "404" but the actual status is 500.
+                raise Rapid7ClientError(
+                    "HTTP 500 from GET /api/3/blackouts: upstream returned 404 unexpectedly",
+                    status_code=500,
+                )
+            return super().get(path, params)
+
+    c = _Client500WithMisleadingBody()
+    s = EnvSnapshot(c, full_scan=False, sample_size=500)
+    with pytest.raises(Rapid7ClientError):
+        s.blackouts()
+    # Flag must NOT be set when the trap correctly propagates.
+    assert s.is_blackouts_unavailable() is False
+
+
 def test_blackouts_empty_list_is_not_unavailable():
     """An empty 'resources' list means no blackouts configured — not a 404."""
     c = _FakeClient()
     c.set_get("/api/3/blackouts", {"resources": []})
     s = EnvSnapshot(c, full_scan=False, sample_size=500)
     assert s.blackouts() == []
-    assert s.blackouts_unavailable is False
+    assert s.is_blackouts_unavailable() is False
+
+
+def test_is_blackouts_unavailable_default_false_without_fetch():
+    """Reading the flag without calling blackouts() returns False (no IO,
+    no surprise)."""
+    c = _FakeClient()
+    s = EnvSnapshot(c, full_scan=False, sample_size=500)
+    # No fetch, no error; just the default value of the cached flag.
+    assert s.is_blackouts_unavailable() is False
 
 
 def test_site_scan_template_id_handles_dict_shape():

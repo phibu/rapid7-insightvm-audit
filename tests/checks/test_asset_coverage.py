@@ -117,7 +117,8 @@ def test_unscanned_search_400_degrades_gracefully(fake_client, app_config):
         if "is-empty" in text:
             raise Rapid7ClientError(
                 "HTTP 400 from POST /api/3/assets/search: "
-                "operator 'is-empty' is invalid for last-scan-date"
+                "operator 'is-empty' is invalid for last-scan-date",
+                status_code=400,
             )
         yield from stale
 
@@ -142,7 +143,34 @@ def test_unscanned_search_other_500_propagates(fake_client, app_config):
     def paginate_post(path, json_body, params=None, page_size=500):
         text = str(json_body)
         if "is-empty" in text:
-            raise Rapid7ClientError("HTTP 500 from POST /api/3/assets/search: oops")
+            raise Rapid7ClientError(
+                "HTTP 500 from POST /api/3/assets/search: oops",
+                status_code=500,
+            )
+        yield from []
+
+    fc.paginate_post = paginate_post  # type: ignore[assignment]
+    with _pytest.raises(Rapid7ClientError):
+        AssetCoverageCheck().run(fc, app_config)
+
+
+def test_unscanned_search_500_with_400_in_message_does_not_falsely_trap(fake_client, app_config):
+    """Regression guard: substring matching on the error message would have
+    swallowed this. The new status-code-based trap correctly propagates."""
+    from rapid7_healthcheck.client import Rapid7ClientError
+    from tests.conftest import FakeRapid7Client
+    import pytest as _pytest
+    fc = FakeRapid7Client()
+
+    def paginate_post(path, json_body, params=None, page_size=500):
+        text = str(json_body)
+        if "is-empty" in text:
+            # Body mentions "400" and "is-empty" but actual status is 500.
+            raise Rapid7ClientError(
+                "HTTP 500 from POST /api/3/assets/search: "
+                "internal error processing 'is-empty' filter (status 400 from upstream)",
+                status_code=500,
+            )
         yield from []
 
     fc.paginate_post = paginate_post  # type: ignore[assignment]

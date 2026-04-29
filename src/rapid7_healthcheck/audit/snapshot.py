@@ -65,7 +65,7 @@ class EnvSnapshot:
                 body = self._client.get("/api/3/blackouts")
                 self._blackouts = list(body.get("resources", []))
             except Rapid7ClientError as e:
-                if "404" in str(e):
+                if e.status_code == 404:
                     # Some Rapid7-hosted consoles do not implement
                     # /api/3/blackouts. Distinguish "endpoint missing" from
                     # "no blackouts configured" so dependent rules can skip
@@ -77,12 +77,14 @@ class EnvSnapshot:
                     raise
         return self._blackouts
 
-    @property
-    def blackouts_unavailable(self) -> bool:
-        """True if /api/3/blackouts returned 404 — dependent rules should skip
-        rather than treat the empty list as 'no blackouts configured'."""
-        # Force a fetch attempt so the flag is populated on first inspection.
-        self.blackouts()
+    def is_blackouts_unavailable(self) -> bool:
+        """True if /api/3/blackouts returned 404 — dependent rules should
+        skip rather than treat the empty list as 'no blackouts configured'.
+
+        Pure read of the cached flag; does NOT trigger a network call.
+        Callers should invoke `blackouts()` first to prime the flag, which
+        every in-tree caller already does because they need the data.
+        """
         return self._blackouts_unavailable
 
     def site_credentials(self, site_id: int) -> list[dict]:
@@ -239,6 +241,9 @@ class EnvSnapshot:
         This helper reads whichever the response provides. Returns False when
         neither is present (conservative — a template with no signal is
         assumed not to have vulnerability assessment).
+
+        When both shapes are present, the top-level `vulnerabilityEnabled`
+        is authoritative — older nested shapes are read only as a fallback.
         """
         if not isinstance(template, dict):
             return False

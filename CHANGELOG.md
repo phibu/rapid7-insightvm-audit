@@ -7,6 +7,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-04-29
+
+Robustness patch following code review of v0.1.4. Replaces brittle
+string-substring matching on error messages with numeric HTTP status
+code checks, and converts a property that did hidden IO into an
+explicit method. No behaviour change for the happy path or for any
+currently-passing usage.
+
+### Added
+
+- `Rapid7ClientError.status_code: int | None` — populated from the HTTP
+  response on every status-derived raise (4xx / 5xx); `None` for
+  network errors, 2xx-with-bad-body, and read-only-violation raises.
+- `EnvSnapshot.is_blackouts_unavailable()` method — pure read of the
+  cached flag with no IO. Replaces the v0.1.4 property.
+- `R7_BASIC_USER` / `R7_BASIC_PASSWORD` entries (commented out) in
+  `.env.example`. The 0.1.3 release added Basic Auth support but the
+  env template only documented `R7_API_KEY`.
+
+### Changed
+
+- `EnvSnapshot.blackouts()` now traps the 404 by checking
+  `e.status_code == 404` instead of `"404" in str(e)`. A 500 whose
+  response body happens to contain "404" no longer gets silently
+  swallowed.
+- `AssetCoverageCheck` similarly switches its `is-empty` 400 trap to
+  `e.status_code == 400`. The `is-empty` substring guard is removed —
+  status code is the trap; if a future console returns 400 on this
+  endpoint+filter for a different reason, the rule still degrades
+  gracefully and the operator can disable the sub-check.
+- `EnvSnapshot.blackouts_unavailable` property renamed to
+  `is_blackouts_unavailable()` method to make the IO requirement
+  explicit. Caller pattern: invoke `snapshot.blackouts()` first, then
+  read `snapshot.is_blackouts_unavailable()`. The property version
+  shipped one release ago and was only used in-tree.
+- `EnvSnapshot.template_vuln_enabled` docstring now documents the
+  precedence rule explicitly: top-level `vulnerabilityEnabled` is
+  authoritative when both shapes are present.
+- `.env.example` comment corrected — keys come from the Security
+  Console UI, not from `insight.rapid7.com` (those are different APIs).
+
+### Documentation
+
+- README "Troubleshooting" gains a bullet explaining that
+  `info`-severity findings about endpoint or operator unavailability
+  are *expected* on Rapid7-hosted consoles and indicate API surface
+  differences, not bugs.
+- `CLAUDE.md` layer-rules section now states that
+  `Rapid7ClientError.status_code` is the canonical branch point, and
+  warns against substring-matching error messages.
+
+### Tests
+
+- 8 new tests covering: `status_code` population on 4xx/5xx raises,
+  `Rapid7AuthError.status_code` on 401/403, network errors leaving
+  `status_code` as None, the new `is_blackouts_unavailable()` method's
+  default-without-IO behaviour, and regression guards for both
+  substring-trap false positives (a 500 with "404" in the message must
+  propagate; a 500 with "400 is-empty" in the message must propagate).
+- Total now 203 passing.
+
 ## [0.1.4] - 2026-04-29
 
 Compatibility patch for Rapid7-hosted Security Consoles. Several
@@ -216,7 +277,8 @@ InsightVM environment.
 - CI on Python 3.11 and 3.12 (GitHub Actions).
 - 153 unit tests covering checks, rules, config, client, and report rendering.
 
-[Unreleased]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.4...HEAD
+[Unreleased]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.5...HEAD
+[0.1.5]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.1...v0.1.2

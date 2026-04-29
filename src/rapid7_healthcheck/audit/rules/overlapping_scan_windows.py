@@ -118,9 +118,13 @@ class OverlappingScanWindowsRule:
                 },
             ))
 
-        blackouts_unavailable = getattr(snapshot, "blackouts_unavailable", False)
+        # Prime the blackouts cache + unavailable flag, then read the flag.
+        # The flag is False unless the snapshot already saw a 404 from
+        # /api/3/blackouts (some Rapid7-hosted consoles don't implement it).
+        all_blackouts = snapshot.blackouts()
+        blackouts_unavailable = snapshot.is_blackouts_unavailable()
         if not blackouts_unavailable:
-            for blackout in snapshot.blackouts():
+            for blackout in all_blackouts:
                 if not blackout.get("enabled", False):
                     continue
                 b_start = _parse_iso(blackout.get("start"))
