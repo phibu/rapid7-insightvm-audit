@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-04-29
+
+Report-only enhancement to surface slow audit rules. Existing data was
+already collected at every level (operational checks + audit umbrella +
+each individual rule); this release just renders the per-rule timings
+that were previously dropped by the template, and switches all
+durations to a human-readable format.
+
+### Added
+
+- New `Duration` column in the audit rule summary table — exposes the
+  per-rule `duration_ms` that was already captured but never rendered.
+  Useful for spotting slow audit rules at a glance.
+- New `duration` Jinja filter (`rapid7_healthcheck.report._format_duration`)
+  rendering durations as `123 ms`, `4.2 s`, `2m 14s`, or `1h 12m`
+  depending on magnitude.
+
+### Changed
+
+- The check-level `Duration` cell in the top summary table now uses
+  the human-readable format. A 4-minute Data Quality run now reads as
+  `4m 0s` instead of `240000 ms`.
+
+### Tests
+
+- 3 new tests: pure-function filter coverage at each band boundary,
+  rendered-HTML assertion that a 4.25-second rule shows `4.2 s` (not
+  `4250 ms`), and that check-level durations use the same filter.
+- Total now 206 passing.
+
 ## [0.1.5] - 2026-04-29
 
 Robustness patch following code review of v0.1.4. Replaces brittle
@@ -277,7 +307,8 @@ InsightVM environment.
 - CI on Python 3.11 and 3.12 (GitHub Actions).
 - 153 unit tests covering checks, rules, config, client, and report rendering.
 
-[Unreleased]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.5...HEAD
+[Unreleased]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.6...HEAD
+[0.1.6]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.2...v0.1.3

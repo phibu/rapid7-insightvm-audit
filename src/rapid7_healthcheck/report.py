@@ -13,6 +13,28 @@ from rapid7_healthcheck.checks import CheckResult, Finding
 _TEMPLATE_DIR = Path(__file__).parent / "templates"
 
 
+def _format_duration(ms: int | None) -> str:
+    """Render a duration in human-readable form for the report.
+
+    < 1 s -> "123 ms"
+    < 1 m -> "4.2 s"
+    < 1 h -> "2m 14s"
+    >= 1h -> "1h 12m"
+    """
+    if ms is None:
+        return "-"
+    if ms < 1000:
+        return f"{ms} ms"
+    seconds = ms / 1000
+    if seconds < 60:
+        return f"{seconds:.1f} s"
+    minutes, secs = divmod(int(seconds), 60)
+    if minutes < 60:
+        return f"{minutes}m {secs}s"
+    hours, mins = divmod(minutes, 60)
+    return f"{hours}h {mins}m"
+
+
 @dataclass
 class ReportContext:
     title: str
@@ -64,6 +86,7 @@ def render_report(ctx: ReportContext) -> str:
         trim_blocks=False,
         lstrip_blocks=False,
     )
+    env.filters["duration"] = _format_duration
     template = env.get_template("report.html.j2")
     _annotate_findings(ctx.results)
     verdict_class, verdict_label = _verdict(ctx.results)

@@ -178,3 +178,69 @@ def test_non_audit_check_unchanged_when_rule_results_none():
     cr = CheckResult(name="Scan Engines", description="d", status="pass", findings=[])
     html = render_report(_ctx([cr]))
     assert "Rule One" not in html
+
+
+def test_duration_filter_formats_each_band():
+    """Pure-function test of the duration formatter at every band boundary."""
+    from rapid7_healthcheck.report import _format_duration
+
+    # Sub-second
+    assert _format_duration(0) == "0 ms"
+    assert _format_duration(123) == "123 ms"
+    assert _format_duration(999) == "999 ms"
+
+    # 1s..60s -> "X.Y s"
+    assert _format_duration(1000) == "1.0 s"
+    assert _format_duration(4250) == "4.2 s"
+    assert _format_duration(59999) == "60.0 s"  # rounds to boundary, still 's' band
+
+    # 60s..3600s -> "Xm Ys"
+    assert _format_duration(60000) == "1m 0s"
+    assert _format_duration(134000) == "2m 14s"
+    assert _format_duration(3599000) == "59m 59s"
+
+    # 3600s+ -> "Xh Ym"
+    assert _format_duration(3600000) == "1h 0m"
+    assert _format_duration(3700000) == "1h 1m"
+    assert _format_duration(45000000) == "12h 30m"
+
+    # None passthrough
+    assert _format_duration(None) == "-"
+
+
+def test_audit_rule_duration_renders_human_readable():
+    """A 4.25-second rule must render as '4.2 s', not '4250 ms'."""
+    cr = CheckResult(
+        name="Configuration Audit",
+        description="audit",
+        status="warn",
+        findings=[],
+        summary={
+            "rules_total": 1, "rules_pass": 0, "rules_warn": 1,
+            "rules_fail": 0, "rules_error": 0, "rules_skipped": 0,
+        },
+        duration_ms=5000,
+        rule_results=[
+            RuleResult(
+                rule_id="slow_rule", rule_name="Slow Rule", description="d",
+                severity="warn", status="warn", findings=[],
+                duration_ms=4250,
+            ),
+        ],
+    )
+    html = render_report(_ctx([cr]))
+    assert "4.2 s" in html
+    assert "4250 ms" not in html
+    # Audit umbrella row also rendered humanely.
+    assert "5.0 s" in html
+
+
+def test_check_level_duration_uses_filter_too():
+    """A non-audit check's duration in the summary table also uses the filter."""
+    cr = CheckResult(
+        name="Slow Op Check", description="d", status="pass",
+        findings=[], duration_ms=134000,
+    )
+    html = render_report(_ctx([cr]))
+    assert "2m 14s" in html
+    assert "134000 ms" not in html
