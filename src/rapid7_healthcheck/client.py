@@ -20,7 +20,26 @@ class Rapid7AuthError(Rapid7ClientError):
     """401 or 403 from the Rapid7 API; do not retry."""
 
 
+class ReadOnlyViolationError(Rapid7ClientError):
+    """Raised when a caller tries to issue a non-read HTTP request.
+
+    The tool is read-only by contract: only GET, plus POST to a small
+    explicit allowlist of search-shaped endpoints (Rapid7 v3 requires POST
+    for some search endpoints because the filter criteria travel in the
+    request body). Any other verb or any unallowlisted POST path raises
+    this error before the request is sent.
+    """
+
+
 _RETRY_STATUS = {429, 502, 503, 504}
+
+# Read-only invariant: only these HTTP verbs are permitted, ever.
+_ALLOWED_VERBS = frozenset({"GET", "POST"})
+
+# POST is reserved for Rapid7 search endpoints whose filter criteria must
+# travel in the request body. The set is intentionally tiny: extending it
+# requires a deliberate code edit and review.
+_ALLOWED_POST_PATHS = frozenset({"/api/3/assets/search"})
 
 
 class Rapid7Client:
@@ -111,6 +130,18 @@ class Rapid7Client:
         params: dict | None = None,
         json_body: dict | None = None,
     ) -> dict:
+        # Read-only enforcement. Runs before any network I/O so a violation
+        # never reaches the customer's console.
+        if method not in _ALLOWED_VERBS:
+            raise ReadOnlyViolationError(
+                f"refusing non-read verb {method!r}; allowed: {sorted(_ALLOWED_VERBS)}"
+            )
+        if method == "POST" and path not in _ALLOWED_POST_PATHS:
+            raise ReadOnlyViolationError(
+                f"POST not allowed on {path!r}; "
+                f"allowlist: {sorted(_ALLOWED_POST_PATHS)}"
+            )
+
         url = self._base_url + path if path.startswith("/") else urljoin(self._base_url + "/", path)
         attempt = 0
         last_error: Exception | None = None

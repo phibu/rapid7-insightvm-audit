@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-04-29
+
+Hardened the read-only invariant. Behavioural contract is unchanged for any
+existing valid usage; this release closes the loophole where a future
+contributor could accidentally introduce a write call.
+
+### Security
+
+- New `ReadOnlyViolationError` (subclass of `Rapid7ClientError`).
+  `Rapid7Client._request` now rejects any HTTP verb outside `{GET, POST}`,
+  and any `POST` whose path is not in the explicit `_ALLOWED_POST_PATHS`
+  allowlist (currently only `/api/3/assets/search`). Violations raise
+  before the request is sent.
+- New `tests/test_readonly_invariant.py` static-scan suite. Fails CI if
+  any file outside `client.py` calls `.put(`/`.patch(`/`.delete(`, if any
+  file outside `client.py` calls `requests.<write-verb>(` directly, if
+  `Rapid7Client` grows methods named `put`/`patch`/`delete`, or if any
+  static `client.post(...)` call site references a path not in
+  `_ALLOWED_POST_PATHS`.
+- `SECURITY.md` added documenting the invariant, the three enforcement
+  layers, and the vulnerability reporting policy.
+- README "What this tool does NOT do" section now discloses the single
+  legitimate `POST` exception and links to `SECURITY.md`.
+
 ## [0.1.1] - 2026-04-29
 
 Patch release addressing review findings on the four rules added in 0.1.0
@@ -100,6 +124,7 @@ InsightVM environment.
 - CI on Python 3.11 and 3.12 (GitHub Actions).
 - 153 unit tests covering checks, rules, config, client, and report rendering.
 
-[Unreleased]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/phibu/rapid7-insightvm-audit/releases/tag/v0.1.0
