@@ -198,12 +198,14 @@ def run(argv: list[str] | None = None) -> int:
     )
 
     if args.output:
-        out = write_report(ctx, explicit_path=Path(args.output))
+        out = write_report(ctx, explicit_path=Path(args.output),
+                           delta_max_age_days=cfg.report.delta_max_age_days)
     else:
         out = write_report(
             ctx,
             output_dir=Path(cfg.report.output_dir),
             filename_pattern=cfg.report.filename_pattern,
+            delta_max_age_days=cfg.report.delta_max_age_days,
         )
 
     print(out.resolve())

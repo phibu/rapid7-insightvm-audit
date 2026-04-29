@@ -297,6 +297,10 @@ class ReportContext:
     config_path: str
     results: list[CheckResult]
     thresholds_table: list[tuple[str, str]] = field(default_factory=list)
+    delta: dict | None = None              # computed delta or None
+    state_blob_json: str | None = None     # pre-serialized JSON for embedding, or None if dropped
+    metrics: dict | None = None            # populated by render_report
+    content_hash: str | None = None        # SHA-256 prefix of state_blob_json
 
 
 def _verdict(results: list[CheckResult]) -> tuple[str, str]:
@@ -332,7 +336,9 @@ def _annotate_findings(results: list[CheckResult]) -> None:
                     annotate_one(f)
 
 
-def render_report(ctx: ReportContext) -> str:
+def render_report(ctx: ReportContext, *, prior_state: dict | None = None) -> str:
+    """Render the report. If `prior_state` is supplied, compute a delta and
+    embed both the delta strip and the trimmed state blob in the output."""
     env = Environment(
         loader=FileSystemLoader(_TEMPLATE_DIR),
         autoescape=select_autoescape(["html"]),
@@ -345,6 +351,29 @@ def render_report(ctx: ReportContext) -> str:
     verdict_class, verdict_label = _verdict(ctx.results)
     generated_at_local_str = ctx.generated_at.astimezone().strftime("%Y-%m-%d %H:%M:%S")
     generated_at_utc_str = ctx.generated_at.strftime("%Y-%m-%d %H:%M:%S")
+
+    # Build the trimmed state blob (may be None if oversized).
+    blob = _state_blob_projection(
+        results=ctx.results,
+        tool_version=ctx.tool_version,
+        generated_at=ctx.generated_at,
+        base_url_host=ctx.base_url_host,
+    )
+    if blob is not None:
+        ctx.state_blob_json = json.dumps(blob, separators=(",", ":"), default=str)
+        ctx.content_hash = hashlib.sha256(ctx.state_blob_json.encode("utf-8")).hexdigest()[:16]
+    else:
+        ctx.state_blob_json = None
+        ctx.content_hash = None
+
+    # Compute delta (None if no prior, host mismatch, or blob is None).
+    if blob is not None and prior_state is not None:
+        ctx.delta = _compute_delta(prior=prior_state, current=blob)
+    else:
+        ctx.delta = None
+
+    ctx.metrics = _metrics(ctx.results)
+
     return template.render(
         title=ctx.title,
         generated_at_utc=generated_at_utc_str,
@@ -356,6 +385,10 @@ def render_report(ctx: ReportContext) -> str:
         thresholds_table=ctx.thresholds_table,
         verdict_class=verdict_class,
         verdict_label=verdict_label,
+        delta=ctx.delta,
+        state_blob_json=ctx.state_blob_json,
+        metrics=ctx.metrics,
+        content_hash=ctx.content_hash,
     )
 
 
@@ -365,9 +398,11 @@ def write_report(
     output_dir: Path | None = None,
     filename_pattern: str | None = None,
     explicit_path: Path | None = None,
+    delta_max_age_days: int | None = 30,
 ) -> Path:
-    html = render_report(ctx)
     if explicit_path is not None:
+        # Explicit-path mode: no delta (we have no convention for finding a prior).
+        html = render_report(ctx)
         explicit_path.parent.mkdir(parents=True, exist_ok=True)
         explicit_path.write_text(html, encoding="utf-8")
         return explicit_path
@@ -380,5 +415,14 @@ def write_report(
     timestamp = datetime.now().strftime("%Y-%m-%d_%H%M")
     filename = filename_pattern.replace("{timestamp}", timestamp)
     out = output_dir / filename
+
+    # Load prior state (if any) before rendering so the delta strip can render.
+    prior = _load_prior_state(
+        output_dir=output_dir,
+        filename_pattern=filename_pattern,
+        exclude=out,
+        max_age_days=delta_max_age_days,
+    )
+    html = render_report(ctx, prior_state=prior)
     out.write_text(html, encoding="utf-8")
     return out
