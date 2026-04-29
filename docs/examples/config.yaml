@@ -1,7 +1,12 @@
 rapid7:
   base_url: https://us.api.insight.rapid7.com
   verify_tls: true
+  # Per-request read timeout. Bump to 60 or 120 if you see
+  # "network error after N attempt(s) on GET /api/3/...: Read timed out"
+  # in the report — Rapid7-hosted consoles can be sluggish under load.
   request_timeout_seconds: 30
+  # Number of retries on transient errors (incl. read timeouts). Total
+  # worst-case wait per call ≈ (max_retries + 1) * request_timeout_seconds.
   max_retries: 3
   # auth_mode: api_key  # default; reads R7_API_KEY from env / .env
   # auth_mode: basic    # use HTTP Basic Auth; reads R7_BASIC_USER + R7_BASIC_PASSWORD
