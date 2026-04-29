@@ -142,6 +142,7 @@ You can also disable an entire check by setting its toggle in `checks:` to `fals
 - **Connection refused / DNS error at startup**: the `base_url` likely points to the wrong region or US data centre. Try `us2` / `us3` / `eu` etc.
 - **All checks return `SKIPPED`**: every toggle in `checks:` is `false` in `config.yaml`.
 - **Specific check shows `ERROR`**: the per-check exception message appears in the report. Run with `--verbose --log-file run.log` to capture the full traceback.
+- **`SSLError: CERTIFICATE_VERIFY_FAILED` / `unable to get local issuer certificate`** (Windows, especially on a corporate network): the host's cert is signed by a CA your Python install doesn't trust — typically because a corporate proxy (Zscaler, Palo Alto, Netskope, etc.) re-signs TLS traffic with an internal CA that Windows trusts but `requests` does not. Fix by making `requests` use the Windows trust store: `pip install pip-system-certs` in the same venv, then re-run. If your IT team can supply the proxy's root CA as a `.pem`, you can alternatively set `REQUESTS_CA_BUNDLE=path\to\ca.pem`. Setting `verify_tls: false` in `config.yaml` disables verification entirely — last resort, never for production.
 
 ## Development
 
