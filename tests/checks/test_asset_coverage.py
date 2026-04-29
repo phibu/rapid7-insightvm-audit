@@ -101,3 +101,50 @@ def test_top_10_examples_in_finding_details(fake_client, app_config):
     examples = stale_finding.details["examples"]
     assert len(examples) == 10
     assert stale_finding.details["total"] == 25
+
+
+def test_unscanned_search_400_degrades_gracefully(fake_client, app_config):
+    """Some consoles reject 'is-empty' on date fields with HTTP 400. The
+    check must still report stale assets and emit an info finding rather
+    than aborting the whole check."""
+    from rapid7_healthcheck.client import Rapid7ClientError
+    from tests.conftest import FakeRapid7Client
+    fc = FakeRapid7Client()
+    stale = [_asset(f"old-{i}", i) for i in range(3)]
+
+    def paginate_post(path, json_body, params=None, page_size=500):
+        text = str(json_body)
+        if "is-empty" in text:
+            raise Rapid7ClientError(
+                "HTTP 400 from POST /api/3/assets/search: "
+                "operator 'is-empty' is invalid for last-scan-date"
+            )
+        yield from stale
+
+    fc.paginate_post = paginate_post  # type: ignore[assignment]
+    result = AssetCoverageCheck().run(fc, app_config)
+    # Stale finding still emitted.
+    assert any("stale" in f.message.lower() for f in result.findings)
+    # Info finding present explaining the degradation.
+    info_findings = [f for f in result.findings if f.severity == "info"]
+    assert len(info_findings) == 1
+    assert "is-empty" in info_findings[0].message
+    assert result.summary["unscanned_unavailable"] is True
+
+
+def test_unscanned_search_other_500_propagates(fake_client, app_config):
+    """Non-400 errors must not be silently swallowed — that's a real bug."""
+    from rapid7_healthcheck.client import Rapid7ClientError
+    from tests.conftest import FakeRapid7Client
+    import pytest as _pytest
+    fc = FakeRapid7Client()
+
+    def paginate_post(path, json_body, params=None, page_size=500):
+        text = str(json_body)
+        if "is-empty" in text:
+            raise Rapid7ClientError("HTTP 500 from POST /api/3/assets/search: oops")
+        yield from []
+
+    fc.paginate_post = paginate_post  # type: ignore[assignment]
+    with _pytest.raises(Rapid7ClientError):
+        AssetCoverageCheck().run(fc, app_config)

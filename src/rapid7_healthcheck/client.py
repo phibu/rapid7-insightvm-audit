@@ -182,7 +182,7 @@ class Rapid7Client:
             if resp.status_code in _RETRY_STATUS:
                 if attempt >= self._max_retries:
                     raise Rapid7ClientError(
-                        f"{resp.status_code} after {attempt + 1} attempts: {resp.text[:200]}"
+                        f"{resp.status_code} after {attempt + 1} attempts: {resp.text[:1500]}"
                     )
                 delay = self._retry_delay(resp, attempt)
                 time.sleep(delay)
@@ -190,7 +190,7 @@ class Rapid7Client:
                 continue
             if resp.status_code >= 400:
                 raise Rapid7ClientError(
-                    f"HTTP {resp.status_code} from {method} {path}: {resp.text[:200]}"
+                    f"HTTP {resp.status_code} from {method} {path}: {resp.text[:1500]}"
                 )
             try:
                 return resp.json()

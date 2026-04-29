@@ -4,6 +4,8 @@ import itertools
 import logging
 from typing import Any
 
+from rapid7_healthcheck.client import Rapid7ClientError
+
 logger = logging.getLogger(__name__)
 
 
@@ -17,6 +19,7 @@ class EnvSnapshot:
         self._scan_engines: list[dict] | None = None
         self._shared_credentials: list[dict] | None = None
         self._blackouts: list[dict] | None = None
+        self._blackouts_unavailable: bool = False
         self._site_credentials: dict[int, list[dict]] = {}
         self._site_schedules: dict[int, list[dict]] = {}
         self._site_included_targets: dict[int, list[dict]] = {}
@@ -58,9 +61,29 @@ class EnvSnapshot:
 
     def blackouts(self) -> list[dict]:
         if self._blackouts is None:
-            body = self._client.get("/api/3/blackouts")
-            self._blackouts = list(body.get("resources", []))
+            try:
+                body = self._client.get("/api/3/blackouts")
+                self._blackouts = list(body.get("resources", []))
+            except Rapid7ClientError as e:
+                if "404" in str(e):
+                    # Some Rapid7-hosted consoles do not implement
+                    # /api/3/blackouts. Distinguish "endpoint missing" from
+                    # "no blackouts configured" so dependent rules can skip
+                    # honestly rather than emit false negatives.
+                    logger.info("blackouts endpoint not available on this console")
+                    self._blackouts = []
+                    self._blackouts_unavailable = True
+                else:
+                    raise
         return self._blackouts
+
+    @property
+    def blackouts_unavailable(self) -> bool:
+        """True if /api/3/blackouts returned 404 — dependent rules should skip
+        rather than treat the empty list as 'no blackouts configured'."""
+        # Force a fetch attempt so the flag is populated on first inspection.
+        self.blackouts()
+        return self._blackouts_unavailable
 
     def site_credentials(self, site_id: int) -> list[dict]:
         if site_id not in self._site_credentials:
@@ -203,6 +226,44 @@ class EnvSnapshot:
             props = body.get("properties") if isinstance(body, dict) else None
             self._administration_properties = props if isinstance(props, dict) else {}
         return self._administration_properties
+
+    @staticmethod
+    def template_vuln_enabled(template: dict) -> bool:
+        """Whether a scan template has vulnerability assessment enabled.
+
+        Different `/api/3` console versions expose this in two shapes:
+
+        - Older / on-prem: `template["vulnerabilityChecks"]["enabled"]` (bool).
+        - Newer / Rapid7-hosted: top-level `template["vulnerabilityEnabled"]`.
+
+        This helper reads whichever the response provides. Returns False when
+        neither is present (conservative — a template with no signal is
+        assumed not to have vulnerability assessment).
+        """
+        if not isinstance(template, dict):
+            return False
+        if "vulnerabilityEnabled" in template:
+            return bool(template.get("vulnerabilityEnabled"))
+        nested = template.get("vulnerabilityChecks")
+        if isinstance(nested, dict):
+            return bool(nested.get("enabled"))
+        return False
+
+    @staticmethod
+    def site_scan_template_id(site: dict) -> str | None:
+        """Extract a site's scan template id from the API response.
+
+        Different `/api/3` console versions return `scanTemplate` in two
+        shapes: a nested object `{"id": "<id>", "name": "..."}` (older /
+        on-prem) or a bare string id (newer / Rapid7-hosted). Returns None
+        when the field is missing or empty.
+        """
+        v = site.get("scanTemplate")
+        if isinstance(v, dict):
+            return v.get("id") or None
+        if isinstance(v, str) and v:
+            return v
+        return None
 
     def total_asset_count(self) -> int:
         """Total assets in the deployment. Reads page metadata only — does not

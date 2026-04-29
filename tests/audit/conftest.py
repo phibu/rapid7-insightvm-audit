@@ -19,6 +19,7 @@ class FakeSnapshot:
         self._scan_engines: list[dict] = []
         self._shared_credentials: list[dict] = []
         self._blackouts: list[dict] = []
+        self._blackouts_unavailable: bool = False
         self._site_credentials: dict[int, list[dict]] = {}
         self._site_schedules: dict[int, list[dict]] = {}
         self._site_included_targets: dict[int, list[dict]] = {}
@@ -47,6 +48,7 @@ class FakeSnapshot:
     def set_scan_engines(self, engines: list[dict]) -> None: self._scan_engines = engines
     def set_shared_credentials(self, creds: list[dict]) -> None: self._shared_credentials = creds
     def set_blackouts(self, blackouts: list[dict]) -> None: self._blackouts = blackouts
+    def set_blackouts_unavailable(self, unavailable: bool) -> None: self._blackouts_unavailable = unavailable
     def set_site_credentials(self, site_id: int, creds: list[dict]) -> None: self._site_credentials[site_id] = creds
     def set_site_schedules(self, site_id: int, schedules: list[dict]) -> None: self._site_schedules[site_id] = schedules
     def set_site_included_targets(self, site_id: int, targets: list[dict]) -> None: self._site_included_targets[site_id] = targets
@@ -69,6 +71,9 @@ class FakeSnapshot:
     def scan_engines(self) -> list[dict]: return self._scan_engines
     def shared_credentials(self) -> list[dict]: return self._shared_credentials
     def blackouts(self) -> list[dict]: return self._blackouts
+
+    @property
+    def blackouts_unavailable(self) -> bool: return self._blackouts_unavailable
 
     def site_credentials(self, site_id: int) -> list[dict]:
         if site_id not in self._site_credentials:
@@ -124,6 +129,26 @@ class FakeSnapshot:
     def reports(self) -> list[dict]: return self._reports
     def administration_properties(self) -> dict: return self._administration_properties
     def total_asset_count(self) -> int: return self._total_asset_count
+
+    @staticmethod
+    def site_scan_template_id(site: dict) -> str | None:
+        v = site.get("scanTemplate")
+        if isinstance(v, dict):
+            return v.get("id") or None
+        if isinstance(v, str) and v:
+            return v
+        return None
+
+    @staticmethod
+    def template_vuln_enabled(template: dict) -> bool:
+        if not isinstance(template, dict):
+            return False
+        if "vulnerabilityEnabled" in template:
+            return bool(template.get("vulnerabilityEnabled"))
+        nested = template.get("vulnerabilityChecks")
+        if isinstance(nested, dict):
+            return bool(nested.get("enabled"))
+        return False
 
 
 @pytest.fixture

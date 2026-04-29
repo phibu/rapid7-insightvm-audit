@@ -7,6 +7,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-04-29
+
+Compatibility patch for Rapid7-hosted Security Consoles. Several
+operational checks and audit rules crashed when run against a hosted
+console because the `/api/3` schema differs from the on-prem variant
+the tool was originally built against. No new functionality; this
+release just makes existing rules survive shape and endpoint
+differences gracefully.
+
+### Fixed
+
+- `data_quality.py` asset-search filter: renamed field `os-name` →
+  `operating-system`. The hosted console only accepts the latter.
+- `asset_coverage.py`: when the unscanned-assets search (`last-scan-date
+  is-empty`) is rejected with HTTP 400 by the console, the check now
+  emits an info finding and continues running the stale-assets check
+  rather than aborting. Operators can suppress the notice by setting
+  `asset_coverage.flag_unscanned_assets: false` in `config.yaml`.
+- `EnvSnapshot.blackouts()`: HTTP 404 from `/api/3/blackouts` (which
+  some Rapid7-hosted consoles do not implement) is now caught and
+  treated as "endpoint unavailable" rather than aborting the audit.
+  New `EnvSnapshot.blackouts_unavailable` property distinguishes
+  "endpoint missing" from "no blackouts configured".
+- `overlapping_scan_windows` rule honours `blackouts_unavailable` —
+  scan-vs-scan overlap detection still runs; an info finding documents
+  the skipped blackout sub-check.
+- 5 audit rules (`agent_unauth_collision`,
+  `discovery_template_on_prod_site`, `policy_and_vuln_in_same_template`,
+  `site_vuln_template_no_creds`, `store_invulnerable_results`) crashed
+  with `'str' object has no attribute 'get'` against hosted consoles
+  because they assumed `site["scanTemplate"]` was a nested dict. They
+  now use the new `EnvSnapshot.site_scan_template_id(site)` helper that
+  handles both the dict shape (older) and bare-string shape (newer /
+  hosted) returned by the API.
+- 4 of the same rules also assumed templates expose vulnerability
+  assessment as `template["vulnerabilityChecks"]["enabled"]`; the
+  hosted console exposes it as a top-level `vulnerabilityEnabled`
+  boolean. New `EnvSnapshot.template_vuln_enabled(template)` helper
+  reads whichever shape the response provides.
+
+### Changed
+
+- `Rapid7Client._request` and `_paginate` now include up to 1500
+  characters of response body in error messages (was 200). Hosted
+  consoles typically return long "valid values are: ..." lists in 400
+  errors that were being truncated unhelpfully.
+
+### Tests
+
+- 15 new tests covering: blackouts-404 trap (and 500 propagation),
+  template-id shape variants (dict / string / missing / empty),
+  template-vuln-enabled shape variants (top-level / nested / mixed /
+  missing), discovery-template rule against the hosted-console shape,
+  overlapping-scan-windows skip behaviour when blackouts unavailable,
+  and asset-coverage degraded path on 400 (plus 500 propagation gate).
+  Total now 195 passing.
+
 ## [0.1.3] - 2026-04-29
 
 Adds HTTP Basic Auth as an alternative to the existing `X-Api-Key` flow.
@@ -159,7 +216,8 @@ InsightVM environment.
 - CI on Python 3.11 and 3.12 (GitHub Actions).
 - 153 unit tests covering checks, rules, config, client, and report rendering.
 
-[Unreleased]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.3...HEAD
+[Unreleased]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.4...HEAD
+[0.1.4]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.0...v0.1.1

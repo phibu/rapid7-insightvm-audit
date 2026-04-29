@@ -76,3 +76,89 @@ def test_asset_sample_full_scan_returns_all():
     sampled, total = s.asset_sample(7)
     assert total == 7
     assert len(sampled) == 7
+
+
+def test_blackouts_endpoint_404_marks_unavailable():
+    """A 404 from /api/3/blackouts must be treated as 'endpoint missing'
+    rather than crashing the snapshot. Dependent rules need to distinguish
+    this from 'no blackouts configured'."""
+    from rapid7_healthcheck.client import Rapid7ClientError
+
+    class _Client404(_FakeClient):
+        def get(self, path, params=None):
+            if path == "/api/3/blackouts":
+                raise Rapid7ClientError(
+                    "HTTP 404 from GET /api/3/blackouts: not found"
+                )
+            return super().get(path, params)
+
+    c = _Client404()
+    s = EnvSnapshot(c, full_scan=False, sample_size=500)
+    assert s.blackouts() == []
+    assert s.blackouts_unavailable is True
+
+
+def test_blackouts_endpoint_other_errors_propagate():
+    """Non-404 errors (auth, network, 500) must NOT be silently swallowed."""
+    from rapid7_healthcheck.client import Rapid7ClientError
+
+    class _Client500(_FakeClient):
+        def get(self, path, params=None):
+            if path == "/api/3/blackouts":
+                raise Rapid7ClientError("HTTP 500 from GET /api/3/blackouts: oops")
+            return super().get(path, params)
+
+    c = _Client500()
+    s = EnvSnapshot(c, full_scan=False, sample_size=500)
+    with pytest.raises(Rapid7ClientError):
+        s.blackouts()
+
+
+def test_blackouts_empty_list_is_not_unavailable():
+    """An empty 'resources' list means no blackouts configured — not a 404."""
+    c = _FakeClient()
+    c.set_get("/api/3/blackouts", {"resources": []})
+    s = EnvSnapshot(c, full_scan=False, sample_size=500)
+    assert s.blackouts() == []
+    assert s.blackouts_unavailable is False
+
+
+def test_site_scan_template_id_handles_dict_shape():
+    assert EnvSnapshot.site_scan_template_id({"scanTemplate": {"id": "cis", "name": "CIS"}}) == "cis"
+
+
+def test_site_scan_template_id_handles_string_shape():
+    """Newer / Rapid7-hosted consoles return scanTemplate as a bare string."""
+    assert EnvSnapshot.site_scan_template_id({"scanTemplate": "cis"}) == "cis"
+
+
+def test_site_scan_template_id_handles_missing():
+    assert EnvSnapshot.site_scan_template_id({}) is None
+    assert EnvSnapshot.site_scan_template_id({"scanTemplate": None}) is None
+    assert EnvSnapshot.site_scan_template_id({"scanTemplate": ""}) is None
+    assert EnvSnapshot.site_scan_template_id({"scanTemplate": {}}) is None
+
+
+def test_template_vuln_enabled_top_level_field():
+    """Newer console: top-level vulnerabilityEnabled bool."""
+    assert EnvSnapshot.template_vuln_enabled({"vulnerabilityEnabled": True}) is True
+    assert EnvSnapshot.template_vuln_enabled({"vulnerabilityEnabled": False}) is False
+
+
+def test_template_vuln_enabled_nested_field():
+    """Older console: nested vulnerabilityChecks.enabled bool."""
+    assert EnvSnapshot.template_vuln_enabled({"vulnerabilityChecks": {"enabled": True}}) is True
+    assert EnvSnapshot.template_vuln_enabled({"vulnerabilityChecks": {"enabled": False}}) is False
+
+
+def test_template_vuln_enabled_top_level_wins_over_nested():
+    """If both shapes are present, the top-level explicit field wins."""
+    assert EnvSnapshot.template_vuln_enabled({
+        "vulnerabilityEnabled": False,
+        "vulnerabilityChecks": {"enabled": True},
+    }) is False
+
+
+def test_template_vuln_enabled_missing_defaults_to_false():
+    assert EnvSnapshot.template_vuln_enabled({}) is False
+    assert EnvSnapshot.template_vuln_enabled({"vulnerabilityChecks": "not-a-dict"}) is False

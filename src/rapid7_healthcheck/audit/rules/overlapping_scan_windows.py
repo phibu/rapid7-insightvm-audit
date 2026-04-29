@@ -118,27 +118,39 @@ class OverlappingScanWindowsRule:
                 },
             ))
 
-        for blackout in snapshot.blackouts():
-            if not blackout.get("enabled", False):
-                continue
-            b_start = _parse_iso(blackout.get("start"))
-            if b_start is None:
-                continue
-            b_end = b_start + _parse_duration(blackout.get("duration"))
-            for sid, name, sch, s, e, _scope in windows:
-                if _windows_intersect(s, e, b_start, b_end):
-                    bo_name = blackout.get("name", f"id={blackout.get('id')}")
-                    findings.append(Finding(
-                        severity=severity,
-                        message=(
-                            f"Site '{name}' schedule overlaps blackout "
-                            f"'{bo_name}' on {s.date().isoformat()}"
-                        ),
-                        details={
-                            "site_id": sid, "schedule_id": sch.get("id"),
-                            "blackout_id": blackout.get("id"),
-                        },
-                    ))
+        blackouts_unavailable = getattr(snapshot, "blackouts_unavailable", False)
+        if not blackouts_unavailable:
+            for blackout in snapshot.blackouts():
+                if not blackout.get("enabled", False):
+                    continue
+                b_start = _parse_iso(blackout.get("start"))
+                if b_start is None:
+                    continue
+                b_end = b_start + _parse_duration(blackout.get("duration"))
+                for sid, name, sch, s, e, _scope in windows:
+                    if _windows_intersect(s, e, b_start, b_end):
+                        bo_name = blackout.get("name", f"id={blackout.get('id')}")
+                        findings.append(Finding(
+                            severity=severity,
+                            message=(
+                                f"Site '{name}' schedule overlaps blackout "
+                                f"'{bo_name}' on {s.date().isoformat()}"
+                            ),
+                            details={
+                                "site_id": sid, "schedule_id": sch.get("id"),
+                                "blackout_id": blackout.get("id"),
+                            },
+                        ))
+        else:
+            findings.append(Finding(
+                severity="info",
+                message=(
+                    "Blackout-conflict checks skipped: /api/3/blackouts is not "
+                    "available on this console. Scan-vs-scan overlaps are still "
+                    "checked normally."
+                ),
+                details={"reason": "blackouts endpoint returned 404"},
+            ))
 
         if any(f.severity == "fail" for f in findings):
             status = "fail"
@@ -154,7 +166,11 @@ class OverlappingScanWindowsRule:
             severity=severity,
             status=status,
             findings=findings,
-            summary={"windows_examined": len(windows), "findings_count": len(findings)},
+            summary={
+                "windows_examined": len(windows),
+                "findings_count": len(findings),
+                "blackouts_unavailable": blackouts_unavailable,
+            },
             sampled=sampled,
             sample_info=sample_info,
             sources=list(self.sources),
