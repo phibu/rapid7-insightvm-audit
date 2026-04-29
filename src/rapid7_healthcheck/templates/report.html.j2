@@ -71,7 +71,7 @@
       <td><a href="#check-{{ loop.index }}">{{ r.name }}</a></td>
       <td><span class="badge {{ r.status }}">{{ r.status|upper }}</span></td>
       <td>{{ r.findings|length }} ({{ r.findings|selectattr('severity','equalto','fail')|list|length }} fail / {{ r.findings|selectattr('severity','equalto','warn')|list|length }} warn)</td>
-      <td>{{ r.duration_ms }} ms</td>
+      <td>{{ r.duration_ms | duration }}</td>
     </tr>
   {% endfor %}
   </tbody>
@@ -98,7 +98,7 @@
       </div>
 
       <table>
-        <thead><tr><th>Rule</th><th>Status</th><th>Findings</th><th>Notes</th></tr></thead>
+        <thead><tr><th>Rule</th><th>Status</th><th>Findings</th><th>Notes</th><th style="text-align:right">Duration</th></tr></thead>
         <tbody>
         {% for rr in r.rule_results %}
           <tr>
@@ -106,6 +106,7 @@
             <td><span class="badge {{ rr.status }}">{{ rr.status|upper }}</span></td>
             <td>{{ rr.findings|length }}</td>
             <td>{% if rr.sampled %}sampled{% endif %}</td>
+            <td style="text-align:right">{{ rr.duration_ms | duration }}</td>
           </tr>
         {% endfor %}
         </tbody>
