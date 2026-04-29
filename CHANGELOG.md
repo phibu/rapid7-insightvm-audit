@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.9] - 2026-04-29
+
+### Changed
+
+- Report HTML restyled with a hybrid editorial + dashboard layout: hero verdict
+  band, metric grid, restyled per-category sections, light + dark mode via
+  `prefers-color-scheme`, and print-friendly CSS.
+- System-font typography stack throughout; tabular numerals on all metrics.
+
+### Added
+
+- "Since last run" delta strip: when a prior report exists in the same output
+  directory and is younger than `report.delta_max_age_days` (default 30),
+  shows resolved / new-fails / severity-changed counts. Silent on parse
+  failures, host mismatch, or version skew.
+- Embedded `<script id="report-state" type="application/json">` blob with a
+  trimmed projection of the run (signatures + severity + short message). Used
+  by the next run to compute deltas and by the new "Run hash" footer field
+  (16-char SHA-256 prefix). Drops automatically if projected size > 1 MB.
+- New `report.delta_max_age_days` config option (int or null). Optional in
+  YAML; existing configs continue to load unchanged.
+
+### Notes
+
+- This is the first half of a two-part rework. Filtering, theme toggle,
+  rule-card JS toggle, and the a11y test sweep land in 0.2.0.
+
 ## [0.1.8] - 2026-04-29
 
 Adds a sibling **User & Permission Audit** category alongside the
@@ -424,7 +451,8 @@ InsightVM environment.
 - CI on Python 3.11 and 3.12 (GitHub Actions).
 - 153 unit tests covering checks, rules, config, client, and report rendering.
 
-[Unreleased]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.8...HEAD
+[Unreleased]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.9...HEAD
+[0.1.9]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.8...v0.1.9
 [0.1.8]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.7...v0.1.8
 [0.1.7]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.5...v0.1.6

@@ -2,6 +2,14 @@
 
 Read-only health check for a Rapid7 InsightVM environment. Calls the Insight Platform API with a read-only API key and produces a single self-contained HTML report.
 
+### What's new in 0.1.9
+
+The HTML report has been restyled into a hybrid editorial + dashboard layout
+with light/dark mode, a metric grid, and a "since last run" delta strip that
+appears automatically when a prior report exists in the output directory.
+The report remains a single self-contained HTML file with no external
+resources.
+
 ## Requirements
 
 - Python 3.11+
