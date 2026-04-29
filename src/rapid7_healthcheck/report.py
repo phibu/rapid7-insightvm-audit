@@ -50,6 +50,72 @@ def _finding_signature(rule_id: str, finding: Finding) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
 
+def _state_blob_projection(
+    *,
+    results: list[CheckResult],
+    tool_version: str,
+    generated_at: datetime,
+    base_url_host: str,
+    size_cap_bytes: int = 1_000_000,
+) -> dict | None:
+    """Build the trimmed JSON state blob embedded in the report.
+
+    Used by:
+      - the next run's delta computation (parsed via regex from the prior file),
+      - the SHA-256 content hash shown in the footer.
+
+    Drops the largest fields (`details`, `description`, `sources`) since those
+    already exist in the rendered DOM. Returns None if the projection exceeds
+    `size_cap_bytes` — the report still renders without it; delta will simply
+    not compute next run.
+    """
+    def project_finding(rule_id: str, idx: int, f: Finding) -> dict:
+        return {
+            "id": f"{rule_id}#{idx}",
+            "signature": _finding_signature(rule_id, f),
+            "severity": f.severity,
+            "message_short": (f.message or "")[:200],
+        }
+
+    projected_results = []
+    for r in results:
+        rr_list = []
+        if r.rule_results:
+            for rr in r.rule_results:
+                rr_list.append({
+                    "rule_id": rr.rule_id,
+                    "rule_name": rr.rule_name,
+                    "status": rr.status,
+                    "severity": rr.severity,
+                    "duration_ms": rr.duration_ms,
+                    "finding_count": len(rr.findings),
+                    "findings": [
+                        project_finding(rr.rule_id, i, f) for i, f in enumerate(rr.findings)
+                    ],
+                })
+        check_findings = [
+            project_finding(r.name, i, f) for i, f in enumerate(r.findings)
+        ]
+        projected_results.append({
+            "name": r.name,
+            "status": r.status,
+            "duration_ms": r.duration_ms,
+            "findings": check_findings,
+            "rule_results": rr_list,
+        })
+
+    blob = {
+        "tool_version": tool_version,
+        "generated_at": generated_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "base_url_host": base_url_host,
+        "results": projected_results,
+    }
+    serialized = json.dumps(blob, separators=(",", ":"), default=str)
+    if len(serialized.encode("utf-8")) > size_cap_bytes:
+        return None
+    return blob
+
+
 @dataclass
 class ReportContext:
     title: str
