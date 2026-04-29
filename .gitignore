@@ -9,3 +9,5 @@ reports/
 build/
 dist/
 .claude/
+backlog.md
+.superpowers/
