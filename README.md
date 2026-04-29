@@ -130,6 +130,19 @@ pytest -v
 
 ## What this tool does NOT do
 
-- Modify any state in Rapid7 (no scans started, no sites created).
+- Modify any state in Rapid7 (no scans started, no sites created). The HTTP
+  client issues `GET` exclusively, with the single exception of
+  `POST /api/3/assets/search` — Rapid7's v3 API requires `POST` for asset
+  filter searches because the filter criteria travel in the request body.
+  Any other verb, or a `POST` to any other path, is rejected by
+  `Rapid7Client._request` at runtime with a `ReadOnlyViolationError`
+  *before* the request is sent. See [SECURITY.md](SECURITY.md) for the full
+  contract and the static-scan tests that enforce it in CI.
 - Check things the cloud API does not expose (license status, console build version, content/vuln-definitions update freshness).
 - Send notifications. Pipe the exit code into your own notifier or watch the report directory.
+
+## Security
+
+This tool is read-only by design and by enforcement. The read-only
+invariant is described in [SECURITY.md](SECURITY.md) along with the policy
+for reporting vulnerabilities.
