@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re as _re
+import time as _time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -167,6 +169,70 @@ def _compute_delta(*, prior: dict | None, current: dict) -> dict | None:
         "new_fails": new_fails,
         "severity_changed": severity_changed,
     }
+
+
+_STATE_BLOB_RE = _re.compile(
+    r'<script id="report-state" type="application/json">(.*?)</script>',
+    _re.DOTALL,
+)
+
+
+def _load_prior_state(
+    *,
+    output_dir: Path,
+    filename_pattern: str,
+    exclude: Path,
+    max_age_days: int | None,
+) -> dict | None:
+    """Find the most recent report file in `output_dir` (excluding `exclude`),
+    parse its embedded JSON state blob, and return the dict.
+
+    Returns None on any failure: no candidates, all stale, parse error, or
+    missing script tag. All failure modes are silent — the caller should treat
+    None as "no comparable prior, don't render the delta strip."
+
+    `max_age_days=None` disables the age filter (still excludes `exclude`).
+    """
+    if not output_dir.exists():
+        return None
+
+    # Discover candidate files: same extension, same prefix as filename_pattern.
+    # We don't try to fully parse the pattern; we use the suffix after the last
+    # "{timestamp}" placeholder as the extension and the prefix before it as
+    # the name root. If the pattern has no placeholder, glob the whole pattern.
+    if "{timestamp}" in filename_pattern:
+        prefix, _, suffix = filename_pattern.partition("{timestamp}")
+        glob = f"{prefix}*{suffix}"
+    else:
+        glob = filename_pattern
+
+    candidates = [p for p in output_dir.glob(glob) if p.resolve() != exclude.resolve()]
+    if not candidates:
+        return None
+
+    if max_age_days is not None:
+        now = _time.time()
+        max_age_seconds = max_age_days * 86400
+        candidates = [p for p in candidates if (now - p.stat().st_mtime) <= max_age_seconds]
+        if not candidates:
+            return None
+
+    # Most recent by mtime.
+    candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    most_recent = candidates[0]
+
+    try:
+        text = most_recent.read_text(encoding="utf-8")
+    except OSError:
+        return None
+
+    m = _STATE_BLOB_RE.search(text)
+    if not m:
+        return None
+    try:
+        return json.loads(m.group(1))
+    except (json.JSONDecodeError, ValueError):
+        return None
 
 
 @dataclass
