@@ -2,68 +2,280 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{ title }}</title>
 <style>
   :root {
+    --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+
+    --neutral-fg: #1a1a1a;
+    --neutral-muted: #5a5a5a;
+    --border: #e3e3e3;
+    --surface: #fafafa;
     --bg: #ffffff;
-    --fg: #1a1a1a;
-    --muted: #666;
-    --border: #ddd;
-    --pass: #1f7a3a;
-    --warn: #a86200;
-    --fail: #a8331f;
-    --skipped: #666;
-    --pass-bg: #e8f5ec;
-    --warn-bg: #fcf3e3;
-    --fail-bg: #fbe9e7;
-    --skipped-bg: #f0f0f0;
+
+    --pass-fg: #0f6b3a;
+    --pass-bg: #e6f5ec;
+    --warn-fg: #8a4b00;
+    --warn-bg: #fdf2dc;
+    --fail-fg: #9a2417;
+    --fail-bg: #fbe7e3;
+    --info-fg: #1f4e8c;
+    --info-bg: #e6eef9;
   }
-  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-         color: var(--fg); background: var(--bg); margin: 2rem auto; max-width: 1100px; padding: 0 1.5rem; }
-  h1 { margin: 0 0 0.5rem 0; font-size: 1.6rem; }
-  .meta { color: var(--muted); font-size: 0.9rem; margin-bottom: 1.5rem; }
-  .meta span { margin-right: 1.2rem; }
-  .verdict { padding: 1rem 1.25rem; border-radius: 8px; font-weight: 600; font-size: 1.2rem; margin: 1rem 0 1.5rem; }
-  .verdict.pass { background: var(--pass-bg); color: var(--pass); }
-  .verdict.warn { background: var(--warn-bg); color: var(--warn); }
-  .verdict.fail { background: var(--fail-bg); color: var(--fail); }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --neutral-fg: #e8e8ea;
+      --neutral-muted: #9a9aa3;
+      --border: #2a2e38;
+      --surface: #161922;
+      --bg: #0f1115;
+      --pass-fg: #4dbe7a;
+      --pass-bg: rgba(77,190,122,0.12);
+      --warn-fg: #e0a04b;
+      --warn-bg: rgba(224,160,75,0.14);
+      --fail-fg: #e6786b;
+      --fail-bg: rgba(230,120,107,0.14);
+      --info-fg: #6aa6ee;
+      --info-bg: rgba(106,166,238,0.14);
+    }
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html { background: var(--bg); }
+  body {
+    font-family: var(--font-sans);
+    color: var(--neutral-fg);
+    background: var(--bg);
+    margin: 2rem auto;
+    max-width: 1100px;
+    padding: 0 1.5rem;
+    font-size: 15px;
+    line-height: 1.55;
+  }
+  code, pre, .mono { font-family: var(--font-mono); font-size: 0.92em; }
+  table { font-variant-numeric: tabular-nums; }
+
+  h1 { margin: 0 0 0.25rem 0; font-size: 28px; letter-spacing: -0.01em; }
+  h2 { margin: 2rem 0 0.5rem 0; font-size: 22px; }
+  h3 { margin: 1rem 0 0.5rem 0; font-size: 18px; }
+
+  a { color: var(--info-fg); text-underline-offset: 2px; }
+  a:focus-visible, button:focus-visible, summary:focus-visible {
+    outline: 2px solid var(--info-fg);
+    outline-offset: 2px;
+  }
+
+  .meta {
+    color: var(--neutral-muted);
+    font-size: 13px;
+    margin: 0 0 1.5rem 0;
+    display: flex; flex-wrap: wrap; gap: 0.25rem 1.25rem;
+  }
+  .meta b { color: var(--neutral-fg); font-weight: 600; }
+
+  .hero {
+    margin: 1rem 0 1rem;
+    padding: 1.25rem 1.5rem;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+    border: 1px solid var(--border);
+  }
+  .hero.pass { background: var(--pass-bg); }
+  .hero.warn { background: var(--warn-bg); }
+  .hero.fail { background: var(--fail-bg); }
+  .hero .verdict-word {
+    font-size: 36px; font-weight: 700; letter-spacing: -0.02em;
+    color: var(--neutral-fg);
+  }
+  .hero.pass .verdict-word { color: var(--pass-fg); }
+  .hero.warn .verdict-word { color: var(--warn-fg); }
+  .hero.fail .verdict-word { color: var(--fail-fg); }
+  .hero .verdict-summary {
+    font-size: 15px; color: var(--neutral-muted); text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .delta-strip {
+    margin: 0 0 1.5rem 0;
+    padding: 0.5rem 1rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem;
+    font-size: 13px;
+    color: var(--neutral-muted);
+  }
+  .delta-pill {
+    padding: 0.15rem 0.6rem; border-radius: 999px; font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .delta-pill.dp-down { background: var(--pass-bg); color: var(--pass-fg); }
+  .delta-pill.dp-up   { background: var(--fail-bg); color: var(--fail-fg); }
+  .delta-pill.dp-mid  { background: var(--warn-bg); color: var(--warn-fg); }
+  .delta-strip .since { margin-left: auto; }
+
+  .metric-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 0.75rem;
+    margin: 0 0 2rem 0;
+  }
+  .metric {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    background: var(--surface);
+  }
+  .metric-label {
+    font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--neutral-muted); margin: 0 0 0.25rem 0;
+  }
+  .metric-value {
+    font-size: 28px; font-weight: 600; line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+  }
+  .metric-sub { font-size: 13px; color: var(--neutral-muted); margin-top: 0.25rem; }
+
   table { width: 100%; border-collapse: collapse; margin: 0.5rem 0 1.5rem; }
-  th, td { text-align: left; padding: 0.55rem 0.7rem; border-bottom: 1px solid var(--border); vertical-align: top; }
-  tbody tr:nth-child(even) { background: #fafafa; }
-  .badge { display: inline-block; padding: 0.15rem 0.55rem; border-radius: 4px; font-size: 0.8rem; font-weight: 600; }
-  .badge.pass { background: var(--pass-bg); color: var(--pass); }
-  .badge.warn { background: var(--warn-bg); color: var(--warn); }
-  .badge.fail { background: var(--fail-bg); color: var(--fail); }
-  .badge.error { background: var(--fail-bg); color: var(--fail); }
-  .badge.skipped { background: var(--skipped-bg); color: var(--skipped); }
-  section.check { margin: 2rem 0; page-break-inside: avoid; }
-  section.check h2 { margin: 0 0 0.25rem 0; font-size: 1.2rem; }
-  .check-desc { color: var(--muted); margin: 0 0 0.75rem 0; }
+  th, td {
+    text-align: left; padding: 0.55rem 0.7rem;
+    border-bottom: 1px solid var(--border); vertical-align: top;
+  }
+  tbody tr:nth-child(even) { background: var(--surface); }
+
+  .badge {
+    display: inline-block; padding: 0.15rem 0.55rem; border-radius: 4px;
+    font-size: 12px; font-weight: 600;
+  }
+  .badge.pass    { background: var(--pass-bg); color: var(--pass-fg); }
+  .badge.warn    { background: var(--warn-bg); color: var(--warn-fg); }
+  .badge.fail,
+  .badge.error   { background: var(--fail-bg); color: var(--fail-fg); }
+  .badge.skipped { background: var(--info-bg); color: var(--info-fg); }
+  .badge.info    { background: var(--info-bg); color: var(--info-fg); }
+
+  section.check { margin: 2.5rem 0; }
+  section.check h2 { margin: 0 0 0.25rem 0; }
+  .check-desc { color: var(--neutral-muted); margin: 0 0 0.75rem 0; }
+
   .tiles { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.75rem 0 1rem; }
-  .tile { background: #f6f6f6; border: 1px solid var(--border); padding: 0.4rem 0.7rem; border-radius: 6px; font-size: 0.85rem; }
-  .tile b { display: block; font-size: 1rem; }
-  .error-box { background: var(--fail-bg); color: var(--fail); border: 1px solid var(--fail); padding: 0.75rem 1rem; border-radius: 6px; }
-  .skipped-box { background: var(--skipped-bg); color: var(--skipped); border: 1px solid var(--border); padding: 0.75rem 1rem; border-radius: 6px; }
-  details { margin: 0.25rem 0; }
-  pre { background: #f4f4f4; padding: 0.5rem 0.75rem; border-radius: 4px; overflow-x: auto; font-size: 0.8rem; }
-  footer { color: var(--muted); font-size: 0.85rem; margin-top: 3rem; border-top: 1px solid var(--border); padding-top: 1rem; }
-  a { color: var(--fg); }
+  .tile {
+    background: var(--surface); border: 1px solid var(--border);
+    padding: 0.4rem 0.7rem; border-radius: 6px; font-size: 13px;
+    font-variant-numeric: tabular-nums;
+  }
+  .tile b { display: block; font-size: 16px; }
+
+  .error-box {
+    background: var(--fail-bg); color: var(--fail-fg);
+    border: 1px solid var(--fail-fg);
+    padding: 0.75rem 1rem; border-radius: 6px;
+  }
+  .skipped-box {
+    background: var(--info-bg); color: var(--info-fg);
+    border: 1px solid var(--border);
+    padding: 0.75rem 1rem; border-radius: 6px;
+  }
+
+  details { margin: 0.5rem 0; }
+  details summary {
+    cursor: pointer; padding: 0.4rem 0; font-weight: 600;
+  }
+  pre {
+    background: var(--surface); padding: 0.5rem 0.75rem; border-radius: 4px;
+    overflow-x: auto; font-size: 12px; max-height: 240px; overflow-y: auto;
+    border: 1px solid var(--border);
+  }
+
+  footer {
+    color: var(--neutral-muted); font-size: 13px; margin-top: 3rem;
+    border-top: 1px solid var(--border); padding-top: 1rem;
+  }
+  footer code { color: var(--neutral-fg); }
+
+  @media print {
+    body { max-width: none; margin: 0; padding: 1cm; color: #000; background: #fff; }
+    :root {
+      --bg: #fff; --neutral-fg: #000; --neutral-muted: #444; --surface: #f6f6f6;
+    }
+    .delta-strip, .metric-grid { page-break-inside: avoid; }
+    section.check { page-break-before: always; page-break-inside: auto; }
+    section.check:first-of-type { page-break-before: avoid; }
+    details { page-break-inside: avoid; }
+    details[open] summary { page-break-after: avoid; }
+    a[href]::after { content: " (" attr(href) ")"; font-size: 0.85em; color: #555; }
+    a[href^="#"]::after { content: ""; }
+  }
 </style>
 </head>
 <body>
+
 <h1>{{ title }}</h1>
 <div class="meta">
   <span><b>Generated:</b> {{ generated_at_local }} ({{ generated_at_utc }} UTC)</span>
-  <span><b>Console:</b> {{ base_url_host }}</span>
-  <span><b>Version:</b> {{ tool_version }}</span>
+  <span><b>Console:</b> <span class="mono">{{ base_url_host }}</span></span>
+  <span><b>Version:</b> <span class="mono">{{ tool_version }}</span></span>
+  {% if content_hash %}<span><b>Run hash:</b> <span class="mono">{{ content_hash }}</span></span>{% endif %}
 </div>
 
-<div class="verdict {{ verdict_class }}">{{ verdict_label }}</div>
+<div class="hero {{ verdict_class }}" role="status">
+  <div class="verdict-word">{{ verdict_label }}</div>
+  {% if metrics %}
+  <div class="verdict-summary">
+    {{ metrics.findings_fail }} fail · {{ metrics.findings_warn }} warn
+    {% if metrics.rules_total %}across {{ metrics.rules_total }} rule{{ "" if metrics.rules_total == 1 else "s" }} in {{ results|length }} check{{ "" if results|length == 1 else "s" }}{% endif %}
+  </div>
+  {% endif %}
+</div>
+
+{% if delta %}
+<div class="delta-strip" aria-label="Changes since last run">
+  <span class="delta-pill dp-down">↓ {{ delta.resolved|length }} resolved</span>
+  <span class="delta-pill dp-up">↑ {{ delta.new_fails|length }} new fails</span>
+  <span class="delta-pill dp-mid">↻ {{ delta.severity_changed|length }} changed severity</span>
+  <span class="since">since <span class="mono">{{ delta.prior_generated_at }}</span></span>
+</div>
+{% endif %}
+
+{% if metrics %}
+<div class="metric-grid" aria-label="At a glance">
+  <div class="metric">
+    <div class="metric-label">Rules run</div>
+    <div class="metric-value">{{ metrics.rules_total }}</div>
+    {% if metrics.rules_sampled %}<div class="metric-sub">{{ metrics.rules_sampled }} sampled</div>{% endif %}
+  </div>
+  <div class="metric">
+    <div class="metric-label">Findings · fail</div>
+    <div class="metric-value">{{ metrics.findings_fail }}</div>
+  </div>
+  <div class="metric">
+    <div class="metric-label">Findings · warn</div>
+    <div class="metric-value">{{ metrics.findings_warn }}</div>
+  </div>
+  <div class="metric">
+    <div class="metric-label">Rules pass</div>
+    <div class="metric-value">{{ metrics.rules_pass }}</div>
+  </div>
+  <div class="metric">
+    <div class="metric-label">Skipped</div>
+    <div class="metric-value">{{ metrics.rules_skipped }}</div>
+  </div>
+  <div class="metric">
+    <div class="metric-label">Total duration</div>
+    <div class="metric-value">{{ metrics.total_duration_ms | duration }}</div>
+  </div>
+</div>
+{% endif %}
 
 <h2>Summary</h2>
 <table>
   <thead>
-    <tr><th>Check</th><th>Status</th><th>Findings</th><th>Duration</th></tr>
+    <tr><th>Check</th><th>Status</th><th>Findings</th><th style="text-align:right">Duration</th></tr>
   </thead>
   <tbody>
   {% for r in results %}
@@ -71,7 +283,7 @@
       <td><a href="#check-{{ loop.index }}">{{ r.name }}</a></td>
       <td><span class="badge {{ r.status }}">{{ r.status|upper }}</span></td>
       <td>{{ r.findings|length }} ({{ r.findings|selectattr('severity','equalto','fail')|list|length }} fail / {{ r.findings|selectattr('severity','equalto','warn')|list|length }} warn)</td>
-      <td>{{ r.duration_ms | duration }}</td>
+      <td style="text-align:right">{{ r.duration_ms | duration }}</td>
     </tr>
   {% endfor %}
   </tbody>
@@ -102,7 +314,7 @@
         <tbody>
         {% for rr in r.rule_results %}
           <tr>
-            <td><a href="#rule-{{ loop.index0 }}-{{ loop.index }}">{{ rr.rule_name }}</a></td>
+            <td><a href="#rule-{{ rr.rule_id }}">{{ rr.rule_name }}</a></td>
             <td><span class="badge {{ rr.status }}">{{ rr.status|upper }}</span></td>
             <td>{{ rr.findings|length }}</td>
             <td>{% if rr.sampled %}sampled{% endif %}</td>
@@ -113,7 +325,7 @@
       </table>
 
       {% for rr in r.rule_results %}
-      <details id="rule-{{ loop.index0 }}-{{ loop.index }}">
+      <details id="rule-{{ rr.rule_id }}">
         <summary><b>{{ rr.rule_name }}</b> <span class="badge {{ rr.status }}">{{ rr.status|upper }}</span></summary>
         <p class="check-desc">{{ rr.description }}</p>
 
@@ -206,5 +418,10 @@
   </table>
   {% endif %}
 </footer>
+
+{% if state_blob_json %}
+<script id="report-state" type="application/json">{{ state_blob_json | safe }}</script>
+{% endif %}
+
 </body>
 </html>

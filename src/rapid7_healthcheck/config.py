@@ -29,6 +29,7 @@ class ReportConfig:
     output_dir: str
     filename_pattern: str
     title: str
+    delta_max_age_days: int | None = 30
 
 
 @dataclass(frozen=True)
@@ -338,6 +339,39 @@ def _build_user_audit_config(data: dict | None) -> UserAuditConfig:
     )
 
 
+def _build_report_config(data: Any) -> ReportConfig:
+    """Validate the `report:` block, allowing `delta_max_age_days` to be absent.
+
+    Accepts:
+      - missing key  -> default 30
+      - integer >= 0 -> use as-is
+      - null/None    -> delta disabled
+    Rejects unknown keys (consistent with `_from_dict`).
+    """
+    if not isinstance(data, dict):
+        raise ConfigError(f"report: expected mapping, got {type(data).__name__}")
+    expected = {"output_dir", "filename_pattern", "title", "delta_max_age_days"}
+    unknown = set(data.keys()) - expected
+    if unknown:
+        raise ConfigError(f"report: unknown key(s): {sorted(unknown)}")
+    required = {"output_dir", "filename_pattern", "title"}
+    missing = required - set(data.keys())
+    if missing:
+        raise ConfigError(f"report: missing required key(s): {sorted(missing)}")
+    for k in ("output_dir", "filename_pattern", "title"):
+        if not isinstance(data[k], str):
+            raise ConfigError(f"report.{k}: expected str")
+    delta = data.get("delta_max_age_days", 30)
+    if delta is not None and (not isinstance(delta, int) or isinstance(delta, bool) or delta < 0):
+        raise ConfigError("report.delta_max_age_days: expected non-negative int or null")
+    return ReportConfig(
+        output_dir=data["output_dir"],
+        filename_pattern=data["filename_pattern"],
+        title=data["title"],
+        delta_max_age_days=delta,
+    )
+
+
 def _build_app_config(data: dict) -> AppConfig:
     expected_root = {"rapid7", "report", "thresholds", "checks", "audit", "user_audit"}
     unknown = set(data.keys()) - expected_root
@@ -355,7 +389,7 @@ def _build_app_config(data: dict) -> AppConfig:
     if not rapid7.base_url.startswith("https://"):
         raise ConfigError("rapid7.base_url must start with https://")
 
-    report = _from_dict(ReportConfig, data["report"], "report")
+    report = _build_report_config(data["report"])
     thresholds = _build_thresholds(data["thresholds"])
 
     checks = data["checks"]

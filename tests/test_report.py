@@ -60,9 +60,14 @@ def test_skipped_status_explained():
 def test_no_external_resources():
     r = CheckResult(name="X", description="x", status="pass")
     html = render_report(_ctx([r]))
-    assert "<script" not in html
+    # Inline JSON state blob is allowed. External script src is not.
+    assert "<script src=" not in html
     assert "https://cdn" not in html
     assert "//cdn" not in html
+    # No external stylesheets, fonts, images, iframes.
+    assert "<link rel=\"stylesheet\"" not in html
+    assert "@import url" not in html
+    assert "<iframe" not in html
 
 
 def test_write_report_uses_filename_pattern(tmp_path):
@@ -130,7 +135,7 @@ def test_audit_section_renders_per_rule_table():
     assert "https://docs.rapid7.com/foo" in html
     assert "https://docs.rapid7.com/bar" in html
     assert 'href="https://docs.rapid7.com/foo"' in html
-    assert "<script" not in html
+    assert "<script src=" not in html  # was: assert "<script" not in html
 
 
 def test_audit_section_shows_sampling_note():
@@ -244,3 +249,104 @@ def test_check_level_duration_uses_filter_too():
     html = render_report(_ctx([cr]))
     assert "2m 14s" in html
     assert "134000 ms" not in html
+
+
+def test_metrics_rollup_counts():
+    from rapid7_healthcheck.report import _metrics
+    from rapid7_healthcheck.audit import RuleResult
+    cr = CheckResult(
+        name="Audit", description="d", status="warn", duration_ms=2500,
+        findings=[],
+        rule_results=[
+            RuleResult(rule_id="a", rule_name="A", description="d",
+                       severity="fail", status="fail",
+                       findings=[Finding(severity="fail", message="m")]),
+            RuleResult(rule_id="b", rule_name="B", description="d",
+                       severity="warn", status="warn",
+                       findings=[Finding(severity="warn", message="m")],
+                       sampled=True, sample_info="500/4200"),
+            RuleResult(rule_id="c", rule_name="C", description="d",
+                       severity="info", status="pass"),
+            RuleResult(rule_id="d", rule_name="D", description="d",
+                       severity="warn", status="skipped"),
+        ],
+    )
+    m = _metrics([cr])
+    assert m["rules_total"] == 4
+    assert m["rules_fail"] == 1
+    assert m["rules_warn"] == 1
+    assert m["rules_pass"] == 1
+    assert m["rules_skipped"] == 1
+    assert m["rules_sampled"] == 1
+    assert m["total_duration_ms"] == 2500
+    assert m["findings_total"] == 2
+    assert m["findings_fail"] == 1
+    assert m["findings_warn"] == 1
+
+
+def test_metrics_rollup_handles_check_without_rule_results():
+    """Operational checks (scan_engines etc.) have no rule_results — they
+    contribute findings but not rule counts."""
+    from rapid7_healthcheck.report import _metrics
+    cr = CheckResult(
+        name="Scan Engines", description="d", status="warn", duration_ms=300,
+        findings=[Finding(severity="warn", message="m")],
+    )
+    m = _metrics([cr])
+    assert m["rules_total"] == 0
+    assert m["findings_total"] == 1
+    assert m["findings_warn"] == 1
+    assert m["total_duration_ms"] == 300
+
+
+def test_render_report_embeds_state_blob():
+    """The rendered HTML must contain the state blob script tag."""
+    r = CheckResult(name="X", description="x", status="pass")
+    html = render_report(_ctx([r]))
+    assert '<script id="report-state" type="application/json">' in html
+
+
+def test_render_report_no_delta_when_no_prior():
+    r = CheckResult(name="X", description="x", status="warn",
+                    findings=[Finding(severity="warn", message="m")])
+    html = render_report(_ctx([r]))
+    # Delta strip section should not render when no prior state was passed.
+    # Positive assertion: no "resolved" / "new fails" pill text.
+    assert "resolved" not in html.lower()
+    assert "new fails" not in html.lower()
+
+
+def test_render_report_renders_delta_strip_when_prior_passed(tmp_path):
+    """End-to-end: write a report, write a second one, second one must show delta."""
+    from rapid7_healthcheck.audit import RuleResult
+    r1 = CheckResult(
+        name="Audit", description="d", status="fail",
+        rule_results=[
+            RuleResult(
+                rule_id="r1", rule_name="R", description="d",
+                severity="fail", status="fail",
+                findings=[Finding(severity="fail", message="bad", details={"asset": "a"})],
+            ),
+        ],
+    )
+    ctx1 = _ctx([r1])
+    p1 = tmp_path / "report-1.html"
+    write_report(ctx1, explicit_path=p1)
+
+    # Now run a second one in the same dir but using output_dir mode so it sees p1.
+    # Move/copy p1 to look like a pattern match.
+    import shutil
+    pattern_p1 = tmp_path / "rapid7-2026-04-28_1000.html"
+    shutil.move(str(p1), str(pattern_p1))
+
+    r2 = CheckResult(name="Audit", description="d", status="pass",
+                     rule_results=[], findings=[])  # all resolved
+    ctx2 = _ctx([r2])
+    out2 = write_report(
+        ctx2, output_dir=tmp_path,
+        filename_pattern="rapid7-{timestamp}.html",
+        delta_max_age_days=30,
+    )
+    html = out2.read_text(encoding="utf-8")
+    # Should mention the delta strip's "resolved" pill.
+    assert "resolved" in html.lower()

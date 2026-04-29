@@ -22,6 +22,15 @@ python -m rapid7_healthcheck --config path/to/config.yaml --output report.html -
 
 CI (`.github/workflows/ci.yml`) runs `pytest -v` against Python 3.11 and 3.12 on Linux. Minimum supported Python is 3.11; the project targets 3.11 / 3.12. There is no lint or type-check step configured — don't invent one.
 
+## Backlog
+
+`backlog.md` (gitignored) is the local punch list of deferred work, grouped by target version (e.g. `0.1.9`, `0.2.0`, `someday`). It is the single source of truth for "we know about this, just not now."
+
+- **When starting work on a new version**, read `backlog.md` first and pull items targeted at that version into scope.
+- **Whenever an item is deferred** during code review, planning, or implementation (e.g. "fix in 0.1.9", "cleanup later", reviewer flagged Important/Minor and we shipped anyway), append it to `backlog.md` under the appropriate version heading. Include a file/area pointer and one-line rationale.
+- Keep entries terse: severity tag (`important` / `minor` / `cleanup`) + location + one sentence.
+- Remove items when shipped; do not let the file rot into a graveyard.
+
 ## Architecture
 
 The project has two parallel verticals that share a single CLI, HTTP client, config loader, and report renderer:
