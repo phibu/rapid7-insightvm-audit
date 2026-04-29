@@ -235,6 +235,59 @@ def _load_prior_state(
         return None
 
 
+def _metrics(results: list[CheckResult]) -> dict:
+    """Roll up metric grid numbers from the list of CheckResults.
+
+    Counts every rule across every check that has rule_results, and every
+    finding from both rule_results-bearing checks and operational checks.
+    """
+    rules_total = rules_fail = rules_warn = rules_pass = rules_skipped = rules_sampled = 0
+    findings_total = findings_fail = findings_warn = 0
+    total_duration_ms = 0
+
+    for r in results:
+        if r.duration_ms:
+            total_duration_ms += r.duration_ms
+        # Top-level findings (operational checks).
+        for f in r.findings:
+            findings_total += 1
+            if f.severity == "fail":
+                findings_fail += 1
+            elif f.severity == "warn":
+                findings_warn += 1
+        if r.rule_results:
+            for rr in r.rule_results:
+                rules_total += 1
+                if rr.status == "fail":
+                    rules_fail += 1
+                elif rr.status == "warn":
+                    rules_warn += 1
+                elif rr.status == "pass":
+                    rules_pass += 1
+                elif rr.status == "skipped":
+                    rules_skipped += 1
+                if rr.sampled:
+                    rules_sampled += 1
+                for f in rr.findings:
+                    findings_total += 1
+                    if f.severity == "fail":
+                        findings_fail += 1
+                    elif f.severity == "warn":
+                        findings_warn += 1
+    return {
+        "rules_total": rules_total,
+        "rules_fail": rules_fail,
+        "rules_warn": rules_warn,
+        "rules_pass": rules_pass,
+        "rules_skipped": rules_skipped,
+        "rules_sampled": rules_sampled,
+        "findings_total": findings_total,
+        "findings_fail": findings_fail,
+        "findings_warn": findings_warn,
+        "total_duration_ms": total_duration_ms,
+    }
+
+
 @dataclass
 class ReportContext:
     title: str

@@ -244,3 +244,51 @@ def test_check_level_duration_uses_filter_too():
     html = render_report(_ctx([cr]))
     assert "2m 14s" in html
     assert "134000 ms" not in html
+
+
+def test_metrics_rollup_counts():
+    from rapid7_healthcheck.report import _metrics
+    from rapid7_healthcheck.audit import RuleResult
+    cr = CheckResult(
+        name="Audit", description="d", status="warn", duration_ms=2500,
+        findings=[],
+        rule_results=[
+            RuleResult(rule_id="a", rule_name="A", description="d",
+                       severity="fail", status="fail",
+                       findings=[Finding(severity="fail", message="m")]),
+            RuleResult(rule_id="b", rule_name="B", description="d",
+                       severity="warn", status="warn",
+                       findings=[Finding(severity="warn", message="m")],
+                       sampled=True, sample_info="500/4200"),
+            RuleResult(rule_id="c", rule_name="C", description="d",
+                       severity="info", status="pass"),
+            RuleResult(rule_id="d", rule_name="D", description="d",
+                       severity="warn", status="skipped"),
+        ],
+    )
+    m = _metrics([cr])
+    assert m["rules_total"] == 4
+    assert m["rules_fail"] == 1
+    assert m["rules_warn"] == 1
+    assert m["rules_pass"] == 1
+    assert m["rules_skipped"] == 1
+    assert m["rules_sampled"] == 1
+    assert m["total_duration_ms"] == 2500
+    assert m["findings_total"] == 2
+    assert m["findings_fail"] == 1
+    assert m["findings_warn"] == 1
+
+
+def test_metrics_rollup_handles_check_without_rule_results():
+    """Operational checks (scan_engines etc.) have no rule_results — they
+    contribute findings but not rule counts."""
+    from rapid7_healthcheck.report import _metrics
+    cr = CheckResult(
+        name="Scan Engines", description="d", status="warn", duration_ms=300,
+        findings=[Finding(severity="warn", message="m")],
+    )
+    m = _metrics([cr])
+    assert m["rules_total"] == 0
+    assert m["findings_total"] == 1
+    assert m["findings_warn"] == 1
+    assert m["total_duration_ms"] == 300
