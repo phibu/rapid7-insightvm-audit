@@ -12,12 +12,16 @@ class ConfigError(Exception):
     """Raised when configuration is missing, malformed, or has unknown keys."""
 
 
+_VALID_AUTH_MODES = ("api_key", "basic")
+
+
 @dataclass(frozen=True)
 class Rapid7Config:
     base_url: str
     verify_tls: bool
     request_timeout_seconds: int
     max_retries: int
+    auth_mode: str = "api_key"
 
 
 @dataclass(frozen=True)
@@ -159,6 +163,51 @@ _THRESHOLD_NESTED = {
 }
 
 
+def _build_rapid7_config(data: Any) -> Rapid7Config:
+    """Validator for the `rapid7:` block.
+
+    Mirrors `_from_dict` semantics (unknown keys reject, scalar types
+    enforced) but treats `auth_mode` as optional with a default and
+    additionally constrains it to the `_VALID_AUTH_MODES` allowlist.
+    """
+    if not isinstance(data, dict):
+        raise ConfigError(f"rapid7: expected mapping, got {type(data).__name__}")
+
+    required = {"base_url", "verify_tls", "request_timeout_seconds", "max_retries"}
+    optional = {"auth_mode"}
+    expected = required | optional
+
+    unknown = set(data.keys()) - expected
+    if unknown:
+        raise ConfigError(f"rapid7: unknown key(s): {sorted(unknown)}")
+    missing = required - set(data.keys())
+    if missing:
+        raise ConfigError(f"rapid7: missing required key(s): {sorted(missing)}")
+
+    _check_scalar("base_url", data["base_url"], str, "rapid7")
+    _check_scalar("verify_tls", data["verify_tls"], bool, "rapid7")
+    _check_scalar("request_timeout_seconds", data["request_timeout_seconds"], int, "rapid7")
+    _check_scalar("max_retries", data["max_retries"], int, "rapid7")
+
+    auth_mode = data.get("auth_mode", "api_key")
+    if not isinstance(auth_mode, str):
+        raise ConfigError(
+            f"rapid7.auth_mode: expected str, got {type(auth_mode).__name__}"
+        )
+    if auth_mode not in _VALID_AUTH_MODES:
+        raise ConfigError(
+            f"rapid7.auth_mode: must be one of {list(_VALID_AUTH_MODES)}, got {auth_mode!r}"
+        )
+
+    return Rapid7Config(
+        base_url=data["base_url"],
+        verify_tls=data["verify_tls"],
+        request_timeout_seconds=data["request_timeout_seconds"],
+        max_retries=data["max_retries"],
+        auth_mode=auth_mode,
+    )
+
+
 def _build_thresholds(data: Any) -> Thresholds:
     if not isinstance(data, dict):
         raise ConfigError("thresholds: expected mapping")
@@ -233,7 +282,7 @@ def _build_app_config(data: dict) -> AppConfig:
     rapid7_data = dict(data["rapid7"]) if isinstance(data["rapid7"], dict) else data["rapid7"]
     if isinstance(rapid7_data, dict) and isinstance(rapid7_data.get("base_url"), str):
         rapid7_data["base_url"] = rapid7_data["base_url"].strip()
-    rapid7 = _from_dict(Rapid7Config, rapid7_data, "rapid7")
+    rapid7 = _build_rapid7_config(rapid7_data)
     if not rapid7.base_url.startswith("https://"):
         raise ConfigError("rapid7.base_url must start with https://")
 

@@ -137,10 +137,23 @@ def run(argv: list[str] | None = None) -> int:
         logger.error("config error: %s", e)
         return EXIT_STARTUP
 
-    api_key = os.environ.get("R7_API_KEY")
-    if not api_key:
-        logger.error("R7_API_KEY environment variable is not set")
-        return EXIT_STARTUP
+    api_key: str | None = None
+    basic_auth: tuple[str, str] | None = None
+    if cfg.rapid7.auth_mode == "api_key":
+        api_key = os.environ.get("R7_API_KEY")
+        if not api_key:
+            logger.error("R7_API_KEY environment variable is not set")
+            return EXIT_STARTUP
+    elif cfg.rapid7.auth_mode == "basic":
+        user = os.environ.get("R7_BASIC_USER")
+        password = os.environ.get("R7_BASIC_PASSWORD")
+        if not user:
+            logger.error("R7_BASIC_USER environment variable is not set")
+            return EXIT_STARTUP
+        if not password:
+            logger.error("R7_BASIC_PASSWORD environment variable is not set")
+            return EXIT_STARTUP
+        basic_auth = (user, password)
 
     if not cfg.rapid7.verify_tls:
         logger.warning("TLS verification disabled (verify_tls: false)")
@@ -149,6 +162,7 @@ def run(argv: list[str] | None = None) -> int:
         client = Rapid7Client(
             base_url=cfg.rapid7.base_url,
             api_key=api_key,
+            basic_auth=basic_auth,
             verify_tls=cfg.rapid7.verify_tls,
             timeout_seconds=cfg.rapid7.request_timeout_seconds,
             max_retries=cfg.rapid7.max_retries,

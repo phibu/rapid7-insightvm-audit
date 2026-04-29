@@ -3,6 +3,10 @@ rapid7:
   verify_tls: true
   request_timeout_seconds: 30
   max_retries: 3
+  # auth_mode: api_key  # default; reads R7_API_KEY from env / .env
+  # auth_mode: basic    # use HTTP Basic Auth; reads R7_BASIC_USER + R7_BASIC_PASSWORD
+                        # required for Rapid7-hosted consoles where SAML/MFA users
+                        # cannot mint a console-local API key in the UI
 
 report:
   output_dir: ./reports
