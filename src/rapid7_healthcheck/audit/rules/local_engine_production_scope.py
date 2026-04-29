@@ -35,8 +35,15 @@ class LocalEngineProductionScopeRule:
         "resource contention with the console and PostgreSQL database."
     )
     default_severity = "warn"
+    # Not marked expensive: the N for `site_asset_count` is bounded by "sites
+    # bound to a local engine", which is naturally tiny in real deployments.
+    # Marking expensive=True would falsely advertise sampling that doesn't
+    # apply.
     expensive = False
-    sources = ["https://docs.rapid7.com/insightvm/security-console-best-practices/"]
+    sources = [
+        "https://docs.rapid7.com/insightvm/security-console-best-practices/",
+        "https://docs.rapid7.com/insightvm/working-with-scan-engines/",
+    ]
 
     def run(self, snapshot, severity, full_scan, sample_size, rule_config) -> RuleResult:
         threshold = int(rule_config.get("asset_count_threshold", _DEFAULT_THRESHOLD))
@@ -55,6 +62,7 @@ class LocalEngineProductionScopeRule:
         findings: list[Finding] = []
         engines_examined = 0
         engines_flagged = 0
+        sites_examined = 0
         for engine in snapshot.scan_engines():
             if not _is_local_engine(engine, extra_names):
                 continue
@@ -63,6 +71,7 @@ class LocalEngineProductionScopeRule:
             site_ids = sites_by_engine.get(engine_id, [])
             if not site_ids:
                 continue
+            sites_examined += len(site_ids)
             total = sum(snapshot.site_asset_count(sid) for sid in site_ids)
             if total <= threshold:
                 continue
@@ -101,6 +110,7 @@ class LocalEngineProductionScopeRule:
             summary={
                 "engines_examined": engines_examined,
                 "engines_flagged": engines_flagged,
+                "sites_examined": sites_examined,
                 "threshold": threshold,
             },
             sources=list(self.sources),

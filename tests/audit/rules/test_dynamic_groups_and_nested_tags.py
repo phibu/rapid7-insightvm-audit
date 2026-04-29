@@ -74,7 +74,7 @@ def test_ignores_references_to_unknown_tag_names(fake_snapshot):
     assert r.status == "pass"
 
 
-def test_dynamic_group_referencing_tag_counted_in_summary(fake_snapshot):
+def test_dynamic_group_referencing_tag_emits_info_finding(fake_snapshot):
     group_with_tag_ref = {
         "id": 1, "name": "g", "type": "dynamic",
         "searchCriteria": {
@@ -86,3 +86,44 @@ def test_dynamic_group_referencing_tag_counted_in_summary(fake_snapshot):
     fake_snapshot.set_tags([_tag("high-risk")])
     r = DynamicGroupsAndNestedTagsRule().run(fake_snapshot, "warn", False, 500, {})
     assert r.summary["dynamic_groups_referencing_tags"] == 1
+    info_findings = [f for f in r.findings if f.severity == "info"]
+    assert len(info_findings) == 1
+    assert info_findings[0].details["groups"][0]["group_id"] == 1
+    # Info findings alone shouldn't flip status away from pass.
+    assert r.status == "pass"
+
+
+def test_long_tag_chain_does_not_recurse(fake_snapshot):
+    """Chain of 1500 tags each referencing the next — would blow the
+    default Python recursion limit if the cycle walker were recursive."""
+    fake_snapshot.set_asset_groups([])
+    chain = []
+    for i in range(1500):
+        refs = [f"t{i+1}"] if i < 1499 else None
+        chain.append(_tag(f"t{i}", references=refs))
+    fake_snapshot.set_tags(chain)
+    # Should not raise RecursionError. No cycle, so tag_cycles == 0.
+    r = DynamicGroupsAndNestedTagsRule().run(fake_snapshot, "warn", False, 500, {})
+    assert r.summary["tag_cycles"] == 0
+
+
+def test_duplicate_filter_values_are_deduped(fake_snapshot):
+    """Same tag referenced via both `value` and `values` shouldn't appear twice."""
+    fake_snapshot.set_asset_groups([])
+    fake_snapshot.set_tags([
+        _tag("base"),
+        {
+            "name": "dupe", "id": 99, "type": "custom",
+            "searchCriteria": {
+                "filters": [
+                    {"field": "custom-tag", "operator": "is", "value": "base"},
+                    {"field": "custom-tag", "operator": "is", "values": ["base", "base"]},
+                ],
+                "match": "all",
+            },
+        },
+    ])
+    r = DynamicGroupsAndNestedTagsRule().run(fake_snapshot, "warn", False, 500, {})
+    nested = [f for f in r.findings if f.details.get("tag") == "dupe"]
+    assert len(nested) == 1
+    assert nested[0].details["references"] == ["base"]

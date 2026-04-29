@@ -74,6 +74,8 @@ audit:
     scan_report_schedule_overlap:
       enabled: true
       severity: warn
+      assumed_report_duration_minutes: 30
+      assumed_scan_duration_minutes: 60
     engine_version_drift:
       enabled: true
       severity: warn

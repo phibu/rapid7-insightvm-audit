@@ -97,3 +97,28 @@ def test_refresh_threshold_override(fake_snapshot):
         fake_snapshot, "warn", False, 500, {"refresh_stale_days": 30},
     )
     assert r_lax.status == "pass"
+
+
+def test_unparseable_lastRefreshedDate_counted_in_summary(fake_snapshot):
+    fake_snapshot.set_administration_properties({})
+    fake_snapshot.set_scan_engines([
+        _engine(1, "e1", refreshed="not-a-real-date"),
+    ])
+    r = EngineVersionDriftRule().run(fake_snapshot, "warn", False, 500, {})
+    # No finding emitted; just bookkeeping in summary.
+    assert r.status == "pass"
+    assert r.summary["engines_unparseable_refresh_date"] == 1
+
+
+def test_empty_product_version_emits_info_finding(fake_snapshot):
+    fake_snapshot.set_administration_properties({"productVersion": "6.6.300"})
+    fake_snapshot.set_scan_engines([
+        _engine(1, "e1", product="", refreshed=_now_iso(0)),
+    ])
+    r = EngineVersionDriftRule().run(fake_snapshot, "warn", False, 500, {})
+    info_findings = [f for f in r.findings if f.severity == "info"]
+    assert len(info_findings) == 1
+    assert "empty productVersion" in info_findings[0].message
+    # Info finding alone should not flip status from pass.
+    assert r.status == "pass"
+    assert r.summary["engines_missing_product_version"] == 1
