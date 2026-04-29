@@ -159,6 +159,88 @@ def test_is_blackouts_unavailable_default_false_without_fetch():
     assert s.is_blackouts_unavailable() is False
 
 
+# --- User & Permission audit accessors ---------------------------------
+
+def test_users_endpoint_404_marks_unavailable():
+    """A 404 from /api/3/users sets the flag and returns []."""
+    from rapid7_healthcheck.client import Rapid7ClientError
+
+    class _Client404(_FakeClient):
+        def paginate(self, path, params=None, page_size=500):
+            if path == "/api/3/users":
+                raise Rapid7ClientError(
+                    "HTTP 404 from GET /api/3/users: not found",
+                    status_code=404,
+                )
+            yield from super().paginate(path, params)
+
+    c = _Client404()
+    s = EnvSnapshot(c, full_scan=False, sample_size=500)
+    assert s.users() == []
+    assert s.is_users_endpoints_unavailable() is True
+
+
+def test_users_endpoint_500_propagates():
+    """Non-404 errors must propagate, not be silently swallowed."""
+    from rapid7_healthcheck.client import Rapid7ClientError
+
+    class _Client500(_FakeClient):
+        def paginate(self, path, params=None, page_size=500):
+            if path == "/api/3/users":
+                raise Rapid7ClientError(
+                    "HTTP 500 from GET /api/3/users: oops",
+                    status_code=500,
+                )
+            yield from super().paginate(path, params)
+
+    c = _Client500()
+    s = EnvSnapshot(c, full_scan=False, sample_size=500)
+    with pytest.raises(Rapid7ClientError):
+        s.users()
+
+
+def test_user_2fa_tristate():
+    """user_2fa_enabled: True for non-empty key, False for missing key, None for 404."""
+    from rapid7_healthcheck.client import Rapid7ClientError
+
+    class _Client2FA(_FakeClient):
+        def get(self, path, params=None):
+            if path == "/api/3/users/1/2FA":
+                return {"key": "ABC123"}
+            if path == "/api/3/users/2/2FA":
+                return {}  # Endpoint exists but no key configured
+            if path == "/api/3/users/3/2FA":
+                raise Rapid7ClientError(
+                    "HTTP 404 from GET /api/3/users/3/2FA: not found",
+                    status_code=404,
+                )
+            return super().get(path, params)
+
+    c = _Client2FA()
+    s = EnvSnapshot(c, full_scan=False, sample_size=500)
+    assert s.user_2fa_enabled(1) is True
+    assert s.user_2fa_enabled(2) is False
+    assert s.user_2fa_enabled(3) is None
+
+
+def test_authentication_sources_404_returns_empty():
+    """Endpoint missing → empty list (rule self-skips when SSO can't be detected)."""
+    from rapid7_healthcheck.client import Rapid7ClientError
+
+    class _Client404(_FakeClient):
+        def get(self, path, params=None):
+            if path == "/api/3/authentication_sources":
+                raise Rapid7ClientError(
+                    "HTTP 404 from GET /api/3/authentication_sources: not found",
+                    status_code=404,
+                )
+            return super().get(path, params)
+
+    c = _Client404()
+    s = EnvSnapshot(c, full_scan=False, sample_size=500)
+    assert s.authentication_sources() == []
+
+
 def test_site_scan_template_id_handles_dict_shape():
     assert EnvSnapshot.site_scan_template_id({"scanTemplate": {"id": "cis", "name": "CIS"}}) == "cis"
 

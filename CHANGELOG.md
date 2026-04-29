@@ -7,6 +7,91 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.8] - 2026-04-29
+
+Adds a sibling **User & Permission Audit** category alongside the
+existing Configuration Audit, plus fixes a longstanding bug where
+every report since 0.1.1 has displayed `Version: 0.1.0` regardless
+of the actual installed release.
+
+### Added
+
+- New `User & Permission Audit` check, registered under the new
+  `checks.user_permission_audit` toggle. Targeted at the security /
+  IAM persona; surfaces account-level findings independently from
+  the scan-config audit. Requires the API key to belong to a Global
+  Administrator.
+- 7 new audit rules, each in its own file under
+  `src/rapid7_healthcheck/audit/user_permission/rules/`:
+  - `privileged_user_without_mfa` (default `fail`) — Global
+    Administrator or `role.superuser` accounts without 2FA configured.
+    Scoped to privileged users only because HTTP Basic Auth used by
+    automation legitimately bypasses MFA. Knob: `mfa_exempt_logins`
+    (allowlist of logins to suppress, typically service accounts).
+  - `local_account_when_sso_configured` (default `warn`) — too many
+    `authentication.type == "normal"` accounts when an LDAP/SAML/
+    Kerberos source is configured. Knob: `max_local_accounts_when_sso`
+    (default 2).
+  - `multiple_global_administrators` (default `warn`) — privilege
+    creep guard. Knob: `max_global_administrators` (default 2).
+  - `locked_user_account` (default `warn`) — stuck accounts or
+    brute-force indicator.
+  - `disabled_user_with_role_bindings` (default `info`) — hygiene
+    cleanup signal.
+  - `user_with_role_but_no_access` (default `info`) — role assigned
+    but `allSites=false`, `allAssetGroups=false`, and per-user
+    bindings empty.
+  - `superuser_flag_outside_global_admin` (default `fail`) — RBAC
+    bypass; `role.superuser=true` should only ever appear on GA.
+- New `user_audit:` block in `config.yaml` with the same shape as the
+  existing `audit:` block (enabled / full_scan / sample_size / rules).
+  Defaults to disabled when the block is missing so existing configs
+  keep working untouched.
+- New `EnvSnapshot` accessors: `users()`, `authentication_sources()`,
+  `user_2fa_enabled(id)` (tri-state: True / False / None when the
+  endpoint returns 404), `user_sites(id)`, `user_asset_groups(id)`.
+  Each accessor traps 404 by status code per the v0.1.5 contract;
+  other errors propagate.
+- New `EnvSnapshot.is_users_endpoints_unavailable()` — when the
+  primary `/api/3/users` endpoint returns 404 (custom least-privilege
+  role, or endpoint disabled on a hosted console), the entire user
+  audit category self-skips with a single info finding rather than
+  flooding the report with 7 individual rule errors.
+
+### Fixed
+
+- **Report `Version:` field has shown `0.1.0` since the first
+  release** because `src/rapid7_healthcheck/__init__.py` carried a
+  hardcoded `__version__` that was never bumped alongside
+  `pyproject.toml`. The constant now reads from
+  `importlib.metadata.version("rapid7-insightvm-audit")`, making
+  `pyproject.toml` the single source of truth. New regression test
+  asserts the equivalence so the bug class can't return.
+
+### Tests
+
+- 252 passing (up from 207; +45 new): per-rule tests for all 7 new
+  rules, orchestrator tests covering disabled / unavailable / error
+  isolation paths, config-validator tests for the new `user_audit:`
+  block, snapshot tests for the new accessors with 404-trap
+  regression guards, plus the version-equivalence test.
+
+### Documentation
+
+- README "Configuration Audit" section gains a new subsection for
+  User & Permission Audit listing the 7 rules with severities and
+  knobs. Calls out the GA-only requirement and explicitly documents
+  the rules that *cannot* be implemented because the `/api/3` surface
+  doesn't expose the data (last login, password age, password policy)
+  with a one-line "audit those in the UI" pointer.
+- `CLAUDE.md` architecture section explains that user-audit rules
+  live in their own subpackage with a separate `_USER_RULE_REGISTRY`
+  and `@register_user_rule` decorator.
+- `docs/examples/config.yaml` includes a fully populated `user_audit:`
+  block with comments explaining each knob.
+- New design spec at
+  `docs/superpowers/specs/2026-04-29-user-permission-audit-design.md`.
+
 ## [0.1.7] - 2026-04-29
 
 Diagnostics-only patch. Network-error messages from `Rapid7Client` now
@@ -339,7 +424,8 @@ InsightVM environment.
 - CI on Python 3.11 and 3.12 (GitHub Actions).
 - 153 unit tests covering checks, rules, config, client, and report rendering.
 
-[Unreleased]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.7...HEAD
+[Unreleased]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.8...HEAD
+[0.1.8]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.7...v0.1.8
 [0.1.7]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.4...v0.1.5

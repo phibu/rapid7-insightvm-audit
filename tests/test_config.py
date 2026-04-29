@@ -269,3 +269,81 @@ def test_auth_mode_rejects_non_string(tmp_path):
     )
     with pytest.raises(ConfigError, match="auth_mode"):
         load_config(write(tmp_path, body))
+
+
+# --- user_audit block ---------------------------------------------------
+
+USER_AUDIT_BLOCK = textwrap.dedent("""
+    user_audit:
+      enabled: true
+      full_scan: false
+      sample_size: 500
+      rules:
+        privileged_user_without_mfa:
+          enabled: true
+          severity: fail
+          mfa_exempt_logins: ["healthcheck-svc"]
+        local_account_when_sso_configured:
+          enabled: true
+          severity: warn
+          max_local_accounts_when_sso: 2
+        multiple_global_administrators:
+          enabled: true
+          severity: warn
+        locked_user_account:
+          enabled: true
+          severity: warn
+        disabled_user_with_role_bindings:
+          enabled: true
+          severity: info
+        user_with_role_but_no_access:
+          enabled: true
+          severity: info
+        superuser_flag_outside_global_admin:
+          enabled: true
+          severity: fail
+""")
+
+
+def test_user_audit_block_defaults_disabled_when_missing(tmp_path):
+    cfg = load_config(write(tmp_path, VALID_YAML))
+    assert cfg.user_audit.enabled is False
+    assert cfg.user_audit.rules == {}
+
+
+def test_user_audit_block_loads(tmp_path):
+    cfg = load_config(write(tmp_path, VALID_YAML + USER_AUDIT_BLOCK))
+    assert cfg.user_audit.enabled is True
+    assert cfg.user_audit.full_scan is False
+    assert cfg.user_audit.sample_size == 500
+    mfa = cfg.user_audit.rules["privileged_user_without_mfa"]
+    assert mfa.enabled is True
+    assert mfa.severity == "fail"
+    assert mfa.knobs["mfa_exempt_logins"] == ["healthcheck-svc"]
+    sso = cfg.user_audit.rules["local_account_when_sso_configured"]
+    assert sso.knobs["max_local_accounts_when_sso"] == 2
+
+
+def test_user_audit_unknown_rule_id_raises(tmp_path):
+    body = (VALID_YAML + USER_AUDIT_BLOCK).replace(
+        "privileged_user_without_mfa:",
+        "not_a_real_rule:",
+        1,
+    )
+    with pytest.raises(ConfigError, match="not_a_real_rule"):
+        load_config(write(tmp_path, body))
+
+
+def test_user_audit_invalid_severity_raises(tmp_path):
+    body = (VALID_YAML + USER_AUDIT_BLOCK).replace(
+        "severity: fail",
+        "severity: catastrophic",
+        1,
+    )
+    with pytest.raises(ConfigError, match="severity"):
+        load_config(write(tmp_path, body))
+
+
+def test_user_permission_audit_check_toggle_default_true(tmp_path):
+    cfg = load_config(write(tmp_path, VALID_YAML))
+    assert cfg.checks["user_permission_audit"] is True
