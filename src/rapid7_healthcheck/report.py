@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -33,6 +34,20 @@ def _format_duration(ms: int | None) -> str:
         return f"{minutes}m {secs}s"
     hours, mins = divmod(minutes, 60)
     return f"{hours}h {mins}m"
+
+
+def _finding_signature(rule_id: str, finding: Finding) -> str:
+    """Stable 16-char hex hash of (rule_id, message, details).
+
+    Used to match the same finding across two runs of the report. Severity is
+    intentionally excluded so a finding that flips warn->fail (or back) gets
+    counted in the "severity changed" delta, not as one resolved + one new.
+    Details are normalized via JSON with sorted keys so dict ordering doesn't
+    affect the signature.
+    """
+    details_norm = json.dumps(finding.details or {}, sort_keys=True, default=str)
+    payload = f"{rule_id}\x00{finding.message}\x00{details_norm}"
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
 
 @dataclass
