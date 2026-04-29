@@ -116,6 +116,59 @@ def _state_blob_projection(
     return blob
 
 
+def _compute_delta(*, prior: dict | None, current: dict) -> dict | None:
+    """Diff two state blobs. Returns None when no comparable prior exists.
+
+    Skips silently on host mismatch (filename collision protection).
+    Tolerates version skew: unknown rule_ids in current count as new findings,
+    not as resolutions. Conservative — never claims something was resolved
+    when we can't verify the prior actually checked for it.
+
+    Returns:
+        {
+          "prior_generated_at": str,
+          "resolved":          list[finding_projection],
+          "new_fails":         list[finding_projection],
+          "severity_changed":  list[finding_projection],
+        }
+    """
+    if prior is None:
+        return None
+    if prior.get("base_url_host") != current.get("base_url_host"):
+        return None
+
+    def index(state: dict) -> dict[str, dict]:
+        """Map signature -> finding-projection (with rule_id attached)."""
+        out: dict[str, dict] = {}
+        for r in state.get("results", []):
+            for rr in r.get("rule_results", []) or []:
+                rule_id = rr.get("rule_id")
+                for f in rr.get("findings", []):
+                    sig = f.get("signature")
+                    if sig:
+                        out[sig] = {**f, "rule_id": rule_id}
+        return out
+
+    prior_idx = index(prior)
+    cur_idx = index(current)
+
+    resolved = [v for sig, v in prior_idx.items() if sig not in cur_idx]
+    new_fails = [
+        v for sig, v in cur_idx.items()
+        if sig not in prior_idx and v.get("severity") == "fail"
+    ]
+    severity_changed = [
+        cur_idx[sig] for sig in cur_idx
+        if sig in prior_idx and cur_idx[sig].get("severity") != prior_idx[sig].get("severity")
+    ]
+    return {
+        "prior_generated_at": prior.get("generated_at"),
+        "resolved": resolved,
+        "new_fails": new_fails,
+        "severity_changed": severity_changed,
+    }
+
+
 @dataclass
 class ReportContext:
     title: str
