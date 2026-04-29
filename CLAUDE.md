@@ -42,6 +42,8 @@ Pipeline: `__main__.py` loads config → builds `Rapid7Client` → iterates a `_
 
 This shape lets a new operational check be added with one file under `checks/` plus a `_REGISTRY` entry, and a new audit rule with one file under `audit/rules/` plus a `register()` decorator call.
 
+There is a second audit category sibling to the configuration audit: **User & Permission Audit**. Its rules live at `audit/user_permission/rules/` and self-register via `@register_user_rule` (a separate registry from `@register`). Its orchestrator (`UserPermissionAuditCheck`) reads from `config.user_audit` and `checks.user_permission_audit`. Adding a new user-audit rule mirrors the configuration-audit pattern: one file under `audit/user_permission/rules/`, decorated with `@register_user_rule`, and an entry in the new `_VALID_USER_AUDIT_RULE_IDS` set in `config.py` plus a side-effect import in `__main__.py`.
+
 ### Audit subsystem internals
 
 - `audit/__init__.py` defines `Rule` (Protocol), `RuleResult` (dataclass), `_RULE_REGISTRY`, the `register` decorator, and `ConfigurationAuditCheck` (the orchestrator). Rule files self-register at import time via `@register`. The audit package's `__init__.py` is currently empty — rule modules must be imported somewhere on the startup path for self-registration to fire (today they're imported by side effect when `__main__.py` loads).

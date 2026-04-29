@@ -80,6 +80,16 @@ _VALID_RULE_IDS = {
 }
 _VALID_SEVERITIES = {"info", "warn", "fail"}
 
+_VALID_USER_AUDIT_RULE_IDS = {
+    "privileged_user_without_mfa",
+    "local_account_when_sso_configured",
+    "multiple_global_administrators",
+    "locked_user_account",
+    "disabled_user_with_role_bindings",
+    "user_with_role_but_no_access",
+    "superuser_flag_outside_global_admin",
+}
+
 
 @dataclass(frozen=True)
 class RuleConfig:
@@ -96,8 +106,21 @@ class AuditConfig:
     rules: dict  # str -> RuleConfig
 
 
+@dataclass(frozen=True)
+class UserAuditConfig:
+    """Sibling to AuditConfig, scoped to the User & Permission audit category."""
+    enabled: bool
+    full_scan: bool
+    sample_size: int
+    rules: dict  # str -> RuleConfig
+
+
 def _default_audit() -> AuditConfig:
     return AuditConfig(enabled=False, full_scan=False, sample_size=500, rules={})
+
+
+def _default_user_audit() -> UserAuditConfig:
+    return UserAuditConfig(enabled=False, full_scan=False, sample_size=500, rules={})
 
 
 @dataclass(frozen=True)
@@ -107,6 +130,7 @@ class AppConfig:
     thresholds: Thresholds
     checks: dict
     audit: AuditConfig = field(default_factory=_default_audit)
+    user_audit: UserAuditConfig = field(default_factory=_default_user_audit)
 
 
 def _check_scalar(field_name: str, value: Any, expected: type, path: str) -> None:
@@ -269,12 +293,57 @@ def _build_audit_config(data: dict | None) -> AuditConfig:
     )
 
 
+def _build_user_audit_config(data: dict | None) -> UserAuditConfig:
+    """Validator for the `user_audit:` block. Mirrors `_build_audit_config`
+    but uses `_VALID_USER_AUDIT_RULE_IDS` and the `UserAuditConfig` shape."""
+    if data is None:
+        return UserAuditConfig(enabled=False, full_scan=False, sample_size=500, rules={})
+    if not isinstance(data, dict):
+        raise ConfigError("user_audit: expected mapping")
+    expected = {"enabled", "full_scan", "sample_size", "rules"}
+    unknown = set(data.keys()) - expected
+    if unknown:
+        raise ConfigError(f"user_audit: unknown key(s): {sorted(unknown)}")
+    if not isinstance(data.get("enabled"), bool):
+        raise ConfigError("user_audit.enabled: expected bool")
+    if not isinstance(data.get("full_scan"), bool):
+        raise ConfigError("user_audit.full_scan: expected bool")
+    if not isinstance(data.get("sample_size"), int) or isinstance(data.get("sample_size"), bool) or data["sample_size"] <= 0:
+        raise ConfigError("user_audit.sample_size: expected positive int")
+
+    raw_rules = data.get("rules") or {}
+    if not isinstance(raw_rules, dict):
+        raise ConfigError("user_audit.rules: expected mapping")
+    rules: dict[str, RuleConfig] = {}
+    for rule_id, rule_body in raw_rules.items():
+        if rule_id not in _VALID_USER_AUDIT_RULE_IDS:
+            raise ConfigError(f"user_audit.rules: unknown rule id '{rule_id}'")
+        if not isinstance(rule_body, dict):
+            raise ConfigError(f"user_audit.rules.{rule_id}: expected mapping")
+        if not isinstance(rule_body.get("enabled"), bool):
+            raise ConfigError(f"user_audit.rules.{rule_id}.enabled: expected bool")
+        sev = rule_body.get("severity")
+        if sev not in _VALID_SEVERITIES:
+            raise ConfigError(
+                f"user_audit.rules.{rule_id}.severity: must be one of {sorted(_VALID_SEVERITIES)}"
+            )
+        knobs = {k: v for k, v in rule_body.items() if k not in ("enabled", "severity")}
+        rules[rule_id] = RuleConfig(enabled=rule_body["enabled"], severity=sev, knobs=knobs)
+
+    return UserAuditConfig(
+        enabled=data["enabled"],
+        full_scan=data["full_scan"],
+        sample_size=data["sample_size"],
+        rules=rules,
+    )
+
+
 def _build_app_config(data: dict) -> AppConfig:
-    expected_root = {"rapid7", "report", "thresholds", "checks", "audit"}
+    expected_root = {"rapid7", "report", "thresholds", "checks", "audit", "user_audit"}
     unknown = set(data.keys()) - expected_root
     if unknown:
         raise ConfigError(f"unknown root key(s): {sorted(unknown)}")
-    required_root = expected_root - {"audit"}  # audit is optional
+    required_root = expected_root - {"audit", "user_audit"}  # both audits are optional
     missing = required_root - set(data.keys())
     if missing:
         raise ConfigError(f"missing required root key(s): {sorted(missing)}")
@@ -295,9 +364,20 @@ def _build_app_config(data: dict) -> AppConfig:
     if "configuration_audit" not in checks:
         checks = dict(checks)
         checks["configuration_audit"] = True
+    if "user_permission_audit" not in checks:
+        checks = dict(checks)
+        checks["user_permission_audit"] = True
 
     audit = _build_audit_config(data.get("audit"))
-    return AppConfig(rapid7=rapid7, report=report, thresholds=thresholds, checks=checks, audit=audit)
+    user_audit = _build_user_audit_config(data.get("user_audit"))
+    return AppConfig(
+        rapid7=rapid7,
+        report=report,
+        thresholds=thresholds,
+        checks=checks,
+        audit=audit,
+        user_audit=user_audit,
+    )
 
 
 def load_config(path: Path | str) -> AppConfig:

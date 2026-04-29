@@ -39,6 +39,7 @@ checks:
   asset_coverage: true
   data_quality: true
   configuration_audit: true
+  user_permission_audit: true
 
 audit:
   enabled: true
@@ -91,3 +92,41 @@ audit:
       refresh_stale_days: 7
       check_product_version: true
       check_content_version: true
+
+# User & Permission Audit — sibling to `audit:`, scoped to console user
+# accounts and authentication settings. Requires the API key to belong
+# to a Global Administrator (the underlying /api/3/users endpoint is
+# GA-only). Disable with `user_audit.enabled: false` or with the
+# `checks.user_permission_audit: false` toggle above.
+user_audit:
+  enabled: true
+  full_scan: false
+  sample_size: 500
+  rules:
+    privileged_user_without_mfa:
+      enabled: true
+      severity: fail
+      # Allowlist logins that legitimately authenticate via Basic Auth
+      # (which bypasses MFA at the protocol level) — typically service
+      # accounts. Empty by default.
+      mfa_exempt_logins: []
+    local_account_when_sso_configured:
+      enabled: true
+      severity: warn
+      max_local_accounts_when_sso: 2
+    multiple_global_administrators:
+      enabled: true
+      severity: warn
+      max_global_administrators: 2
+    locked_user_account:
+      enabled: true
+      severity: warn
+    disabled_user_with_role_bindings:
+      enabled: true
+      severity: info
+    user_with_role_but_no_access:
+      enabled: true
+      severity: info
+    superuser_flag_outside_global_admin:
+      enabled: true
+      severity: fail

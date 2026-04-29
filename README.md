@@ -106,6 +106,30 @@ Per-rule severity and enable/disable live in the `audit:` block of `config.yaml`
 
 See `docs/examples/config.yaml` for the full audit configuration block.
 
+## User & Permission Audit
+
+A sibling audit category to the configuration audit, scoped to console user accounts and authentication settings. Toggled separately via `checks.user_permission_audit` and configured via the `user_audit:` block.
+
+**Required permission:** the API key must belong to a **Global Administrator**. The `/api/3/users` and `/api/3/authentication_sources` endpoints are GA-only. If the key lacks this, the audit self-skips with a single info finding rather than failing.
+
+| Rule | Default | Notes |
+| --- | --- | --- |
+| Privileged user without MFA | fail | Scoped to GA / `role.superuser` users only. Service accounts that legitimately use HTTP Basic Auth (which bypasses MFA) can be allowlisted via `mfa_exempt_logins`. |
+| Local accounts when SSO is configured | warn | Excessive local accounts when LDAP/SAML/Kerberos is configured. Knob: `max_local_accounts_when_sso` (default 2). |
+| Multiple Global Administrators | warn | Privilege creep. Knob: `max_global_administrators` (default 2). |
+| Locked user account | warn | Stuck account or brute-force indicator. |
+| Disabled user with active role bindings | info | Hygiene cleanup. |
+| User has role but no site/asset-group access | info | Misconfigured user. Honours `sample_size`. |
+| Superuser flag outside Global Administrator | fail | RBAC bypass — should never happen. |
+
+**Rules NOT implemented (and why).** Some commonly-requested user-audit rules cannot be implemented because the Rapid7 v3 API does not expose the underlying data. Audit them in the Security Console UI:
+
+- *Never logged in / inactive for N days* — the `User` schema has no `lastLoggedOnDate` field.
+- *Local password not rotated in N days* — no `passwordLastChanged` field.
+- *Weak password policy* — no `/api/3/password_policy` endpoint.
+
+Per-rule severity and enable/disable live in the `user_audit:` block of `config.yaml`. See `docs/examples/config.yaml` for the full block.
+
 ## Scheduling
 
 **Windows Task Scheduler (PowerShell):**
