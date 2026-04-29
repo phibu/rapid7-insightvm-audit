@@ -271,6 +271,77 @@ def test_auth_mode_rejects_non_string(tmp_path):
         load_config(write(tmp_path, body))
 
 
+# --- delta_max_age_days tests -------------------------------------------
+
+# Minimal valid config with `report:` block last so appending a line
+# like "  delta_max_age_days: null\n" lands as a sibling key inside report:.
+_MINIMAL_CONFIG_TEXT = textwrap.dedent("""\
+    rapid7:
+      base_url: https://us.api.insight.rapid7.com
+      verify_tls: true
+      request_timeout_seconds: 30
+      max_retries: 3
+    thresholds:
+      scan_engines:
+        last_contact_warn_hours: 2
+        last_contact_fail_hours: 24
+      scan_activity:
+        recent_window_days: 7
+        stuck_scan_hours: 24
+        site_no_scan_days: 14
+      asset_coverage:
+        stale_asset_days: 30
+        flag_unscanned_assets: true
+      data_quality:
+        flag_missing_os: true
+        flag_empty_sites: true
+    checks:
+      scan_engines: true
+      scan_activity: true
+      asset_coverage: true
+      data_quality: true
+    report:
+      output_dir: ./reports
+      filename_pattern: "rapid7-health-{timestamp}.html"
+      title: "Test"
+""")
+
+
+def test_report_delta_max_age_days_defaults_to_30(tmp_path):
+    """Existing configs without delta_max_age_days still load, defaulting to 30."""
+    p = tmp_path / "c.yaml"
+    p.write_text(_MINIMAL_CONFIG_TEXT, encoding="utf-8")
+    cfg = load_config(p)
+    assert cfg.report.delta_max_age_days == 30
+
+
+def test_report_delta_max_age_days_can_be_disabled(tmp_path):
+    """delta_max_age_days: null disables delta (loads as None)."""
+    cfg_text = _MINIMAL_CONFIG_TEXT + "  delta_max_age_days: null\n"
+    p = tmp_path / "c.yaml"
+    p.write_text(cfg_text, encoding="utf-8")
+    cfg = load_config(p)
+    assert cfg.report.delta_max_age_days is None
+
+
+def test_report_rejects_unknown_key(tmp_path):
+    """Unknown keys under report: raise ConfigError."""
+    cfg_text = _MINIMAL_CONFIG_TEXT + "  bogus: 1\n"
+    p = tmp_path / "c.yaml"
+    p.write_text(cfg_text, encoding="utf-8")
+    with pytest.raises(ConfigError, match="unknown key"):
+        load_config(p)
+
+
+def test_report_rejects_negative_delta(tmp_path):
+    """delta_max_age_days must be non-negative or null."""
+    cfg_text = _MINIMAL_CONFIG_TEXT + "  delta_max_age_days: -1\n"
+    p = tmp_path / "c.yaml"
+    p.write_text(cfg_text, encoding="utf-8")
+    with pytest.raises(ConfigError, match="non-negative"):
+        load_config(p)
+
+
 # --- user_audit block ---------------------------------------------------
 
 USER_AUDIT_BLOCK = textwrap.dedent("""
