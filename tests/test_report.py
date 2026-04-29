@@ -60,9 +60,14 @@ def test_skipped_status_explained():
 def test_no_external_resources():
     r = CheckResult(name="X", description="x", status="pass")
     html = render_report(_ctx([r]))
-    assert "<script" not in html
+    # Inline JSON state blob is allowed. External script src is not.
+    assert "<script src=" not in html
     assert "https://cdn" not in html
     assert "//cdn" not in html
+    # No external stylesheets, fonts, images, iframes.
+    assert "<link rel=\"stylesheet\"" not in html
+    assert "@import url" not in html
+    assert "<iframe" not in html
 
 
 def test_write_report_uses_filename_pattern(tmp_path):
@@ -130,7 +135,7 @@ def test_audit_section_renders_per_rule_table():
     assert "https://docs.rapid7.com/foo" in html
     assert "https://docs.rapid7.com/bar" in html
     assert 'href="https://docs.rapid7.com/foo"' in html
-    assert "<script" not in html
+    assert "<script src=" not in html  # was: assert "<script" not in html
 
 
 def test_audit_section_shows_sampling_note():
