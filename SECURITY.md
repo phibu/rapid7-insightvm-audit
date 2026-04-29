@@ -21,6 +21,14 @@ The guarantee is enforced in three layers:
 3. **Documentation.** This file and the README disclose every legitimate
    `POST` exception.
 
+### Auth modes do not change the invariant
+
+The tool supports two authentication modes against the Security Console:
+`X-Api-Key` header (default) and HTTP Basic Auth (`auth_mode: basic`).
+Both flow through the same `Rapid7Client._request` and are subject to the
+same verb / path allowlist enforcement. Switching auth modes does not
+relax, broaden, or otherwise affect the read-only invariant.
+
 ### The single legitimate POST
 
 `POST /api/3/assets/search` is the only `POST` endpoint the tool calls.

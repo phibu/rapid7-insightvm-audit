@@ -47,23 +47,29 @@ class Rapid7Client:
         self,
         *,
         base_url: str,
-        api_key: str,
+        api_key: str | None = None,
+        basic_auth: tuple[str, str] | None = None,
         verify_tls: bool = True,
         timeout_seconds: int = 30,
         max_retries: int = 3,
         session: requests.Session | None = None,
     ) -> None:
+        if (api_key is None) == (basic_auth is None):
+            raise ValueError(
+                "Rapid7Client requires exactly one of api_key or basic_auth"
+            )
         self._base_url = base_url.rstrip("/")
-        self._api_key = api_key
+        self._basic_auth = basic_auth
         self._verify = verify_tls
         self._timeout = timeout_seconds
         self._max_retries = max_retries
         self._session = session or requests.Session()
-        self._headers = {
-            "X-Api-Key": api_key,
+        self._headers: dict[str, str] = {
             "Accept": "application/json",
             "User-Agent": f"rapid7-healthcheck/{__version__}",
         }
+        if api_key is not None:
+            self._headers["X-Api-Key"] = api_key
 
     def connect(self) -> None:
         """Validate base URL and credentials by hitting /api/3."""
@@ -154,6 +160,7 @@ class Rapid7Client:
                     params=params,
                     json=json_body,
                     headers=self._headers,
+                    auth=self._basic_auth,
                     timeout=self._timeout,
                     verify=self._verify,
                 )

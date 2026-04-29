@@ -153,3 +153,44 @@ def test_zero_pages_returns_empty(session):
     session.request.return_value = _resp(200, {"resources": [], "page": {"number": 0, "totalPages": 0}})
     c = make_client(session)
     assert list(c.paginate("/api/3/sites")) == []
+
+
+def test_client_uses_basic_auth_when_provided(session):
+    """basic_auth=(user, pw) sends auth=... and omits X-Api-Key."""
+    session.request.return_value = _resp(200, {"ok": True})
+    c = Rapid7Client(
+        base_url="https://acme.hosted.rapid7.com",
+        basic_auth=("svc", "secret"),
+        verify_tls=True,
+        timeout_seconds=5,
+        max_retries=2,
+        session=session,
+    )
+    c.get("/api/3/sites")
+    _, kwargs = session.request.call_args
+    assert kwargs["auth"] == ("svc", "secret")
+    assert "X-Api-Key" not in kwargs["headers"]
+
+
+def test_client_passes_no_auth_kwarg_value_in_api_key_mode(session):
+    """In api_key mode, auth= is None (requests treats this as 'no auth')."""
+    session.request.return_value = _resp(200, {"ok": True})
+    c = make_client(session)
+    c.get("/api/3/sites")
+    _, kwargs = session.request.call_args
+    assert kwargs["auth"] is None
+    assert kwargs["headers"]["X-Api-Key"] == "key"
+
+
+def test_client_rejects_both_api_key_and_basic_auth():
+    with pytest.raises(ValueError, match="exactly one"):
+        Rapid7Client(
+            base_url="https://x",
+            api_key="k",
+            basic_auth=("u", "p"),
+        )
+
+
+def test_client_rejects_neither_api_key_nor_basic_auth():
+    with pytest.raises(ValueError, match="exactly one"):
+        Rapid7Client(base_url="https://x")

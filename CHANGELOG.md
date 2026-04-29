@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-04-29
+
+Adds HTTP Basic Auth as an alternative to the existing `X-Api-Key` flow.
+Motivated by Rapid7-hosted Security Consoles where SAML-provisioned users
+with MFA cannot mint a console-local API key in the UI.
+
+### Added
+
+- New `rapid7.auth_mode` config field in `config.yaml`. Accepts
+  `"api_key"` (default — existing behaviour) or `"basic"`. Any other
+  value is rejected at startup.
+- New `R7_BASIC_USER` and `R7_BASIC_PASSWORD` environment variables, read
+  when `auth_mode: basic`. Either missing → exit code 3 with a precise
+  message naming the missing variable.
+- `Rapid7Client` now accepts `basic_auth=(user, password)` as an
+  alternative to `api_key=...`. The two are mutually exclusive at
+  construction time (`ValueError` otherwise).
+- README "Authenticating against your console" subsection covering both
+  auth modes, with explicit guidance on where to find the API key
+  (Security Console UI, not `insight.rapid7.com`) and `base_url` shapes
+  for self-hosted vs Rapid7-hosted consoles.
+
+### Changed
+
+- `SECURITY.md` clarifies that Basic Auth and API-key modes share the
+  same read-only invariant — verb/path allowlist enforcement applies
+  unconditionally.
+
+### Tests
+
+- 8 new tests covering: client mutual-exclusivity gates, `auth=` kwarg
+  threading, config validator (default + `basic` accepted + unknown
+  value rejected + non-string rejected), and startup credential loading
+  (missing user / missing password / both present).
+
 ## [0.1.2] - 2026-04-29
 
 Hardened the read-only invariant. Behavioural contract is unchanged for any
@@ -124,7 +159,8 @@ InsightVM environment.
 - CI on Python 3.11 and 3.12 (GitHub Actions).
 - 153 unit tests covering checks, rules, config, client, and report rendering.
 
-[Unreleased]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/phibu/rapid7-insightvm-audit/releases/tag/v0.1.0

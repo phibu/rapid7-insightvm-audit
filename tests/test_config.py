@@ -237,3 +237,35 @@ def test_audit_missing_block_defaults_disabled(tmp_path):
 def test_checks_configuration_audit_default_when_missing(tmp_path):
     cfg = load_config(write(tmp_path, _yaml_with_audit()))
     assert cfg.checks["configuration_audit"] is True
+
+
+def test_auth_mode_defaults_to_api_key(tmp_path):
+    cfg = load_config(write(tmp_path, VALID_YAML))
+    assert cfg.rapid7.auth_mode == "api_key"
+
+
+def test_auth_mode_accepts_basic(tmp_path):
+    body = VALID_YAML.replace(
+        "max_retries: 3",
+        "max_retries: 3\n  auth_mode: basic",
+    )
+    cfg = load_config(write(tmp_path, body))
+    assert cfg.rapid7.auth_mode == "basic"
+
+
+def test_auth_mode_rejects_unknown_value(tmp_path):
+    body = VALID_YAML.replace(
+        "max_retries: 3",
+        "max_retries: 3\n  auth_mode: oauth2",
+    )
+    with pytest.raises(ConfigError, match="auth_mode"):
+        load_config(write(tmp_path, body))
+
+
+def test_auth_mode_rejects_non_string(tmp_path):
+    body = VALID_YAML.replace(
+        "max_retries: 3",
+        "max_retries: 3\n  auth_mode: 42",
+    )
+    with pytest.raises(ConfigError, match="auth_mode"):
+        load_config(write(tmp_path, body))

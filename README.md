@@ -10,7 +10,7 @@ Read-only health check for a Rapid7 InsightVM environment. Calls the Insight Pla
 
 ## Setup
 
-1. Generate a read-only API key in the Insight Platform UI: **User → API Keys → New User Key**. Pin the role to read-only.
+1. Get credentials for your InsightVM Security Console (see [Authenticating against your console](#authenticating-against-your-console) below for the options).
 2. Clone this repo and create a virtualenv:
 
    ```bash
@@ -25,12 +25,34 @@ Read-only health check for a Rapid7 InsightVM environment. Calls the Insight Pla
    ```bash
    cp .env.example .env
    # edit .env and set R7_API_KEY=<your key>
+   # — or, for Basic Auth — set R7_BASIC_USER and R7_BASIC_PASSWORD
 
    cp docs/examples/config.yaml config.yaml
-   # edit config.yaml — at minimum set rapid7.base_url to the right region
+   # edit config.yaml — at minimum set rapid7.base_url to your console
    ```
 
-   US data centres: `https://us.api.insight.rapid7.com`, `https://us2.api.insight.rapid7.com`, `https://us3.api.insight.rapid7.com`. Pick the one that matches your account.
+   `base_url` is the URL of your InsightVM Security Console:
+
+   - **Self-hosted console:** `https://<console-host>:3780`
+   - **Rapid7-hosted console:** `https://<your-tenant>.hosted.rapid7.com` (no port suffix; uses 443)
+
+   The Insight Platform region URLs (`https://us.api.insight.rapid7.com` etc.) belong to a *different* API (the Cloud Integrations v4 API) and will not work with this tool.
+
+### Authenticating against your console
+
+The tool supports two auth modes against the `/api/3` Security Console API. Pick one in `config.yaml`:
+
+```yaml
+rapid7:
+  # auth_mode: api_key   # default
+  # auth_mode: basic
+```
+
+**API key (`auth_mode: api_key`, default).** Generate the key in the Security Console UI itself — *not* on `insight.rapid7.com`. Open `https://<your-console>` directly, then **User → API Keys** (or **Administration → Users → [your user]**). Set `R7_API_KEY=<key>` in `.env`.
+
+**HTTP Basic Auth (`auth_mode: basic`).** Use this when the console UI does not let you mint an API key — common on Rapid7-hosted consoles where your user is SAML-provisioned with MFA. Set `R7_BASIC_USER=<console-username>` and `R7_BASIC_PASSWORD=<console-password>` in `.env`. For production use, ask your Rapid7 admin to provision a dedicated read-only service account so the credentials don't ride on a personal user.
+
+The tool issues only `GET` requests (plus one Rapid7-mandated `POST /api/3/assets/search` for asset filter searches) regardless of auth mode. See [SECURITY.md](SECURITY.md) for the full read-only contract.
 
 ## Usage
 

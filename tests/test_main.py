@@ -85,6 +85,77 @@ def test_run_missing_api_key_returns_startup_exit(tmp_path, monkeypatch):
     assert code == EXIT_STARTUP
 
 
+def _write_basic_auth_config(tmp_path: Path) -> Path:
+    """Variant of _write_config with auth_mode: basic."""
+    body = textwrap.dedent(f"""
+        rapid7:
+          base_url: https://acme.hosted.rapid7.com
+          verify_tls: true
+          request_timeout_seconds: 30
+          max_retries: 3
+          auth_mode: basic
+        report:
+          output_dir: {tmp_path / "reports"}
+          filename_pattern: "rapid7-health-{{timestamp}}.html"
+          title: "T"
+        thresholds:
+          scan_engines:
+            last_contact_warn_hours: 2
+            last_contact_fail_hours: 24
+          scan_activity:
+            recent_window_days: 7
+            stuck_scan_hours: 24
+            site_no_scan_days: 14
+          asset_coverage:
+            stale_asset_days: 30
+            flag_unscanned_assets: true
+          data_quality:
+            flag_missing_os: true
+            flag_empty_sites: true
+        checks:
+          scan_engines: false
+          scan_activity: false
+          asset_coverage: false
+          data_quality: false
+          configuration_audit: false
+    """).strip()
+    p = tmp_path / "config.yaml"
+    p.write_text(body, encoding="utf-8")
+    return p
+
+
+def test_run_basic_mode_missing_user_returns_startup_exit(tmp_path, monkeypatch):
+    cfg = _write_basic_auth_config(tmp_path)
+    monkeypatch.delenv("R7_BASIC_USER", raising=False)
+    monkeypatch.setenv("R7_BASIC_PASSWORD", "pw")
+    code = run(["--config", str(cfg)])
+    assert code == EXIT_STARTUP
+
+
+def test_run_basic_mode_missing_password_returns_startup_exit(tmp_path, monkeypatch):
+    cfg = _write_basic_auth_config(tmp_path)
+    monkeypatch.setenv("R7_BASIC_USER", "svc")
+    monkeypatch.delenv("R7_BASIC_PASSWORD", raising=False)
+    code = run(["--config", str(cfg)])
+    assert code == EXIT_STARTUP
+
+
+def test_run_basic_mode_passes_basic_auth_to_client(tmp_path, monkeypatch):
+    cfg = _write_basic_auth_config(tmp_path)
+    monkeypatch.setenv("R7_BASIC_USER", "svc")
+    monkeypatch.setenv("R7_BASIC_PASSWORD", "pw")
+    monkeypatch.delenv("R7_API_KEY", raising=False)
+
+    with patch("rapid7_healthcheck.__main__.Rapid7Client") as MockClient:
+        MockClient.return_value.connect.return_value = None
+        code = run(["--config", str(cfg)])
+
+    assert code == EXIT_HEALTHY
+    _, kwargs = MockClient.call_args
+    assert kwargs["api_key"] is None
+    assert kwargs["basic_auth"] == ("svc", "pw")
+
+
 def test_run_with_all_checks_disabled_writes_skipped_report(tmp_path, monkeypatch):
     cfg = _write_config(tmp_path)
     monkeypatch.setenv("R7_API_KEY", "k")
