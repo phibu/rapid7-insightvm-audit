@@ -47,8 +47,10 @@ class AssetCoverageCheck:
                 unscanned = list(client.paginate_post("/api/3/assets/search", json_body=unscanned_filter))
             except Rapid7ClientError as e:
                 # Some consoles reject is-empty on date fields with HTTP 400;
-                # the rest of the check is still useful, so degrade rather than abort.
-                if "400" in str(e) and "is-empty" in str(e):
+                # the rest of the check is still useful, so degrade rather
+                # than abort. Trap on the numeric status only — substring
+                # matching on the message would conflate unrelated errors.
+                if e.status_code == 400:
                     unscanned_unavailable = True
                 else:
                     raise

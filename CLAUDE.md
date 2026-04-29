@@ -33,7 +33,8 @@ Pipeline: `__main__.py` loads config → builds `Rapid7Client` → iterates a `_
 
 ### Layer rules (do not violate)
 
-- `client.py` is the **only** module that issues HTTP. It owns auth (`X-Api-Key` header), retries, exponential backoff, `Retry-After` parsing, and response validation. Never call `requests` from a check or rule.
+- `client.py` is the **only** module that issues HTTP. It owns auth (`X-Api-Key` header or HTTP Basic), retries, exponential backoff, `Retry-After` parsing, and response validation. Never call `requests` from a check or rule.
+- `Rapid7ClientError.status_code` is the canonical way to branch on HTTP status when trapping per-endpoint compatibility issues (e.g. an endpoint returning 404 on a hosted console but 200 on on-prem). **Never substring-match the error message** — the message includes the request path and up to 1500 chars of response body, so substrings like `"404"` or `"400"` can appear in a 500's body and silently swallow real errors. Branch on `e.status_code == 404`, not on `"404" in str(e)`.
 - `checks/*.py` and `audit/rules/*.py` interpret API responses; they know nothing about HTML.
 - `report.py` renders HTML; it knows nothing about the API.
 - `config.py` loads YAML into validated dataclasses. **Unknown keys raise** — when adding a new config field, extend the schema and validator together.

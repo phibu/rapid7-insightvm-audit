@@ -194,3 +194,47 @@ def test_client_rejects_both_api_key_and_basic_auth():
 def test_client_rejects_neither_api_key_nor_basic_auth():
     with pytest.raises(ValueError, match="exactly one"):
         Rapid7Client(base_url="https://x")
+
+
+def test_client_error_carries_status_code_on_4xx(session):
+    """Non-retryable 4xx must populate Rapid7ClientError.status_code so
+    callers can branch numerically rather than substring-matching."""
+    session.request.return_value = _resp(404, {"message": "not found"})
+    c = make_client(session)
+    with pytest.raises(Rapid7ClientError) as exc:
+        c.get("/api/3/blackouts")
+    assert exc.value.status_code == 404
+
+
+def test_client_error_carries_status_code_on_5xx_after_retries(session):
+    """Retryable 5xx exhausting retries must also populate status_code."""
+    session.request.return_value = _resp(503, {"message": "unavailable"})
+    c = make_client(session)
+    with pytest.raises(Rapid7ClientError) as exc:
+        c.get("/api/3/sites")
+    assert exc.value.status_code == 503
+
+
+def test_auth_error_carries_status_code_on_401(session):
+    session.request.return_value = _resp(401, {"message": "unauthorized"})
+    c = make_client(session)
+    with pytest.raises(Rapid7AuthError) as exc:
+        c.get("/api/3/sites")
+    assert exc.value.status_code == 401
+
+
+def test_auth_error_carries_status_code_on_403(session):
+    session.request.return_value = _resp(403, {"message": "forbidden"})
+    c = make_client(session)
+    with pytest.raises(Rapid7AuthError) as exc:
+        c.get("/api/3/sites")
+    assert exc.value.status_code == 403
+
+
+def test_network_error_has_no_status_code(session):
+    """Failures before any HTTP response → status_code=None."""
+    session.request.side_effect = requests.ConnectionError("boom")
+    c = make_client(session)
+    with pytest.raises(Rapid7ClientError) as exc:
+        c.get("/api/3/sites")
+    assert exc.value.status_code is None

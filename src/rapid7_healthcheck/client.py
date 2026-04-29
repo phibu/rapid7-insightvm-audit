@@ -13,7 +13,21 @@ logger = logging.getLogger(__name__)
 
 
 class Rapid7ClientError(Exception):
-    """HTTP or network failure interacting with the Rapid7 API."""
+    """HTTP or network failure interacting with the Rapid7 API.
+
+    `status_code` carries the HTTP status when the failure was driven by
+    a server response (4xx / 5xx). It is `None` for failures that
+    happened before the response was received (network errors), for 2xx
+    responses with unparseable bodies, and for read-only invariant
+    violations raised before any HTTP call. Callers branching on HTTP
+    status MUST inspect `status_code` rather than substring-matching the
+    error message — message text includes the request path and up to
+    1500 chars of response body, so substring matching is brittle.
+    """
+
+    def __init__(self, message: str, *, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
 
 
 class Rapid7AuthError(Rapid7ClientError):
@@ -177,12 +191,14 @@ class Rapid7Client:
 
             if resp.status_code in (401, 403):
                 raise Rapid7AuthError(
-                    f"auth failed ({resp.status_code}); check R7_API_KEY and base_url"
+                    f"auth failed ({resp.status_code}); check R7_API_KEY and base_url",
+                    status_code=resp.status_code,
                 )
             if resp.status_code in _RETRY_STATUS:
                 if attempt >= self._max_retries:
                     raise Rapid7ClientError(
-                        f"{resp.status_code} after {attempt + 1} attempts: {resp.text[:1500]}"
+                        f"{resp.status_code} after {attempt + 1} attempts: {resp.text[:1500]}",
+                        status_code=resp.status_code,
                     )
                 delay = self._retry_delay(resp, attempt)
                 time.sleep(delay)
@@ -190,7 +206,8 @@ class Rapid7Client:
                 continue
             if resp.status_code >= 400:
                 raise Rapid7ClientError(
-                    f"HTTP {resp.status_code} from {method} {path}: {resp.text[:1500]}"
+                    f"HTTP {resp.status_code} from {method} {path}: {resp.text[:1500]}",
+                    status_code=resp.status_code,
                 )
             try:
                 return resp.json()

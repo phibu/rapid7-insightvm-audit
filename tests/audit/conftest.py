@@ -71,9 +71,7 @@ class FakeSnapshot:
     def scan_engines(self) -> list[dict]: return self._scan_engines
     def shared_credentials(self) -> list[dict]: return self._shared_credentials
     def blackouts(self) -> list[dict]: return self._blackouts
-
-    @property
-    def blackouts_unavailable(self) -> bool: return self._blackouts_unavailable
+    def is_blackouts_unavailable(self) -> bool: return self._blackouts_unavailable
 
     def site_credentials(self, site_id: int) -> list[dict]:
         if site_id not in self._site_credentials:
