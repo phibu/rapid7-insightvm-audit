@@ -139,6 +139,41 @@ class EnvSnapshot:
         # /search_criteria returns the SearchCriteria object directly per API v3.
         return body if isinstance(body, dict) else {}
 
+    def asset_group_sites(self, group_id: int) -> set[int]:
+        """Site IDs referenced by an asset group's searchCriteria.
+
+        Cheap resolver: looks at the already-cached `asset_groups()` list and
+        extracts site IDs from `site-id-in` filters. Returns empty set when the
+        group cannot be resolved this way (e.g. dynamic groups whose membership
+        is not site-scoped). Callers should treat empty as "unresolvable" rather
+        than "no sites".
+        """
+        for g in self.asset_groups():
+            if g.get("id") != group_id:
+                continue
+            sc = g.get("searchCriteria")
+            if not isinstance(sc, dict):
+                return set()
+            ids: set[int] = set()
+            for f in sc.get("filters") or []:
+                if not isinstance(f, dict):
+                    continue
+                if f.get("field") != "site-id-in":
+                    continue
+                for v in (f.get("values") or []):
+                    try:
+                        ids.add(int(v))
+                    except (TypeError, ValueError):
+                        continue
+                v = f.get("value")
+                if v is not None:
+                    try:
+                        ids.add(int(v))
+                    except (TypeError, ValueError):
+                        pass
+            return ids
+        return set()
+
     def tags(self) -> list[dict]:
         """All tags. Each entry's `searchCriteria` may reference other tags via
         the `criticality-tag`/`custom-tag`/`location-tag`/`owner-tag` fields,

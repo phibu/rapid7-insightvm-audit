@@ -49,7 +49,10 @@ class EngineVersionDriftRule:
     )
     default_severity = "warn"
     expensive = False
-    sources = ["https://docs.rapid7.com/insightvm/security-console-best-practices/"]
+    sources = [
+        "https://docs.rapid7.com/insightvm/security-console-best-practices/",
+        "https://docs.rapid7.com/insightvm/working-with-scan-engines/",
+    ]
 
     def run(self, snapshot, severity, full_scan, sample_size, rule_config) -> RuleResult:
         stale_days = int(
@@ -68,6 +71,8 @@ class EngineVersionDriftRule:
 
         findings: list[Finding] = []
         engines_flagged = 0
+        engines_unparseable_refresh_date = 0
+        engines_missing_product_version = 0
         for engine in engines:
             engine_id = engine.get("id")
             engine_name = engine.get("name") or f"id={engine_id}"
@@ -79,13 +84,32 @@ class EngineVersionDriftRule:
             }
 
             if check_product_version and console_product:
-                e_product = engine.get("productVersion") or ""
+                e_product_raw = engine.get("productVersion")
+                e_product = e_product_raw or ""
                 if e_product and e_product != console_product:
                     issues.append(
                         f"productVersion {e_product!r} != console {console_product!r}"
                     )
                     engine_details["engine_product_version"] = e_product
                     engine_details["console_product_version"] = console_product
+                elif e_product_raw is not None and not e_product:
+                    # API returned the field but with an empty value — the
+                    # engine isn't reporting a version, which is itself an
+                    # operational signal worth surfacing at info severity.
+                    engines_missing_product_version += 1
+                    findings.append(Finding(
+                        severity="info",
+                        message=(
+                            f"Scan engine '{engine_name}' reports an empty "
+                            f"productVersion. Verify the engine is healthy "
+                            f"and able to report its build."
+                        ),
+                        details={
+                            "engine_id": engine_id,
+                            "engine_name": engine.get("name"),
+                            "engine_address": engine.get("address"),
+                        },
+                    ))
 
             if check_content_version and console_content:
                 e_content = engine.get("contentVersion") or ""
@@ -96,14 +120,17 @@ class EngineVersionDriftRule:
                     engine_details["engine_content_version"] = e_content
                     engine_details["console_content_version"] = console_content
 
-            refreshed_at = _parse_iso(engine.get("lastRefreshedDate"))
-            if refreshed_at is not None and refreshed_at < stale_cutoff:
+            refresh_raw = engine.get("lastRefreshedDate")
+            refreshed_at = _parse_iso(refresh_raw)
+            if refresh_raw and refreshed_at is None:
+                engines_unparseable_refresh_date += 1
+            elif refreshed_at is not None and refreshed_at < stale_cutoff:
                 age_days = (now - refreshed_at).days
                 issues.append(
                     f"lastRefreshedDate is {age_days} day(s) old "
                     f"(threshold {stale_days})"
                 )
-                engine_details["last_refreshed_date"] = engine.get("lastRefreshedDate")
+                engine_details["last_refreshed_date"] = refresh_raw
                 engine_details["age_days"] = age_days
 
             if not issues:
@@ -134,6 +161,8 @@ class EngineVersionDriftRule:
             summary={
                 "engines_examined": len(engines),
                 "engines_flagged": engines_flagged,
+                "engines_unparseable_refresh_date": engines_unparseable_refresh_date,
+                "engines_missing_product_version": engines_missing_product_version,
                 "console_product_version": console_product,
                 "console_content_version": console_content,
                 "refresh_stale_days": stale_days,

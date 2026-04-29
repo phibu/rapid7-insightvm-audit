@@ -43,6 +43,7 @@ def test_warn_when_local_engine_carries_production_scope_by_address(fake_snapsho
     assert r.status == "warn"
     assert len(r.findings) == 1
     assert r.findings[0].details["total_assets"] == 1400
+    assert r.summary["sites_examined"] == 2
 
 
 def test_warn_when_local_engine_carries_production_scope_by_default_name(fake_snapshot):

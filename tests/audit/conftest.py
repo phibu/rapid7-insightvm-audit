@@ -29,6 +29,7 @@ class FakeSnapshot:
         self._asset_history: dict[int, list[dict]] = {}
         self._asset_groups: list[dict] = []
         self._asset_group_search_criteria: dict[int, dict] = {}
+        self._asset_group_sites: dict[int, set[int]] = {}
         self._tags: list[dict] = []
         self._reports: list[dict] = []
         self._administration_properties: dict = {}
@@ -56,6 +57,7 @@ class FakeSnapshot:
     def set_asset_history(self, asset_id: int, history: list[dict]) -> None: self._asset_history[asset_id] = history
     def set_asset_groups(self, groups: list[dict]) -> None: self._asset_groups = groups
     def set_asset_group_search_criteria(self, group_id: int, sc: dict) -> None: self._asset_group_search_criteria[group_id] = sc
+    def set_asset_group_sites(self, group_id: int, site_ids: set[int]) -> None: self._asset_group_sites[group_id] = set(site_ids)
     def set_tags(self, tags: list[dict]) -> None: self._tags = tags
     def set_reports(self, reports: list[dict]) -> None: self._reports = reports
     def set_administration_properties(self, props: dict) -> None: self._administration_properties = props
@@ -114,6 +116,9 @@ class FakeSnapshot:
         if group_id not in self._asset_group_search_criteria:
             raise AssertionError(f"FakeSnapshot.asset_group_search_criteria({group_id}) not registered")
         return self._asset_group_search_criteria[group_id]
+
+    def asset_group_sites(self, group_id: int) -> set[int]:
+        return self._asset_group_sites.get(group_id, set())
 
     def tags(self) -> list[dict]: return self._tags
     def reports(self) -> list[dict]: return self._reports
