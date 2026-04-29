@@ -184,7 +184,10 @@ class Rapid7Client:
                 last_error = e
                 logger.debug("%s %s network error: %s", method, path, e)
                 if attempt >= self._max_retries:
-                    raise Rapid7ClientError(f"network error: {e}") from e
+                    raise Rapid7ClientError(
+                        f"network error after {attempt + 1} attempt(s) "
+                        f"on {method} {path}: {e}"
+                    ) from e
                 time.sleep(2 ** attempt)
                 attempt += 1
                 continue

@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.7] - 2026-04-29
+
+Diagnostics-only patch. Network-error messages from `Rapid7Client` now
+include the request method, path, and total attempt count, so a rule
+that aborts mid-iteration tells the operator exactly which API call
+stalled. Motivated by a real user trace where a `Read timed out` on a
+hosted console killed an audit rule with a generic "network error"
+message that gave no clue which endpoint was slow.
+
+### Changed
+
+- `Rapid7Client._request` network-error wrap message: was
+  `"network error: <repr>"`, now
+  `"network error after N attempt(s) on METHOD /api/3/...: <repr>"`.
+  No behaviour change — same exception type, same retry policy
+  (`max_retries=3`, exponential backoff), same `status_code=None`.
+
+### Documentation
+
+- README "Troubleshooting" gains a bullet explaining the new error
+  format and the two `config.yaml` knobs that affect timeout
+  behaviour: `request_timeout_seconds` and `max_retries`. Notes that
+  some hosted consoles benefit from bumping the timeout to 60 or 120s.
+- `docs/examples/config.yaml` comments document both knobs and call
+  out the worst-case wait formula
+  (`(max_retries + 1) * request_timeout_seconds`).
+
+### Tests
+
+- 1 new test (`test_network_error_message_includes_method_path_and_attempt_count`)
+  locking the diagnostic format. Total now 207 passing.
+
 ## [0.1.6] - 2026-04-29
 
 Report-only enhancement to surface slow audit rules. Existing data was
@@ -307,7 +339,8 @@ InsightVM environment.
 - CI on Python 3.11 and 3.12 (GitHub Actions).
 - 153 unit tests covering checks, rules, config, client, and report rendering.
 
-[Unreleased]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.6...HEAD
+[Unreleased]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.7...HEAD
+[0.1.7]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.3...v0.1.4

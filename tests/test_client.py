@@ -238,3 +238,21 @@ def test_network_error_has_no_status_code(session):
     with pytest.raises(Rapid7ClientError) as exc:
         c.get("/api/3/sites")
     assert exc.value.status_code is None
+
+
+def test_network_error_message_includes_method_path_and_attempt_count(session):
+    """The wrapped error message must name the method, path, and total
+    attempts so an operator reading a multi-rule failure can identify
+    which endpoint stalled. Regression guard: previously the message was
+    just 'network error: <repr>' which gave no diagnostic context."""
+    session.request.side_effect = requests.ReadTimeout("Read timed out (read timeout=30)")
+    c = make_client(session)  # max_retries=2 from make_client default
+    with pytest.raises(Rapid7ClientError) as exc:
+        c.get("/api/3/sites/42/scan_credentials")
+    msg = str(exc.value)
+    assert "GET" in msg
+    assert "/api/3/sites/42/scan_credentials" in msg
+    # max_retries=2 → 1 initial + 2 retries = 3 attempts before giving up.
+    assert "3 attempt(s)" in msg
+    # Underlying error is preserved.
+    assert "Read timed out" in msg
