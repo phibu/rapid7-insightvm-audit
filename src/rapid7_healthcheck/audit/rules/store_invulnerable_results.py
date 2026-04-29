@@ -30,7 +30,7 @@ class StoreInvulnerableResultsRule:
     def run(self, snapshot, severity, full_scan, sample_size, rule_config) -> RuleResult:
         in_use: dict[str, list[int]] = defaultdict(list)
         for site in snapshot.sites():
-            tpl_id = (site.get("scanTemplate") or {}).get("id")
+            tpl_id = snapshot.site_scan_template_id(site)
             if tpl_id:
                 in_use[tpl_id].append(site["id"])
 

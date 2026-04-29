@@ -84,3 +84,27 @@ def test_disabled_schedule_skipped(fake_snapshot):
     fake_snapshot.set_blackouts([])
     r = OverlappingScanWindowsRule().run(fake_snapshot, "warn", False, 500, {})
     assert r.status == "pass"
+
+
+def test_skips_blackout_check_when_endpoint_unavailable(fake_snapshot):
+    """When /api/3/blackouts returns 404 the rule skips the blackout
+    sub-check (emitting an info finding) and still runs scan-vs-scan overlap."""
+    base = datetime(2026, 5, 1, 8, 0, tzinfo=timezone.utc)
+    fake_snapshot.set_sites([{"id": 1, "name": "A"}, {"id": 2, "name": "B"}])
+    fake_snapshot.set_site_schedules(1, [{"id": 10, "enabled": True,
+                                          "start": _iso(base), "duration": "PT2H", "repeat": None}])
+    fake_snapshot.set_site_schedules(2, [{"id": 20, "enabled": True,
+                                          "start": _iso(base), "duration": "PT2H", "repeat": None}])
+    fake_snapshot.set_site_included_targets(1, [{"address": "10.0.0.0/24"}])
+    fake_snapshot.set_site_included_targets(2, [{"address": "10.0.0.0/24"}])
+    fake_snapshot.set_blackouts([])
+    fake_snapshot.set_blackouts_unavailable(True)
+
+    r = OverlappingScanWindowsRule().run(fake_snapshot, "warn", False, 500, {})
+    # Scan-vs-scan overlap still detected.
+    assert any(f.severity == "warn" and "overlap" in f.message.lower() for f in r.findings)
+    # Info finding present explaining the skip.
+    info_findings = [f for f in r.findings if f.severity == "info"]
+    assert len(info_findings) == 1
+    assert "blackout" in info_findings[0].message.lower()
+    assert r.summary["blackouts_unavailable"] is True

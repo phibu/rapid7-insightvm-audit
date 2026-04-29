@@ -25,7 +25,7 @@ class DataQualityCheck:
         missing_os: list[dict] = []
         if t.flag_missing_os:
             missing_filter = {
-                "filters": [{"field": "os-name", "operator": "is-empty"}],
+                "filters": [{"field": "operating-system", "operator": "is-empty"}],
                 "match": "all",
             }
             missing_os = list(client.paginate_post("/api/3/assets/search", json_body=missing_filter))

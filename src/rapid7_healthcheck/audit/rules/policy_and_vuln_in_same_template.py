@@ -21,7 +21,7 @@ class PolicyAndVulnInSameTemplateRule:
     def run(self, snapshot, severity, full_scan, sample_size, rule_config) -> RuleResult:
         in_use: dict[str, list[int]] = defaultdict(list)
         for site in snapshot.sites():
-            tpl_id = (site.get("scanTemplate") or {}).get("id")
+            tpl_id = snapshot.site_scan_template_id(site)
             if tpl_id:
                 in_use[tpl_id].append(site["id"])
 
@@ -29,7 +29,7 @@ class PolicyAndVulnInSameTemplateRule:
         for tpl_id, site_ids in in_use.items():
             tpl = snapshot.scan_template(tpl_id)
             policy_on = bool(tpl.get("policyEnabled"))
-            vuln_on = bool((tpl.get("vulnerabilityChecks") or {}).get("enabled"))
+            vuln_on = snapshot.template_vuln_enabled(tpl)
             if policy_on and vuln_on:
                 findings.append(Finding(
                     severity=severity,

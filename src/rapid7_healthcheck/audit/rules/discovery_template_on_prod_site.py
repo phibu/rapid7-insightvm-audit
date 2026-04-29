@@ -29,11 +29,11 @@ class DiscoveryTemplateOnProdSiteRule:
                 continue
             if snapshot.site_asset_count(site_id) <= _MIN_ASSETS:
                 continue
-            tpl_id = (site.get("scanTemplate") or {}).get("id")
+            tpl_id = snapshot.site_scan_template_id(site)
             if not tpl_id:
                 continue
             tpl = snapshot.scan_template(tpl_id)
-            if (tpl.get("vulnerabilityChecks") or {}).get("enabled"):
+            if snapshot.template_vuln_enabled(tpl):
                 continue
             findings.append(Finding(
                 severity=severity,

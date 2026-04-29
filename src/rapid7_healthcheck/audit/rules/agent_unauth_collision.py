@@ -38,11 +38,11 @@ class AgentUnauthCollisionRule:
         for site in snapshot.sites():
             sid = site["id"]
             name = site.get("name", f"id={sid}")
-            tpl_id = (site.get("scanTemplate") or {}).get("id")
+            tpl_id = snapshot.site_scan_template_id(site)
             if not tpl_id:
                 continue
             tpl = snapshot.scan_template(tpl_id)
-            if not (tpl.get("vulnerabilityChecks") or {}).get("enabled"):
+            if not snapshot.template_vuln_enabled(tpl):
                 continue
             if _site_has_credentials(snapshot, sid):
                 continue
