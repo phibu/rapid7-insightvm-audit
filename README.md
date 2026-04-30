@@ -2,13 +2,14 @@
 
 Read-only health check for a Rapid7 InsightVM environment. Calls the Insight Platform API with a read-only API key and produces a single self-contained HTML report.
 
-### What's new in 0.1.9
+### What's new in 0.2.0
 
-The HTML report has been restyled into a hybrid editorial + dashboard layout
-with light/dark mode, a metric grid, and a "since last run" delta strip that
-appears automatically when a prior report exists in the output directory.
-The report remains a single self-contained HTML file with no external
-resources.
+The report gains an interactivity layer: a sticky filter bar (severity
+chips, search box, "Changed since last run" chip when delta data is
+present) and a three-state theme toggle (system / light / dark) with
+preference persistence. Filter state syncs to the URL hash so filtered
+views are shareable. Native `<details>` rule cards retained for
+keyboard, screen-reader, and JS-disabled accessibility.
 
 ## Requirements
 

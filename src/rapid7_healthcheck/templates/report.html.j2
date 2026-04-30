@@ -225,6 +225,8 @@
     details > *:not(summary) { display: block !important; }
     a[href]::after { content: " (" attr(href) ")"; font-size: 0.85em; color: #555; }
     a[href^="#"]::after { content: ""; }
+    .filter-bar { display: none; }
+    .theme-toggle { display: none; }
   }
   /* JS-disabled fallback: hide chrome that depends on JS to function. */
   .no-js .filter-bar,

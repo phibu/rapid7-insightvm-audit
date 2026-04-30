@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-04-30
+
+### Added
+- Sticky filter bar above the per-check sections with severity chips
+  (All / Fail / Warn / Pass / Skipped), a `Changed` chip when delta data
+  is present, and a search box. Filter state syncs to the URL hash so a
+  filtered view is shareable.
+- Three-state theme toggle (system / light / dark) in the report header,
+  persisted in `localStorage`. FOUC-prevented by an inline head script.
+- `<noscript>` fallback: with JS disabled, the filter bar and theme
+  toggle hide; the rest of the report renders unchanged.
+- `@media (prefers-reduced-motion: reduce)` strips chip and toggle
+  transitions to instant.
+- New `tests/test_report_a11y.py`: regression net for `aria-pressed`,
+  `aria-label`, `role="toolbar"`, `:focus-visible`, no-js plumbing,
+  reduced-motion media query.
+
+### Changed
+- Print stylesheet hides the filter bar and theme toggle on paper.
+
+### Notes
+- Rule-card expansion still uses native `<details>` (preserved keyboard
+  + screen-reader semantics + zero-JS fallback). The original Phase 2
+  spec called for replacing it with `<button aria-expanded>`; we kept
+  the native element for simplicity and robustness.
+
 ## [0.1.10] - 2026-04-30
 
 ### Changed
@@ -471,7 +497,8 @@ InsightVM environment.
 - CI on Python 3.11 and 3.12 (GitHub Actions).
 - 153 unit tests covering checks, rules, config, client, and report rendering.
 
-[Unreleased]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.10...HEAD
+[Unreleased]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.10...v0.2.0
 [0.1.10]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.9...v0.1.10
 [0.1.9]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.8...v0.1.9
 [0.1.8]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.7...v0.1.8
