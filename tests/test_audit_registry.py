@@ -13,8 +13,8 @@ def test_audit_rules_register_on_package_import():
             del sys.modules[mod]
 
     audit = importlib.import_module("rapid7_healthcheck.audit")
-    assert len(audit._RULE_REGISTRY) == 13, (
-        f"expected 13 audit rules registered after package import, "
+    assert len(audit._RULE_REGISTRY) == 14, (
+        f"expected 14 audit rules registered after package import, "
         f"got {len(audit._RULE_REGISTRY)}: {sorted(audit._RULE_REGISTRY)}"
     )
 

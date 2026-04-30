@@ -80,6 +80,7 @@ _VALID_RULE_IDS = {
     "scan_report_schedule_overlap",
     "engine_version_drift",
     "insight_agent_deployed",
+    "insight_agent_version_currency",
 }
 _VALID_SEVERITIES = {"info", "warn", "fail"}
 

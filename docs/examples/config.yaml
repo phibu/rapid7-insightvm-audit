@@ -99,6 +99,10 @@ audit:
     insight_agent_deployed:
       enabled: true
       severity: info
+    insight_agent_version_currency:
+      enabled: true
+      severity: warn
+      version_drift_minor: 1
 
 # User & Permission Audit — sibling to `audit:`, scoped to console user
 # accounts and authentication settings. Requires the API key to belong
