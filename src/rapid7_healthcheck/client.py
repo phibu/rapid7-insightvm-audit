@@ -116,6 +116,22 @@ class Rapid7Client:
             "POST", path, params=params, page_size=page_size, json_body=json_body
         )
 
+    def post_one(
+        self,
+        path: str,
+        *,
+        json_body: dict,
+        params: dict | None = None,
+    ) -> dict:
+        """Issue a single POST to a search endpoint and return the parsed response.
+
+        Unlike `paginate_post`, this does not iterate pages — useful when the
+        caller only needs `page.totalResources` and the first page of resources
+        (e.g. for count-with-examples summaries). The path must be in the
+        read-only POST allowlist (`_ALLOWED_POST_PATHS`).
+        """
+        return self._request("POST", path, params=params, json_body=json_body)
+
     # --- Internals ---
 
     def _paginate(
