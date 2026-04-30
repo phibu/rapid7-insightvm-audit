@@ -252,7 +252,8 @@ All thresholds live in `config.yaml` under `thresholds:`. Every report footer pr
 - `scan_activity.site_no_scan_days` — when no scan in this window becomes a fail.
 - `scan_activity.stuck_scan_hours` — a running scan older than this is flagged as stuck.
 - `asset_coverage.stale_asset_days` — assets not scanned in this window are stale.
-- `asset_coverage.flag_unscanned_assets` — also list assets that have never been scanned.
+- `asset_coverage.flag_unscanned_assets` — also list assets that have not been scanned recently.
+- `asset_coverage.never_scanned_days` — days since last scan to flag an asset as effectively never scanned (default 90).
 - `data_quality.flag_missing_os` / `flag_empty_sites` — toggle data quality sub-checks.
 
 You can also disable an entire check by setting its toggle in `checks:` to `false` — it appears in the report as `SKIPPED`.

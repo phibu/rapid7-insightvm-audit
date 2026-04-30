@@ -36,7 +36,7 @@ def _base_config(*, user_audit_enabled: bool = True, rules: dict | None = None) 
         thresholds=Thresholds(
             scan_engines=ScanEngineThresholds(2, 24),
             scan_activity=ScanActivityThresholds(7, 24, 14),
-            asset_coverage=AssetCoverageThresholds(30, True),
+            asset_coverage=AssetCoverageThresholds(30, True, 90),
             data_quality=DataQualityThresholds(True, True),
         ),
         checks={"scan_engines": False, "scan_activity": False, "asset_coverage": False, "data_quality": False, "configuration_audit": False, "user_permission_audit": True},

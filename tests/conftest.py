@@ -117,6 +117,7 @@ def _default_config() -> AppConfig:
             asset_coverage=AssetCoverageThresholds(
                 stale_asset_days=30,
                 flag_unscanned_assets=True,
+                never_scanned_days=90,
             ),
             data_quality=DataQualityThresholds(
                 flag_missing_os=True,

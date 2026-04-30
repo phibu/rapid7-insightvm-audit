@@ -27,6 +27,7 @@ VALID_YAML = textwrap.dedent("""
       asset_coverage:
         stale_asset_days: 30
         flag_unscanned_assets: true
+        never_scanned_days: 90
       data_quality:
         flag_missing_os: true
         flag_empty_sites: true
@@ -292,6 +293,7 @@ _MINIMAL_CONFIG_TEXT = textwrap.dedent("""\
       asset_coverage:
         stale_asset_days: 30
         flag_unscanned_assets: true
+        never_scanned_days: 90
       data_quality:
         flag_missing_os: true
         flag_empty_sites: true
