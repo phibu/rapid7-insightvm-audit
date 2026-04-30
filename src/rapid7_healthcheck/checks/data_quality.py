@@ -22,18 +22,28 @@ class DataQualityCheck:
         t = config.thresholds.data_quality
         findings: list[Finding] = []
 
-        missing_os: list[dict] = []
+        missing_os_total = 0
+        missing_os_examples: list[dict] = []
         if t.flag_missing_os:
             missing_filter = {
                 "filters": [{"field": "operating-system", "operator": "is-empty"}],
                 "match": "all",
             }
-            missing_os = list(client.paginate_post("/api/3/assets/search", json_body=missing_filter))
-            if missing_os:
+            body = client.post_one(
+                "/api/3/assets/search",
+                json_body=missing_filter,
+                params={"size": _EXAMPLES_LIMIT},
+            )
+            missing_os_total = int(body.get("page", {}).get("totalResources", 0))
+            missing_os_examples = body.get("resources", [])[:_EXAMPLES_LIMIT]
+            if missing_os_total > 0:
                 findings.append(Finding(
                     severity="warn",
-                    message=f"{len(missing_os)} asset(s) have no OS fingerprint",
-                    details={"total": len(missing_os), "examples": _example_hostnames(missing_os)},
+                    message=f"{missing_os_total} asset(s) have no OS fingerprint",
+                    details={
+                        "total": missing_os_total,
+                        "examples": _example_hostnames(missing_os_examples),
+                    },
                 ))
 
         empty_sites: list[dict] = []
@@ -60,7 +70,7 @@ class DataQualityCheck:
             status=rollup_status(findings),
             findings=findings,
             summary={
-                "missing_os_count": len(missing_os),
+                "missing_os_count": missing_os_total,
                 "empty_sites_count": len(empty_sites),
             },
             duration_ms=int((time.monotonic() - start) * 1000),
