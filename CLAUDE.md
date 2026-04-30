@@ -2,6 +2,19 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Read-only safety (MOST IMPORTANT)
+
+**Before ANY commit:** verify that every new or modified API call is read-only. This tool runs against InsightVM Security Consoles using Global Administrator-level credentials in many real deployments — a single accidental write or delete could destroy customer scan history, modify scan templates, drop sites, or worse. **GA permissions are too dangerous to let a write or delete through unnoticed.**
+
+**Concrete rules:**
+
+- The HTTP client (`client.py`) enforces a hard verb allowlist: `GET` and `POST` only. POST is further restricted to a tiny `_ALLOWED_POST_PATHS` set (`/api/3/assets/search` only, today). Any other verb or any unallowlisted POST path raises `ReadOnlyViolationError` before the request leaves the process.
+- **Never** add `PUT`, `PATCH`, or `DELETE` to `_ALLOWED_VERBS`. Never extend `_ALLOWED_POST_PATHS` without an explicit, deliberate review — POST endpoints in Rapid7 v3 routinely create or mutate state, and the search endpoint is the lone exception that travels its filter criteria in the body.
+- **Before committing anything that touches `client.py`, `audit/rules/*.py`, `audit/snapshot.py`, or any new module that issues HTTP**, do the equivalent of: `grep -nE 'PUT|PATCH|DELETE|client\.(put|patch|delete)' src/` and confirm zero matches. If the diff introduces any such call — stop and reconsider; the answer is almost certainly to find a read-only equivalent or document the rule as "cannot be implemented" (see the existing "Rules NOT implemented" sections in README).
+- The read-only contract is described in [SECURITY.md](SECURITY.md) and surfaces to users; do not weaken it without updating both files and getting explicit user approval.
+
+If a feature genuinely cannot be implemented read-only, document it as a v3 API gap (in the README's "Rules NOT implemented" section) and direct users to audit it via the Security Console UI. **Never** introduce write/delete capability to "make a feature work."
+
 ## Common commands
 
 ```bash
