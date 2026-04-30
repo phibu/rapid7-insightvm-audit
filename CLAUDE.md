@@ -22,6 +22,34 @@ python -m rapid7_healthcheck --config path/to/config.yaml --output report.html -
 
 CI (`.github/workflows/ci.yml`) runs `pytest -v` against Python 3.11 and 3.12 on Linux. Minimum supported Python is 3.11; the project targets 3.11 / 3.12. There is no lint or type-check step configured — don't invent one.
 
+## Releases
+
+**Every version bump requires a tagged GitHub release with a runtime-only zip asset attached.** A version is not shipped until this is done. Skipping the asset is not allowed — the auto-generated source tarball that GitHub attaches by default does not count.
+
+After merging a release commit (`release: X.Y.Z` on `main`) and pushing:
+
+```bash
+# 1. Tag and push
+git tag -a vX.Y.Z -m "Release X.Y.Z - <one-line summary>"
+git push origin vX.Y.Z
+
+# 2. Build the runtime zip (excludes tests/ and docs/superpowers/)
+git archive --format=zip \
+  --prefix=rapid7-insightvm-audit-X.Y.Z/ \
+  -o /tmp/rapid7-insightvm-audit-X.Y.Z.zip \
+  vX.Y.Z \
+  -- ':(exclude)tests/*' ':(exclude)docs/superpowers/*'
+
+# 3. Create the GitHub release with the zip attached
+gh release create vX.Y.Z /tmp/rapid7-insightvm-audit-X.Y.Z.zip \
+  --title "vX.Y.Z — <short summary>" \
+  --notes "<release body>"
+```
+
+Asset naming convention: `rapid7-insightvm-audit-X.Y.Z.zip` (no `v` prefix in the filename, matches every release back to v0.1.7). Title format: `vX.Y.Z — <short summary>` (em dash, lowercase summary). Release body should mirror the CHANGELOG entry plus a "## Asset" section noting `rapid7-insightvm-audit-X.Y.Z.zip — runtime files only.` and a "Full changelog" link to `CHANGELOG.md` at the version tag.
+
+The zip contains only what's needed to run the tool (source under `src/`, `pyproject.toml`, `README.md`, `LICENSE`, `SECURITY.md`, `CHANGELOG.md`, `CLAUDE.md`, `docs/examples/`, `docs/research/`, `.github/`, `.env.example`, `.gitignore`). It excludes `tests/`, `docs/superpowers/` (specs/plans), and any other non-runtime artifacts.
+
 ## Backlog
 
 `backlog.md` (gitignored) is the local punch list of deferred work, grouped by target version (e.g. `0.1.9`, `0.2.0`, `someday`). It is the single source of truth for "we know about this, just not now."
