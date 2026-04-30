@@ -16,7 +16,7 @@ import logging
 import time
 from typing import Any
 
-from rapid7_healthcheck.audit import RuleResult, Rule, _flatten_findings, _rollup_audit_status
+from rapid7_healthcheck.audit import RuleResult, Rule, _flatten_findings, _rollup_audit_status, _extract_diagnostics
 from rapid7_healthcheck.audit.snapshot import EnvSnapshot
 from rapid7_healthcheck.checks import CheckResult, Finding
 from rapid7_healthcheck.config import AppConfig
@@ -112,6 +112,7 @@ class UserPermissionAuditCheck:
                 rule_results.append(result)
             except Exception as e:
                 logger.exception("user audit rule %s raised", rule_id)
+                error_path, error_status_code = _extract_diagnostics(e)
                 rule_results.append(RuleResult(
                     rule_id=rule_id,
                     rule_name=rule_cls.rule_name,
@@ -121,6 +122,8 @@ class UserPermissionAuditCheck:
                     sources=list(rule_cls.sources),
                     error=str(e),
                     duration_ms=int((time.monotonic() - rule_start) * 1000),
+                    error_path=error_path,
+                    error_status_code=error_status_code,
                 ))
 
         return CheckResult(

@@ -477,7 +477,13 @@
         <p class="check-desc">{{ rr.description }}</p>
 
         {% if rr.status == "error" %}
-          <div class="error-box"><b>Rule failed to run:</b> {{ rr.error }}</div>
+          <div class="error-box"><b>Rule failed to run:</b> {{ rr.error }}
+            {% if rr.error_path %}
+            <div class="rule-error-meta">
+              Failed call: <code>{{ rr.error_path }}</code>{% if rr.error_status_code %} (HTTP {{ rr.error_status_code }}){% endif %}
+            </div>
+            {% endif %}
+          </div>
         {% elif rr.status == "skipped" %}
           <div class="skipped-box">This rule is disabled in <code>config.yaml</code> (audit.rules.{{ rr.rule_id }}.enabled: false).</div>
         {% else %}

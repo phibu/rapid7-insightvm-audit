@@ -1,15 +1,38 @@
 from __future__ import annotations
 
 import logging
+import re
 import time
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from rapid7_healthcheck.audit.snapshot import EnvSnapshot
 from rapid7_healthcheck.checks import CheckResult, Finding, Severity, Status
+from rapid7_healthcheck.client import Rapid7ClientError
 from rapid7_healthcheck.config import AppConfig
 
 logger = logging.getLogger(__name__)
+
+_ERROR_PATH_RE = re.compile(
+    r' on \w+ (/api/3/[^\s:]+)'        # "network error after N attempt(s) on GET /api/3/..."
+    r'|(?: at )(/api/3/[^\s:]+)'       # "401 at /api/3/..."
+    r'|(?: from \w+ )(/api/3/[^\s:]+)' # "HTTP 500 from POST /api/3/..."
+)
+
+
+def _extract_diagnostics(e: Exception) -> tuple[str | None, int | None]:
+    """Pull an API path and HTTP status code out of a ``Rapid7ClientError``.
+
+    Returns ``(None, None)`` for non-Rapid7ClientError exceptions. Path
+    extraction relies on the v0.1.7 standardized message format which
+    prefixes the failing path with " on <METHOD> ", " at ", or
+    " from <METHOD> "; all three forms are matched.
+    """
+    if not isinstance(e, Rapid7ClientError):
+        return None, None
+    m = _ERROR_PATH_RE.search(str(e))
+    path = (m.group(1) or m.group(2) or m.group(3)) if m else None
+    return path, e.status_code
 
 
 @dataclass
@@ -26,6 +49,8 @@ class RuleResult:
     sources: list[str] = field(default_factory=list)
     error: str | None = None
     duration_ms: int = 0
+    error_path: str | None = None
+    error_status_code: int | None = None
 
 
 class Rule(Protocol):
@@ -116,6 +141,7 @@ class ConfigurationAuditCheck:
                 rule_results.append(result)
             except Exception as e:
                 logger.exception("audit rule %s raised", rule_id)
+                error_path, error_status_code = _extract_diagnostics(e)
                 rule_results.append(RuleResult(
                     rule_id=rule_id,
                     rule_name=rule_cls.rule_name,
@@ -125,6 +151,8 @@ class ConfigurationAuditCheck:
                     sources=list(rule_cls.sources),
                     error=str(e),
                     duration_ms=int((time.monotonic() - rule_start) * 1000),
+                    error_path=error_path,
+                    error_status_code=error_status_code,
                 ))
 
         return CheckResult(
