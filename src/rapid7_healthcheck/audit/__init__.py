@@ -95,7 +95,7 @@ class ConfigurationAuditCheck:
     name = "Configuration Audit"
     description = "Best-practice configuration audits sourced from Rapid7 documentation."
 
-    def run(self, client: Any, config: AppConfig) -> CheckResult:
+    def run(self, client: Any, config: AppConfig, progress=None) -> CheckResult:
         start = time.monotonic()
 
         if not config.audit.enabled:
@@ -116,7 +116,8 @@ class ConfigurationAuditCheck:
         )
 
         rule_results: list[RuleResult] = []
-        for rule_id, rule_cls in _RULE_REGISTRY.items():
+        total_rules = len(_RULE_REGISTRY)
+        for rule_idx, (rule_id, rule_cls) in enumerate(_RULE_REGISTRY.items(), start=1):
             rule_cfg = config.audit.rules.get(rule_id)
             if rule_cfg is None or not rule_cfg.enabled:
                 rule_results.append(RuleResult(
@@ -128,6 +129,8 @@ class ConfigurationAuditCheck:
                     sources=list(rule_cls.sources),
                 ))
                 continue
+            if progress is not None:
+                progress.step(rule_idx, total_rules, f"audit: {rule_id}")
             rule_start = time.monotonic()
             try:
                 result = rule_cls().run(
@@ -154,6 +157,8 @@ class ConfigurationAuditCheck:
                     error_path=error_path,
                     error_status_code=error_status_code,
                 ))
+            if progress is not None:
+                progress.done(rule_idx, total_rules, f"audit: {rule_id}", duration_ms=int((time.monotonic() - rule_start) * 1000))
 
         return CheckResult(
             name=self.name,

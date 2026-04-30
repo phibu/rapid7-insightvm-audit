@@ -114,9 +114,10 @@ def pick_exit_code(results: list[CheckResult]) -> int:
     return EXIT_HEALTHY
 
 
-def _run_checks(client: Any, cfg: AppConfig) -> list[CheckResult]:
+def _run_checks(client: Any, cfg: AppConfig, progress: "ProgressReporter | None" = None) -> list[CheckResult]:
     results: list[CheckResult] = []
-    for name, check_cls in _REGISTRY.items():
+    total = len(_REGISTRY)
+    for idx, (name, check_cls) in enumerate(_REGISTRY.items(), start=1):
         enabled = cfg.checks.get(name, False)
         if not enabled:
             instance = check_cls()
@@ -127,10 +128,16 @@ def _run_checks(client: Any, cfg: AppConfig) -> list[CheckResult]:
             ))
             continue
         instance = check_cls()
+        if progress is not None:
+            progress.step(idx, total, instance.name)
         logger.info("running check: %s", instance.name)
         start = time.monotonic()
         try:
-            results.append(instance.run(client, cfg))
+            # Audit orchestrators accept progress; operational checks don't.
+            if name in ("configuration_audit", "user_permission_audit"):
+                results.append(instance.run(client, cfg, progress=progress))
+            else:
+                results.append(instance.run(client, cfg))
         except Exception as e:  # per-check isolation
             duration_ms = int((time.monotonic() - start) * 1000)
             logger.exception("check %s failed", instance.name)
@@ -141,6 +148,10 @@ def _run_checks(client: Any, cfg: AppConfig) -> list[CheckResult]:
                 error=str(e),
                 duration_ms=duration_ms,
             ))
+        else:
+            duration_ms = int((time.monotonic() - start) * 1000)
+        if progress is not None:
+            progress.done(idx, total, instance.name, duration_ms=duration_ms)
     return results
 
 
@@ -198,8 +209,12 @@ def run(argv: list[str] | None = None) -> int:
         logger.error("could not reach Rapid7 (%s); check base_url and network", e)
         return EXIT_STARTUP
 
-    results = _run_checks(client, cfg)
+    from rapid7_healthcheck.progress import ProgressReporter
+    progress = ProgressReporter()
 
+    results = _run_checks(client, cfg, progress=progress)
+
+    progress.newline_if_needed()
     ctx = ReportContext(
         title=cfg.report.title,
         generated_at=datetime.now(timezone.utc),
@@ -221,6 +236,7 @@ def run(argv: list[str] | None = None) -> int:
             delta_max_age_days=cfg.report.delta_max_age_days,
         )
 
+    progress.newline_if_needed()
     print(out.resolve())
     return pick_exit_code(results)
 
