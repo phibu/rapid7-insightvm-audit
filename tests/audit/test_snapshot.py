@@ -280,3 +280,37 @@ def test_template_vuln_enabled_top_level_wins_over_nested():
 def test_template_vuln_enabled_missing_defaults_to_false():
     assert EnvSnapshot.template_vuln_enabled({}) is False
     assert EnvSnapshot.template_vuln_enabled({"vulnerabilityChecks": "not-a-dict"}) is False
+
+
+# --- asset_has_agent ---------------------------------------------------
+
+def _snapshot() -> EnvSnapshot:
+    from unittest.mock import MagicMock
+    return EnvSnapshot(MagicMock(), full_scan=False, sample_size=10)
+
+
+def test_asset_has_agent_returns_true_when_agentid_present():
+    s = _snapshot()
+    assert s.asset_has_agent({"id": 1, "agent": {"agentId": "abc-123"}}) is True
+
+
+def test_asset_has_agent_returns_false_when_agent_block_empty():
+    s = _snapshot()
+    assert s.asset_has_agent({"id": 1, "agent": {}}) is False
+
+
+def test_asset_has_agent_returns_false_when_agent_explicit_none():
+    s = _snapshot()
+    assert s.asset_has_agent({"id": 1, "agent": None}) is False
+
+
+def test_asset_has_agent_returns_none_when_signal_absent():
+    """No agent key at all — caller should fall back to asset_history."""
+    s = _snapshot()
+    assert s.asset_has_agent({"id": 1, "hostName": "h1"}) is None
+
+
+def test_asset_has_agent_handles_top_level_agentid():
+    """Some asset shapes use top-level agentId instead of nested agent.agentId."""
+    s = _snapshot()
+    assert s.asset_has_agent({"id": 1, "agentId": "abc-123"}) is True

@@ -69,3 +69,38 @@ def test_sampling_recorded(fake_snapshot):
     r = AgentUnauthCollisionRule().run(fake_snapshot, "fail", False, 500, {})
     assert r.sampled
     assert "of 4200" in (r.sample_info or "")
+
+
+def test_uses_cheap_agent_signal_when_available(fake_snapshot):
+    """Assets with agent.agentId in their record must NOT trigger asset_history calls."""
+    fake_snapshot.set_sites([_site(1, "tpl-vuln", "ProdSite")])
+    fake_snapshot.set_scan_template("tpl-vuln", {"id": "tpl-vuln", "name": "Vuln",
+                                                  "vulnerabilityChecks": {"enabled": True}})
+    fake_snapshot.set_site_credentials(1, [])
+    fake_snapshot.set_shared_credentials([])
+    # asset 1: has cheap signal (agent.agentId present)
+    # asset 2: no cheap signal — falls back to asset_history
+    fake_snapshot.set_asset_sample(1, [
+        {"id": 1, "agent": {"agentId": "abc-123"}},
+        {"id": 2},
+    ], total=2)
+    # Only asset 2 needs history; asset 1's cheap signal is True so it counts directly.
+    fake_snapshot.set_asset_history(2, [{"type": "AGENT-IMPORT"}])
+
+    history_calls: list[int] = []
+    _orig_history = fake_snapshot.asset_history
+
+    def _tracking_history(asset_id: int):
+        history_calls.append(asset_id)
+        return _orig_history(asset_id)
+
+    fake_snapshot.asset_history = _tracking_history
+
+    r = AgentUnauthCollisionRule().run(fake_snapshot, "fail", False, 500, {})
+
+    assert history_calls == [2], (
+        f"asset_history should only be called for assets without the cheap signal; "
+        f"called for: {history_calls}"
+    )
+    assert r.status == "fail"
+    assert r.findings[0].details["agent_count"] == 2
