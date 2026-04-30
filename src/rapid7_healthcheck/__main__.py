@@ -51,20 +51,49 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     p.add_argument("--output", default=None, help="Override report output path")
     p.add_argument("--verbose", action="store_true", help="Enable DEBUG logging")
     p.add_argument("--log-file", default=None, help="Also write logs to this file")
+    p.add_argument("--no-log-file", action="store_true", help="Suppress the default-on run log file")
     return p.parse_args(argv)
 
 
 def _setup_logging(verbose: bool, log_file: str | None) -> None:
     level = logging.DEBUG if verbose else logging.INFO
     handlers: list[logging.Handler] = [logging.StreamHandler(sys.stderr)]
+    file_open_error: str | None = None
     if log_file:
-        handlers.append(logging.FileHandler(log_file, encoding="utf-8"))
+        try:
+            handlers.append(logging.FileHandler(log_file, encoding="utf-8"))
+        except OSError as e:
+            file_open_error = f"could not open log file {log_file!r}: {e}"
+    if file_open_error:
+        logging.getLogger(__name__).warning(file_open_error)
     logging.basicConfig(
         level=level,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
         handlers=handlers,
         force=True,
     )
+
+
+def _resolve_log_file(args: argparse.Namespace, cfg: AppConfig) -> Path | None:
+    """Resolve which path (if any) the run-log FileHandler should write to.
+
+    Precedence:
+      1. --no-log-file  -> None (suppress)
+      2. --log-file <p> -> <p> (explicit override)
+      3. --output <p>   -> <p> with .log suffix (alongside report)
+      4. otherwise      -> cfg.report.output_dir + filename pattern with .log suffix
+    """
+    if getattr(args, "no_log_file", False):
+        return None
+    if getattr(args, "log_file", None):
+        return Path(args.log_file)
+    if getattr(args, "output", None):
+        return Path(args.output).with_suffix(".log")
+    # Derive from config — mirror what write_report does for the default path.
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H%M")
+    base = cfg.report.filename_pattern.replace("{timestamp}", timestamp)
+    log_name = Path(base).with_suffix(".log").name
+    return Path(cfg.report.output_dir) / log_name
 
 
 def build_thresholds_table(cfg: AppConfig) -> list[tuple[str, str]]:
@@ -85,9 +114,10 @@ def pick_exit_code(results: list[CheckResult]) -> int:
     return EXIT_HEALTHY
 
 
-def _run_checks(client: Any, cfg: AppConfig) -> list[CheckResult]:
+def _run_checks(client: Any, cfg: AppConfig, progress: "ProgressReporter | None" = None) -> list[CheckResult]:
     results: list[CheckResult] = []
-    for name, check_cls in _REGISTRY.items():
+    total = len(_REGISTRY)
+    for idx, (name, check_cls) in enumerate(_REGISTRY.items(), start=1):
         enabled = cfg.checks.get(name, False)
         if not enabled:
             instance = check_cls()
@@ -98,10 +128,16 @@ def _run_checks(client: Any, cfg: AppConfig) -> list[CheckResult]:
             ))
             continue
         instance = check_cls()
+        if progress is not None:
+            progress.step(idx, total, instance.name)
         logger.info("running check: %s", instance.name)
         start = time.monotonic()
         try:
-            results.append(instance.run(client, cfg))
+            # Audit orchestrators accept progress; operational checks don't.
+            if name in ("configuration_audit", "user_permission_audit"):
+                results.append(instance.run(client, cfg, progress=progress))
+            else:
+                results.append(instance.run(client, cfg))
         except Exception as e:  # per-check isolation
             duration_ms = int((time.monotonic() - start) * 1000)
             logger.exception("check %s failed", instance.name)
@@ -112,12 +148,17 @@ def _run_checks(client: Any, cfg: AppConfig) -> list[CheckResult]:
                 error=str(e),
                 duration_ms=duration_ms,
             ))
+        else:
+            duration_ms = int((time.monotonic() - start) * 1000)
+        if progress is not None:
+            progress.done(idx, total, instance.name, duration_ms=duration_ms)
     return results
 
 
 def run(argv: list[str] | None = None) -> int:
     args = _parse_args(argv if argv is not None else sys.argv[1:])
-    _setup_logging(args.verbose, args.log_file)
+    # First pass: stderr-only so config errors are visible.
+    _setup_logging(args.verbose, log_file=None)
     load_dotenv(override=False)
 
     try:
@@ -125,6 +166,10 @@ def run(argv: list[str] | None = None) -> int:
     except ConfigError as e:
         logger.error("config error: %s", e)
         return EXIT_STARTUP
+
+    # Second pass: now we know where the log should go.
+    resolved_log = _resolve_log_file(args, cfg)
+    _setup_logging(args.verbose, log_file=str(resolved_log) if resolved_log else None)
 
     api_key: str | None = None
     basic_auth: tuple[str, str] | None = None
@@ -164,8 +209,12 @@ def run(argv: list[str] | None = None) -> int:
         logger.error("could not reach Rapid7 (%s); check base_url and network", e)
         return EXIT_STARTUP
 
-    results = _run_checks(client, cfg)
+    from rapid7_healthcheck.progress import ProgressReporter
+    progress = ProgressReporter()
 
+    results = _run_checks(client, cfg, progress=progress)
+
+    progress.newline_if_needed()
     ctx = ReportContext(
         title=cfg.report.title,
         generated_at=datetime.now(timezone.utc),
@@ -187,6 +236,7 @@ def run(argv: list[str] | None = None) -> int:
             delta_max_age_days=cfg.report.delta_max_age_days,
         )
 
+    progress.newline_if_needed()
     print(out.resolve())
     return pick_exit_code(results)
 

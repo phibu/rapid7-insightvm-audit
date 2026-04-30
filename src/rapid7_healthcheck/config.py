@@ -49,6 +49,7 @@ class ScanActivityThresholds:
 class AssetCoverageThresholds:
     stale_asset_days: int
     flag_unscanned_assets: bool
+    never_scanned_days: int
 
 
 @dataclass(frozen=True)

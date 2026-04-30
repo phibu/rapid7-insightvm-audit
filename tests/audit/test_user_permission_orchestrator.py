@@ -40,7 +40,7 @@ def _minimal_config(*, user_audit_enabled: bool = True) -> AppConfig:
         thresholds=Thresholds(
             scan_engines=ScanEngineThresholds(last_contact_warn_hours=24, last_contact_fail_hours=72),
             scan_activity=ScanActivityThresholds(recent_window_days=7, stuck_scan_hours=12, site_no_scan_days=30),
-            asset_coverage=AssetCoverageThresholds(stale_asset_days=30, flag_unscanned_assets=True),
+            asset_coverage=AssetCoverageThresholds(stale_asset_days=30, flag_unscanned_assets=True, never_scanned_days=90),
             data_quality=DataQualityThresholds(flag_missing_os=True, flag_empty_sites=True),
         ),
         checks={

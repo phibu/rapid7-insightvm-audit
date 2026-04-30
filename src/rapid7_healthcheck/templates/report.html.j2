@@ -170,7 +170,7 @@
   .badge.skipped { background: var(--info-bg); color: var(--info-fg); }
   .badge.info    { background: var(--info-bg); color: var(--info-fg); }
 
-  section.check { margin: 2.5rem 0; }
+  section.check { margin: 2.5rem 0; scroll-margin-top: 90px; }
   section.check h2 { margin: 0 0 0.25rem 0; }
   .check-desc { color: var(--neutral-muted); margin: 0 0 0.75rem 0; }
 
@@ -477,7 +477,13 @@
         <p class="check-desc">{{ rr.description }}</p>
 
         {% if rr.status == "error" %}
-          <div class="error-box"><b>Rule failed to run:</b> {{ rr.error }}</div>
+          <div class="error-box"><b>Rule failed to run:</b> {{ rr.error }}
+            {% if rr.error_path %}
+            <div class="rule-error-meta">
+              Failed call: <code>{{ rr.error_path }}</code>{% if rr.error_status_code %} (HTTP {{ rr.error_status_code }}){% endif %}
+            </div>
+            {% endif %}
+          </div>
         {% elif rr.status == "skipped" %}
           <div class="skipped-box">This rule is disabled in <code>config.yaml</code> (audit.rules.{{ rr.rule_id }}.enabled: false).</div>
         {% else %}
@@ -745,6 +751,18 @@
   }
 })();
 {% endif %}
+(function(){
+  function expandFromHash() {
+    var hash = location.hash.replace(/^#/, '');
+    if (!hash) return;
+    var target = document.getElementById(hash);
+    if (!target) return;
+    var details = target.matches('details') ? target : target.querySelector(':scope > details');
+    if (details) details.open = true;
+  }
+  window.addEventListener('hashchange', expandFromHash);
+  expandFromHash();
+})();
 </script>
 
 </body>

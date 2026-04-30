@@ -80,3 +80,31 @@ def test_no_descendant_combinator_for_severity_filter():
         "and details). Regression of a91f6d1: the inner finding-details would "
         "be hidden alongside the outer rule card."
     )
+
+
+def test_section_check_has_scroll_margin_top():
+    """Hash-link scroll must respect the sticky filter bar height; otherwise
+    the rule's heading is covered by the bar after a click on a summary tile.
+    Static-HTML pin: section.check has scroll-margin-top set to clear the bar."""
+    html = render_report(_minimal_context())
+    pattern = re.compile(
+        r'section\.check\s*\{[^}]*scroll-margin-top\s*:\s*\d+(?:\.\d+)?\s*(?:px|rem|em)\b',
+        re.DOTALL,
+    )
+    assert pattern.search(html), (
+        "expected `section.check { ... scroll-margin-top: <length> }` rule in the "
+        "rendered HTML; without it, hash-link scrolls land under the sticky "
+        "filter bar."
+    )
+
+
+def test_hash_link_autoexpand_iife_present():
+    """Clicking a summary tile sets the URL hash to #rule-<id>. The browser
+    scrolls (covered by scroll-margin-top), but the native <details> stays
+    collapsed unless we open() it. Pin the inline IIFE that does so."""
+    html = render_report(_minimal_context())
+    assert "expandFromHash" in html, "expandFromHash IIFE missing"
+    assert "hashchange" in html, "hashchange listener missing"
+    assert "details.open = true" in html or "details.open=true" in html, (
+        "expandFromHash IIFE must set details.open = true"
+    )

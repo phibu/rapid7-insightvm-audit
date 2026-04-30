@@ -153,6 +153,30 @@ class EnvSnapshot:
             self._asset_history[asset_id] = list(body.get("history", body.get("resources", [])))
         return self._asset_history[asset_id]
 
+    def asset_has_agent(self, asset: dict) -> bool | None:
+        """Cheap agent-presence check: returns True/False from the asset record
+        directly when possible, None when the record doesn't carry the signal
+        (caller should fall back to `asset_history`).
+
+        The Rapid7 /api/3 asset payload typically includes an `agent` block
+        (with `agentId`) when the asset has been correlated with an Insight
+        Agent. Some console versions and asset shapes don't populate it; in
+        that case we return None and let the caller decide whether to do
+        the more expensive history check.
+        """
+        agent = asset.get("agent")
+        if isinstance(agent, dict):
+            if agent.get("agentId"):
+                return True
+            # Explicit empty agent block also signals "no agent"
+            return False
+        if "agent" in asset and asset["agent"] is None:
+            return False
+        # Some shapes use 'agentId' at the top level instead.
+        if "agentId" in asset:
+            return bool(asset.get("agentId"))
+        return None  # signal not present — caller falls back
+
     def asset_groups(self) -> list[dict]:
         """All asset groups (static + dynamic). Each entry includes `searchCriteria`
         for dynamic groups when the API populates it on the listing.

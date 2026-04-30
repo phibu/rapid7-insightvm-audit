@@ -201,6 +201,8 @@ Per-rule severity and enable/disable live in the `audit:` block of `config.yaml`
 
 **Sampling.** Some rules need to inspect every asset (or every schedule). To keep API load predictable on large environments, expensive rules sample up to `audit.sample_size` entities (default 500) per rule. The report explicitly notes which rules used sampling and how many entities were checked vs total. Set `audit.full_scan: true` to enumerate everything (slower, higher API load).
 
+> **Note on scope.** `audit.sample_size` and `user_audit.sample_size` apply only to the audit verticals (Configuration Audit, User & Permission Audit). Operational checks — Scan Engines, Scan Activity, Asset Coverage, Data Quality — run against the full population by design, since they produce aggregate counts where sampling would give a misleading smaller number.
+
 See `docs/examples/config.yaml` for the full audit configuration block.
 
 ## User & Permission Audit
@@ -252,7 +254,8 @@ All thresholds live in `config.yaml` under `thresholds:`. Every report footer pr
 - `scan_activity.site_no_scan_days` — when no scan in this window becomes a fail.
 - `scan_activity.stuck_scan_hours` — a running scan older than this is flagged as stuck.
 - `asset_coverage.stale_asset_days` — assets not scanned in this window are stale.
-- `asset_coverage.flag_unscanned_assets` — also list assets that have never been scanned.
+- `asset_coverage.flag_unscanned_assets` — also list assets that have not been scanned recently.
+- `asset_coverage.never_scanned_days` — days since last scan to flag an asset as effectively never scanned (default 90).
 - `data_quality.flag_missing_os` / `flag_empty_sites` — toggle data quality sub-checks.
 
 You can also disable an entire check by setting its toggle in `checks:` to `false` — it appears in the report as `SKIPPED`.

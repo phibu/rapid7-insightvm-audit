@@ -40,6 +40,7 @@ def _write_config(tmp_path: Path, base_url: str = "https://us.api.insight.rapid7
           asset_coverage:
             stale_asset_days: 30
             flag_unscanned_assets: true
+            never_scanned_days: 90
           data_quality:
             flag_missing_os: true
             flag_empty_sites: true
@@ -109,6 +110,7 @@ def _write_basic_auth_config(tmp_path: Path) -> Path:
           asset_coverage:
             stale_asset_days: 30
             flag_unscanned_assets: true
+            never_scanned_days: 90
           data_quality:
             flag_missing_os: true
             flag_empty_sites: true
@@ -202,7 +204,7 @@ def test_build_thresholds_table_includes_all_keys():
         thresholds=Thresholds(
             scan_engines=ScanEngineThresholds(2, 24),
             scan_activity=ScanActivityThresholds(7, 24, 14),
-            asset_coverage=AssetCoverageThresholds(30, True),
+            asset_coverage=AssetCoverageThresholds(30, True, 90),
             data_quality=DataQualityThresholds(True, True),
         ),
         checks={"scan_engines": True, "scan_activity": True, "asset_coverage": True, "data_quality": True},
@@ -237,6 +239,7 @@ def test_run_check_exception_becomes_error_status(tmp_path, monkeypatch):
           asset_coverage:
             stale_asset_days: 30
             flag_unscanned_assets: true
+            never_scanned_days: 90
           data_quality:
             flag_missing_os: true
             flag_empty_sites: true
@@ -300,6 +303,7 @@ def test_api_key_never_leaks_to_stderr_or_report(tmp_path, monkeypatch, caplog):
           asset_coverage:
             stale_asset_days: 30
             flag_unscanned_assets: true
+            never_scanned_days: 90
           data_quality:
             flag_missing_os: true
             flag_empty_sites: true
@@ -356,6 +360,7 @@ def test_run_with_audit_enabled_writes_audit_report(tmp_path, monkeypatch):
           asset_coverage:
             stale_asset_days: 30
             flag_unscanned_assets: true
+            never_scanned_days: 90
           data_quality:
             flag_missing_os: true
             flag_empty_sites: true

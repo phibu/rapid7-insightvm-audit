@@ -30,6 +30,7 @@ class FakeRapid7Client:
         self._post: dict[str, dict] = {}
         self._paginate: dict[str, list[dict]] = {}
         self._paginate_post: dict[str, list[dict]] = {}
+        self._post_one_responses: dict[str, dict] = {}
         self.calls: list[tuple[str, str, dict | None, dict | None]] = []
 
     def set_get(self, path: str, body: dict) -> None:
@@ -43,6 +44,13 @@ class FakeRapid7Client:
 
     def set_paginate_post(self, path: str, resources: Iterable[dict]) -> None:
         self._paginate_post[path] = list(resources)
+
+    def set_post_one(self, path: str, response: dict) -> None:
+        self._post_one_responses[path] = response
+
+    def post_one(self, path: str, *, json_body: dict, params: dict | None = None) -> dict:
+        self.calls.append(("post_one", path, params, json_body))
+        return self._post_one_responses.get(path, {"resources": [], "page": {"totalResources": 0}})
 
     def connect(self) -> None:
         return None
@@ -109,6 +117,7 @@ def _default_config() -> AppConfig:
             asset_coverage=AssetCoverageThresholds(
                 stale_asset_days=30,
                 flag_unscanned_assets=True,
+                never_scanned_days=90,
             ),
             data_quality=DataQualityThresholds(
                 flag_missing_os=True,

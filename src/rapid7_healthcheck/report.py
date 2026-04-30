@@ -94,6 +94,9 @@ def _state_blob_projection(
                     "findings": [
                         project_finding(rr.rule_id, i, f) for i, f in enumerate(rr.findings)
                     ],
+                    "error": rr.error,
+                    "error_path": rr.error_path,
+                    "error_status_code": rr.error_status_code,
                 })
         check_findings = [
             project_finding(r.name, i, f) for i, f in enumerate(r.findings)

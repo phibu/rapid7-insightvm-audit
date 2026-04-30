@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-04-30
+
+### Fixed
+- **DataQualityCheck.flag_missing_os performance:** the missing-OS path materialized the entire `/api/3/assets/search` result set just to take `len()` and slice 10 examples. Observed: 28 minutes against an environment with >100k matching assets. Now: one `client.post_one(...)` request, read `page.totalResources` for the count, use returned resources as examples. Single request instead of ~200.
+- **AssetCoverageCheck.flag_unscanned_assets operator:** the rule used `operator: "is-empty"` on `field: "last-scan-date"`, which is not a valid operator on `last-scan-date` per the canonical Rapid7 API spec (verified via Context7). The 400-trap fallback was masking what was always a wrong-operator bug. Now: `is-earlier-than` with a new `asset_coverage.never_scanned_days` threshold (default `90`). **BREAKING (config):** existing configs must add `never_scanned_days: 90` under `thresholds.asset_coverage`.
+- **agent_unauth_collision read-timeout at fleet scale:** the rule fanned out one `/api/3/assets/{id}/history` call per asset, exceeding the request-timeout budget on large environments. Now: prefer the cheap agent-presence signal already present on the asset record (`asset.agent.agentId`); fall back to per-asset history only when the cheap signal is absent.
+
+### Added
+- **Rule-error diagnostics:** when a rule raises `Rapid7ClientError`, the orchestrator now extracts the failing API path and HTTP status code, surfacing them as `RuleResult.error_path` and `RuleResult.error_status_code`. The report renders these inline so failures are root-causable from the report alone.
+- **Default-on run log:** the tool now writes a per-run `.log` file alongside the HTML report. Suppressible with `--no-log-file`; explicit `--log-file <path>` overrides the auto-resolved path.
+- **Console progress status line:** long runs emit `[i/N] <name>` status lines per check and per audit rule, with completion durations. TTY mode overwrites the line; non-TTY mode emits one line per status change.
+- **`client.post_one()`** helper for single-request POST searches that don't need pagination.
+
+### Changed
+- Report template: `section.check` gains `scroll-margin-top: 90px` so hash-link scroll lands the rule heading below the sticky filter bar.
+- Report template: clicking a summary tile (or loading a `#rule-<id>` URL) now auto-expands the corresponding rule card.
+
+### Documentation
+- README + CLAUDE.md clarify that `audit.sample_size` and `user_audit.sample_size` apply only to the audit verticals; operational checks run against the full population by design.
+
 ## [0.2.1] - 2026-04-30
 
 ### Changed
@@ -541,7 +561,8 @@ InsightVM environment.
 - CI on Python 3.11 and 3.12 (GitHub Actions).
 - 153 unit tests covering checks, rules, config, client, and report rendering.
 
-[Unreleased]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.10...v0.2.0
 [0.1.10]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.9...v0.1.10

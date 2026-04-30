@@ -16,7 +16,7 @@ import logging
 import time
 from typing import Any
 
-from rapid7_healthcheck.audit import RuleResult, Rule, _flatten_findings, _rollup_audit_status
+from rapid7_healthcheck.audit import RuleResult, Rule, _flatten_findings, _rollup_audit_status, _extract_diagnostics
 from rapid7_healthcheck.audit.snapshot import EnvSnapshot
 from rapid7_healthcheck.checks import CheckResult, Finding
 from rapid7_healthcheck.config import AppConfig
@@ -42,7 +42,7 @@ class UserPermissionAuditCheck:
         "belong to a Global Administrator."
     )
 
-    def run(self, client: Any, config: AppConfig) -> CheckResult:
+    def run(self, client: Any, config: AppConfig, progress=None) -> CheckResult:
         start = time.monotonic()
 
         if not config.user_audit.enabled:
@@ -87,7 +87,8 @@ class UserPermissionAuditCheck:
             )
 
         rule_results: list[RuleResult] = []
-        for rule_id, rule_cls in _USER_RULE_REGISTRY.items():
+        total_rules = len(_USER_RULE_REGISTRY)
+        for rule_idx, (rule_id, rule_cls) in enumerate(_USER_RULE_REGISTRY.items(), start=1):
             rule_cfg = config.user_audit.rules.get(rule_id)
             if rule_cfg is None or not rule_cfg.enabled:
                 rule_results.append(RuleResult(
@@ -99,6 +100,8 @@ class UserPermissionAuditCheck:
                     sources=list(rule_cls.sources),
                 ))
                 continue
+            if progress is not None:
+                progress.step(rule_idx, total_rules, f"user-audit: {rule_id}")
             rule_start = time.monotonic()
             try:
                 result = rule_cls().run(
@@ -112,6 +115,7 @@ class UserPermissionAuditCheck:
                 rule_results.append(result)
             except Exception as e:
                 logger.exception("user audit rule %s raised", rule_id)
+                error_path, error_status_code = _extract_diagnostics(e)
                 rule_results.append(RuleResult(
                     rule_id=rule_id,
                     rule_name=rule_cls.rule_name,
@@ -121,7 +125,11 @@ class UserPermissionAuditCheck:
                     sources=list(rule_cls.sources),
                     error=str(e),
                     duration_ms=int((time.monotonic() - rule_start) * 1000),
+                    error_path=error_path,
+                    error_status_code=error_status_code,
                 ))
+            if progress is not None:
+                progress.done(rule_idx, total_rules, f"user-audit: {rule_id}", duration_ms=int((time.monotonic() - rule_start) * 1000))
 
         return CheckResult(
             name=self.name,

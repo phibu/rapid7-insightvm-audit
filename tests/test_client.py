@@ -240,6 +240,40 @@ def test_network_error_has_no_status_code(session):
     assert exc.value.status_code is None
 
 
+def test_post_one_returns_first_page_response(monkeypatch):
+    """post_one issues a single POST and returns the parsed response without paginating."""
+    from rapid7_healthcheck.client import Rapid7Client
+    import requests
+
+    captured = {}
+
+    def fake_request(method, url, **kw):
+        captured["method"] = method
+        captured["url"] = url
+        captured["json"] = kw.get("json")
+        captured["params"] = kw.get("params")
+        resp = requests.Response()
+        resp.status_code = 200
+        resp._content = b'{"resources":[{"id":1}],"page":{"totalResources":42,"size":10}}'
+        return resp
+
+    client = Rapid7Client(base_url="https://example.com", api_key="k")
+    monkeypatch.setattr(client._session, "request", fake_request)
+
+    body = client.post_one(
+        "/api/3/assets/search",
+        json_body={"filters": [], "match": "all"},
+        params={"size": 10},
+    )
+
+    assert captured["method"] == "POST"
+    assert captured["url"].endswith("/api/3/assets/search")
+    assert captured["params"] == {"size": 10}
+    assert captured["json"] == {"filters": [], "match": "all"}
+    assert body["page"]["totalResources"] == 42
+    assert body["resources"] == [{"id": 1}]
+
+
 def test_network_error_message_includes_method_path_and_attempt_count(session):
     """The wrapped error message must name the method, path, and total
     attempts so an operator reading a multi-rule failure can identify

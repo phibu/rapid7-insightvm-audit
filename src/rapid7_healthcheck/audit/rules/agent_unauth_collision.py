@@ -11,6 +11,13 @@ def _has_agent_history(history: list[dict]) -> bool:
 
 @register
 class AgentUnauthCollisionRule:
+    # Performance note (0.2.2): originally this rule called snapshot.asset_history
+    # for every asset in the per-site sample. At fleet scale (>100k assets across
+    # many sites) that fans out to thousands of GET /api/3/assets/{id}/history
+    # calls, exceeding the request_timeout_seconds * max_retries budget on slow
+    # consoles. Now we prefer the agent-presence signal that the assets endpoint
+    # already returns; asset_history is the fallback for assets whose record
+    # doesn't carry that signal.
     rule_id = "agent_unauth_collision"
     rule_name = "Insight Agent Asset Scanned Without Authentication"
     description = (
@@ -55,8 +62,15 @@ class AgentUnauthCollisionRule:
 
             agent_count = 0
             for asset in assets:
-                if _has_agent_history(snapshot.asset_history(asset["id"])):
+                cheap = snapshot.asset_has_agent(asset)
+                if cheap is True:
                     agent_count += 1
+                elif cheap is False:
+                    continue
+                else:
+                    # Fallback for assets whose record didn't carry the signal.
+                    if _has_agent_history(snapshot.asset_history(asset["id"])):
+                        agent_count += 1
 
             if agent_count > 0:
                 pct = (agent_count / max(len(assets), 1)) * 100
