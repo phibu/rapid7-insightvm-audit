@@ -32,6 +32,8 @@ class EnvSnapshot:
         self._reports: list[dict] | None = None
         self._administration_properties: dict | None = None
         self._total_asset_count: int | None = None
+        self._agents_cache: tuple[list[dict], int] | None = None
+        self._agents_unavailable: bool = False
         self._users: list[dict] | None = None
         self._users_endpoints_unavailable: bool = False
         self._authentication_sources: list[dict] | None = None
@@ -301,6 +303,48 @@ class EnvSnapshot:
             body = self._client.get("/api/3/assets", params={"size": 1})
             self._total_asset_count = int(body.get("page", {}).get("totalResources", 0))
         return self._total_asset_count
+
+    def agents(self) -> tuple[list[dict], int]:
+        """Return (sample_list, total_count) for the Insight Agent fleet.
+
+        Lazily fetched and cached on first call. Honors `sample_size` when
+        `full_scan` is False — `total_count` comes from `page.totalResources`,
+        `sample_list` is capped at `sample_size`. Returns `([], 0)` cleanly
+        when /api/3/agents is unavailable (404 on older consoles or non-GA
+        keys); the `_agents_unavailable` flag is set so dependent rules can
+        self-skip honestly rather than treat the empty list as 'no agents'.
+        """
+        if self._agents_cache is not None:
+            return self._agents_cache
+        try:
+            head = self._client.get("/api/3/agents", params={"size": 1})
+        except Rapid7ClientError as e:
+            if e.status_code == 404:
+                logger.info("agents endpoint not available on this console")
+                self._agents_unavailable = True
+                self._agents_cache = ([], 0)
+                return self._agents_cache
+            raise
+
+        total = int(head.get("page", {}).get("totalResources", 0))
+
+        sample: list[dict] = []
+        if total > 0:
+            it = self._client.paginate("/api/3/agents")
+            if self._full_scan:
+                sample = list(it)
+            else:
+                sample = list(itertools.islice(it, self._sample_size))
+
+        self._agents_cache = (sample, total)
+        return self._agents_cache
+
+    def is_agents_unavailable(self) -> bool:
+        """True if /api/3/agents returned 404 — pure read of the cached flag.
+
+        Callers should invoke `agents()` first to prime the flag.
+        """
+        return self._agents_unavailable
 
     # --- User & Permission audit accessors -------------------------------
 
