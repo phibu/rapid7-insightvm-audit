@@ -17,6 +17,7 @@ import time
 from typing import Any
 
 from rapid7_healthcheck.audit import RuleResult, Rule, _flatten_findings, _rollup_audit_status
+from rapid7_healthcheck.audit.snapshot import EnvSnapshot
 from rapid7_healthcheck.checks import CheckResult, Finding
 from rapid7_healthcheck.config import AppConfig
 
@@ -55,7 +56,6 @@ class UserPermissionAuditCheck:
                 rule_results=[],
             )
 
-        from rapid7_healthcheck.audit.snapshot import EnvSnapshot
         snapshot = EnvSnapshot(
             client,
             full_scan=config.user_audit.full_scan,

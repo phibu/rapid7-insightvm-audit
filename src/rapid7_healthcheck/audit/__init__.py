@@ -5,6 +5,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
+from rapid7_healthcheck.audit.snapshot import EnvSnapshot
 from rapid7_healthcheck.checks import CheckResult, Finding, Severity, Status
 from rapid7_healthcheck.config import AppConfig
 
@@ -83,7 +84,6 @@ class ConfigurationAuditCheck:
                 rule_results=[],
             )
 
-        from rapid7_healthcheck.audit.snapshot import EnvSnapshot
         snapshot = EnvSnapshot(
             client,
             full_scan=config.audit.full_scan,
