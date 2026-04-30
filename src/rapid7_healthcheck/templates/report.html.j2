@@ -229,9 +229,50 @@
   /* JS-disabled fallback: hide chrome that depends on JS to function. */
   .no-js .filter-bar,
   .no-js .theme-toggle { display: none; }
+  /* Theme toggle — three-state cycle (system / light / dark). */
+  .theme-toggle {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.25rem 0.6rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--neutral-fg);
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background 150ms;
+  }
+  .theme-toggle:hover { background: var(--info-bg); }
+  .theme-toggle .theme-icon { display: block; }
+  /* Explicit overrides — declared after the prefers-color-scheme media query
+     so they win when a user has clicked the toggle to override system. */
+  :root[data-theme="light"] {
+    --neutral-fg: #1a1a1a; --neutral-muted: #5a5a5a;
+    --border: #e3e3e3; --surface: #fafafa; --bg: #ffffff;
+    --pass-fg: #0f6b3a; --pass-bg: #e6f5ec;
+    --warn-fg: #8a4b00; --warn-bg: #fdf2dc;
+    --fail-fg: #9a2417; --fail-bg: #fbe7e3;
+    --info-fg: #1f4e8c; --info-bg: #e6eef9;
+  }
+  :root[data-theme="dark"] {
+    --neutral-fg: #e8e8ea; --neutral-muted: #9a9aa3;
+    --border: #2a2e38; --surface: #161922; --bg: #0f1115;
+    --pass-fg: #4dbe7a; --pass-bg: rgba(77,190,122,0.12);
+    --warn-fg: #e0a04b; --warn-bg: rgba(224,160,75,0.14);
+    --fail-fg: #e6786b; --fail-bg: rgba(230,120,107,0.14);
+    --info-fg: #6aa6ee; --info-bg: rgba(106,166,238,0.14);
+  }
 </style>
 </head>
 <body>
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+  <symbol id="icon-system" viewBox="0 0 16 16"><path fill="currentColor" d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm0 1.5v11A5.5 5.5 0 0 1 8 2.5Z"/></symbol>
+  <symbol id="icon-light"  viewBox="0 0 16 16"><path fill="currentColor" d="M8 5a3 3 0 1 0 0 6 3 3 0 0 0 0-6Zm0-4v1.5M8 13.5V15M3.05 3.05l1.06 1.06M11.89 11.89l1.06 1.06M1 8h1.5M13.5 8H15M3.05 12.95l1.06-1.06M11.89 4.11l1.06-1.06" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" fill="none"/></symbol>
+  <symbol id="icon-dark"   viewBox="0 0 16 16"><path fill="currentColor" d="M14 9.5A6 6 0 0 1 6.5 2a6 6 0 1 0 7.5 7.5Z"/></symbol>
+</svg>
 
 <h1>{{ title }}</h1>
 <div class="meta">
@@ -239,6 +280,10 @@
   <span><b>Console:</b> <span class="mono">{{ base_url_host }}</span></span>
   <span><b>Version:</b> <span class="mono">{{ tool_version }}</span></span>
   {% if content_hash %}<span><b>Run hash:</b> <span class="mono">{{ content_hash }}</span></span>{% endif %}
+  <button class="theme-toggle" type="button" aria-label="Theme: system" data-theme-state="system">
+    <svg class="theme-icon" width="14" height="14" aria-hidden="true"><use href="#icon-system"/></svg>
+    <span class="theme-label">System</span>
+  </button>
 </div>
 
 <div class="hero {{ verdict_class }}" role="status">
@@ -444,6 +489,41 @@
 {% if state_blob_json %}
 <script id="report-state" type="application/json">{{ state_blob_json | safe }}</script>
 {% endif %}
+
+<script>
+(function(){
+  var btn = document.querySelector('.theme-toggle');
+  if (!btn) return;
+  var states = [
+    { name: 'system', icon: '#icon-system', label: 'System' },
+    { name: 'light',  icon: '#icon-light',  label: 'Light' },
+    { name: 'dark',   icon: '#icon-dark',   label: 'Dark' },
+  ];
+  function apply(state) {
+    btn.setAttribute('data-theme-state', state.name);
+    btn.setAttribute('aria-label', 'Theme: ' + state.name);
+    btn.querySelector('.theme-icon use').setAttribute('href', state.icon);
+    btn.querySelector('.theme-label').textContent = state.label;
+    if (state.name === 'system') {
+      document.documentElement.removeAttribute('data-theme');
+      try { localStorage.removeItem('theme'); } catch(e) {}
+    } else {
+      document.documentElement.setAttribute('data-theme', state.name);
+      try { localStorage.setItem('theme', state.name); } catch(e) {}
+    }
+  }
+  // Restore state from <html data-theme> set by the FOUC head script.
+  var initial = document.documentElement.getAttribute('data-theme');
+  if (initial === 'light') apply(states[1]);
+  else if (initial === 'dark') apply(states[2]);
+  // (no-op if 'system' — initial markup is already system)
+  btn.addEventListener('click', function(){
+    var current = btn.getAttribute('data-theme-state');
+    var idx = states.findIndex(function(s){ return s.name === current; });
+    apply(states[(idx + 1) % states.length]);
+  });
+})();
+</script>
 
 </body>
 </html>
