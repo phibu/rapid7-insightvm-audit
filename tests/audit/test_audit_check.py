@@ -17,6 +17,7 @@ import rapid7_healthcheck.audit.rules.local_engine_production_scope  # noqa: F40
 import rapid7_healthcheck.audit.rules.dynamic_groups_and_nested_tags  # noqa: F401
 import rapid7_healthcheck.audit.rules.scan_report_schedule_overlap  # noqa: F401
 import rapid7_healthcheck.audit.rules.engine_version_drift  # noqa: F401
+import rapid7_healthcheck.audit.rules.insight_agent_deployed  # noqa: F401
 
 
 def test_all_rules_registered():
@@ -27,6 +28,7 @@ def test_all_rules_registered():
         "policy_and_vuln_in_same_template", "store_invulnerable_results",
         "local_engine_production_scope", "dynamic_groups_and_nested_tags",
         "scan_report_schedule_overlap", "engine_version_drift",
+        "insight_agent_deployed",
     }
     assert set(_RULE_REGISTRY.keys()) == expected
 
@@ -70,6 +72,8 @@ def test_one_rule_raising_does_not_break_others(app_config, fake_client, monkeyp
     fake_client.set_get("/api/3/scan_engines", {"resources": []})
     fake_client.set_get("/api/3/shared_credentials", {"resources": []})
     fake_client.set_get("/api/3/blackouts", {"resources": []})
+    fake_client.set_get("/api/3/agents", {"page": {"totalResources": 0}, "resources": []})
+    fake_client.set_paginate("/api/3/agents", [])
     fake_client.set_paginate("/api/3/asset_groups", [])
     fake_client.set_paginate("/api/3/tags", [])
     fake_client.set_paginate("/api/3/reports", [])
