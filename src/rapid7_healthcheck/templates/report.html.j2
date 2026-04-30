@@ -316,13 +316,13 @@
     font-size: 13px;
   }
   /* CSS-driven filtering — JS sets body attributes; CSS hides non-matching cards. */
-  body[data-filter-severity="fail"]    section.check details:not([data-severity="fail"]),
-  body[data-filter-severity="warn"]    section.check details:not([data-severity="warn"]),
-  body[data-filter-severity="pass"]    section.check details:not([data-severity="pass"]),
-  body[data-filter-severity="skipped"] section.check details:not([data-severity="skipped"]),
-  body[data-filter-severity="error"]   section.check details:not([data-severity="error"]) { display: none; }
-  body[data-filter-changed]            section.check details:not([data-changed]) { display: none; }
-  body[data-filter-search]             section.check details:not([data-match])    { display: none; }
+  body[data-filter-severity="fail"]    section.check > details:not([data-severity="fail"]),
+  body[data-filter-severity="warn"]    section.check > details:not([data-severity="warn"]),
+  body[data-filter-severity="pass"]    section.check > details:not([data-severity="pass"]),
+  body[data-filter-severity="skipped"] section.check > details:not([data-severity="skipped"]),
+  body[data-filter-severity="error"]   section.check > details:not([data-severity="error"]) { display: none; }
+  body[data-filter-changed]            section.check > details:not([data-changed]) { display: none; }
+  body[data-filter-search]             section.check > details:not([data-match])    { display: none; }
   /* Reduced motion. */
   @media (prefers-reduced-motion: reduce) {
     .chip, .theme-toggle { transition: none; }
