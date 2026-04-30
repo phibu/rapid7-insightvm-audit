@@ -19,33 +19,121 @@ keyboard, screen-reader, and JS-disabled accessibility.
 
 ## Setup
 
-1. Get credentials for your InsightVM Security Console (see [Authenticating against your console](#authenticating-against-your-console) below for the options).
-2. Clone this repo and create a virtualenv:
+Get credentials for your InsightVM Security Console first (see [Authenticating against your console](#authenticating-against-your-console) below for the options). Then follow the platform-specific install steps below.
 
-   ```bash
-   python -m venv .venv
-   .venv\Scripts\activate     # Windows
-   source .venv/bin/activate    # macOS/Linux
-   pip install -e .
+Each release is published as a runtime-only zip on the [GitHub Releases page](https://github.com/phibu/rapid7-insightvm-audit/releases). The instructions below assume you're installing the latest release (`vX.Y.Z`) — replace the version in the commands with the one you downloaded.
+
+### Windows
+
+1. **Install Python 3.11+** from [python.org](https://www.python.org/downloads/windows/) if you don't already have it. During the installer, tick **Add Python to PATH**. Verify in a new PowerShell window:
+
+   ```powershell
+   python --version
    ```
 
-3. Configure:
+2. **Download** `rapid7-insightvm-audit-X.Y.Z.zip` from the [Releases page](https://github.com/phibu/rapid7-insightvm-audit/releases/latest), then extract it. Open PowerShell in the extracted folder:
+
+   ```powershell
+   cd C:\path\to\rapid7-insightvm-audit-X.Y.Z
+   ```
+
+3. **Create and activate a virtualenv:**
+
+   ```powershell
+   python -m venv .venv
+   .venv\Scripts\Activate.ps1
+   ```
+
+   If PowerShell blocks the activation script with an execution-policy error, run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once and retry.
+
+4. **Install the tool plus `pip-system-certs`** (required if your network uses TLS interception — common in corporate environments. Harmless otherwise):
+
+   ```powershell
+   pip install --upgrade pip
+   pip install pip-system-certs
+   pip install .
+   ```
+
+   `pip-system-certs` makes Python's `requests` and `pip` trust your Windows certificate store, so corporate proxies / SSL-intercepting firewalls don't break API calls or the install itself.
+
+5. **Configure:**
+
+   ```powershell
+   copy .env.example .env
+   notepad .env
+   # set R7_API_KEY=<your key>
+   # — or, for Basic Auth — set R7_BASIC_USER and R7_BASIC_PASSWORD
+
+   copy docs\examples\config.yaml config.yaml
+   notepad config.yaml
+   # at minimum set rapid7.base_url to your console
+   ```
+
+6. **Run:**
+
+   ```powershell
+   python -m rapid7_healthcheck
+   ```
+
+### macOS
+
+1. **Install Python 3.11+** if you don't already have it. The macOS-bundled Python may be too old; use [python.org](https://www.python.org/downloads/macos/) or Homebrew:
+
+   ```bash
+   brew install python@3.12
+   python3 --version
+   ```
+
+2. **Download** `rapid7-insightvm-audit-X.Y.Z.zip` from the [Releases page](https://github.com/phibu/rapid7-insightvm-audit/releases/latest), then extract it. Open Terminal in the extracted folder:
+
+   ```bash
+   cd ~/path/to/rapid7-insightvm-audit-X.Y.Z
+   ```
+
+3. **Create and activate a virtualenv:**
+
+   ```bash
+   python3 -m venv .venv
+   source .venv/bin/activate
+   ```
+
+4. **Install the tool plus `pip-system-certs`** (required if your network uses TLS interception — common in corporate environments. Harmless otherwise):
+
+   ```bash
+   pip install --upgrade pip
+   pip install pip-system-certs
+   pip install .
+   ```
+
+   `pip-system-certs` makes Python's `requests` and `pip` trust the macOS Keychain, so corporate proxies / SSL-intercepting firewalls don't break API calls or the install itself.
+
+5. **Configure:**
 
    ```bash
    cp .env.example .env
-   # edit .env and set R7_API_KEY=<your key>
+   nano .env
+   # set R7_API_KEY=<your key>
    # — or, for Basic Auth — set R7_BASIC_USER and R7_BASIC_PASSWORD
 
    cp docs/examples/config.yaml config.yaml
-   # edit config.yaml — at minimum set rapid7.base_url to your console
+   nano config.yaml
+   # at minimum set rapid7.base_url to your console
    ```
 
-   `base_url` is the URL of your InsightVM Security Console:
+6. **Run:**
 
-   - **Self-hosted console:** `https://<console-host>:3780`
-   - **Rapid7-hosted console:** `https://<your-tenant>.hosted.rapid7.com` (no port suffix; uses 443)
+   ```bash
+   python -m rapid7_healthcheck
+   ```
 
-   The Insight Platform region URLs (`https://us.api.insight.rapid7.com` etc.) belong to a *different* API (the Cloud Integrations v4 API) and will not work with this tool.
+### About `base_url`
+
+`base_url` is the URL of your InsightVM Security Console:
+
+- **Self-hosted console:** `https://<console-host>:3780`
+- **Rapid7-hosted console:** `https://<your-tenant>.hosted.rapid7.com` (no port suffix; uses 443)
+
+The Insight Platform region URLs (`https://us.api.insight.rapid7.com` etc.) belong to a *different* API (the Cloud Integrations v4 API) and will not work with this tool.
 
 ### Authenticating against your console
 
