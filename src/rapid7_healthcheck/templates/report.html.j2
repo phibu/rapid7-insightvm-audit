@@ -602,6 +602,54 @@
     apply(states[(idx + 1) % states.length]);
   });
 })();
+(function(){
+  var bar = document.querySelector('.filter-bar');
+  if (!bar) return;
+  var sevChips = bar.querySelectorAll('.chip[data-severity]');
+  function setSeverity(sev) {
+    sevChips.forEach(function(c){
+      c.setAttribute('aria-pressed', c.getAttribute('data-severity') === sev ? 'true' : 'false');
+    });
+    if (sev === 'all') {
+      document.body.removeAttribute('data-filter-severity');
+    } else {
+      document.body.setAttribute('data-filter-severity', sev);
+    }
+    syncHash();
+  }
+  function syncHash() {
+    var parts = [];
+    var sev = document.body.getAttribute('data-filter-severity');
+    if (sev) parts.push('severity=' + sev);
+    if (document.body.hasAttribute('data-filter-changed')) parts.push('changed');
+    var search = document.body.getAttribute('data-filter-search-q');
+    if (search) parts.push('search=' + encodeURIComponent(search));
+    var hash = parts.length ? '#' + parts.join('&') : ' ';
+    if (location.hash !== hash) {
+      history.replaceState({}, '', hash === ' ' ? location.pathname + location.search : hash);
+    }
+  }
+  sevChips.forEach(function(c){
+    c.addEventListener('click', function(){
+      setSeverity(c.getAttribute('data-severity'));
+    });
+  });
+  // Restore from hash on load.
+  var hash = location.hash.replace(/^#/, '');
+  if (hash) {
+    var params = {};
+    hash.split('&').forEach(function(p){
+      var eq = p.indexOf('=');
+      if (eq < 0) params[p] = true;
+      else params[p.slice(0, eq)] = decodeURIComponent(p.slice(eq + 1));
+    });
+    if (params.severity && ['all','fail','warn','pass','skipped'].indexOf(params.severity) >= 0) {
+      setSeverity(params.severity);
+    }
+  }
+  // Expose syncHash for Tasks 5 & 6 to call after their state changes.
+  window.__phase2_syncHash = syncHash;
+})();
 </script>
 
 </body>
