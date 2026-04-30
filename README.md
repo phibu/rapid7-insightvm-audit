@@ -213,7 +213,7 @@ A sibling audit category to the configuration audit, scoped to console user acco
 
 | Rule | Default | Notes |
 | --- | --- | --- |
-| Privileged user without MFA | fail | Scoped to GA / `role.superuser` users only. Service accounts that legitimately use HTTP Basic Auth (which bypasses MFA) can be allowlisted via `mfa_exempt_logins`. |
+| Privileged user without MFA | fail | Scoped to GA / `role.superuser` users only. Service accounts that legitimately use HTTP Basic Auth (which bypasses MFA) can be allowlisted via `mfa_exempt_logins`. Requires Global Administrator key — non-GA keys receive 401 from `/api/3/users/{id}/2FA` and the rule self-skips with an info finding. |
 | Local accounts when SSO is configured | warn | Excessive local accounts when LDAP/SAML/Kerberos is configured. Knob: `max_local_accounts_when_sso` (default 2). |
 | Multiple Global Administrators | warn | Privilege creep. Knob: `max_global_administrators` (default 2). |
 | Locked user account | warn | Stuck account or brute-force indicator. |

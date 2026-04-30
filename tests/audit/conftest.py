@@ -25,6 +25,7 @@ class FakeSnapshot:
         self._users_endpoints_unavailable: bool = False
         self._authentication_sources: list[dict] = []
         self._user_2fa: dict[int, bool | None] = {}
+        self._user_2fa_raises: dict[int, Exception] = {}
         self._user_sites: dict[int, list[dict]] = {}
         self._user_asset_groups: dict[int, list[dict]] = {}
         self._site_credentials: dict[int, list[dict]] = {}
@@ -59,6 +60,9 @@ class FakeSnapshot:
     def set_users_endpoints_unavailable(self, unavailable: bool) -> None: self._users_endpoints_unavailable = unavailable
     def set_authentication_sources(self, sources: list[dict]) -> None: self._authentication_sources = sources
     def set_user_2fa_enabled(self, user_id: int, enabled: bool | None) -> None: self._user_2fa[user_id] = enabled
+    def set_user_2fa_raises(self, user_id: int, exc: Exception) -> None:
+        """Configure user_2fa_enabled to raise `exc` for this user_id."""
+        self._user_2fa_raises[user_id] = exc
     def set_user_sites(self, user_id: int, sites: list[dict]) -> None: self._user_sites[user_id] = sites
     def set_user_asset_groups(self, user_id: int, groups: list[dict]) -> None: self._user_asset_groups[user_id] = groups
     def set_site_credentials(self, site_id: int, creds: list[dict]) -> None: self._site_credentials[site_id] = creds
@@ -89,6 +93,8 @@ class FakeSnapshot:
     def authentication_sources(self) -> list[dict]: return self._authentication_sources
 
     def user_2fa_enabled(self, user_id: int) -> bool | None:
+        if user_id in self._user_2fa_raises:
+            raise self._user_2fa_raises[user_id]
         return self._user_2fa.get(user_id, False)
 
     def user_sites(self, user_id: int) -> list[dict]:
