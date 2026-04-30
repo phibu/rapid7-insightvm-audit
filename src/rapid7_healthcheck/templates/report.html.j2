@@ -170,7 +170,7 @@
   .badge.skipped { background: var(--info-bg); color: var(--info-fg); }
   .badge.info    { background: var(--info-bg); color: var(--info-fg); }
 
-  section.check { margin: 2.5rem 0; }
+  section.check { margin: 2.5rem 0; scroll-margin-top: 90px; }
   section.check h2 { margin: 0 0 0.25rem 0; }
   .check-desc { color: var(--neutral-muted); margin: 0 0 0.75rem 0; }
 
@@ -751,6 +751,18 @@
   }
 })();
 {% endif %}
+(function(){
+  function expandFromHash() {
+    var hash = location.hash.replace(/^#/, '');
+    if (!hash) return;
+    var target = document.getElementById(hash);
+    if (!target) return;
+    var details = target.matches('details') ? target : target.querySelector(':scope > details');
+    if (details) details.open = true;
+  }
+  window.addEventListener('hashchange', expandFromHash);
+  expandFromHash();
+})();
 </script>
 
 </body>
