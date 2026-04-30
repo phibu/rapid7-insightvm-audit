@@ -16,27 +16,6 @@ from dotenv import load_dotenv
 from rapid7_healthcheck import __version__
 from rapid7_healthcheck.audit import ConfigurationAuditCheck
 from rapid7_healthcheck.audit.user_permission import UserPermissionAuditCheck
-# Side-effect imports: register all 12 audit rules.
-import rapid7_healthcheck.audit.rules.agent_unauth_collision  # noqa: F401
-import rapid7_healthcheck.audit.rules.site_vuln_template_no_creds  # noqa: F401
-import rapid7_healthcheck.audit.rules.credential_failure_in_recent_scans  # noqa: F401
-import rapid7_healthcheck.audit.rules.overlapping_scan_windows  # noqa: F401
-import rapid7_healthcheck.audit.rules.single_engine_overload  # noqa: F401
-import rapid7_healthcheck.audit.rules.discovery_template_on_prod_site  # noqa: F401
-import rapid7_healthcheck.audit.rules.policy_and_vuln_in_same_template  # noqa: F401
-import rapid7_healthcheck.audit.rules.store_invulnerable_results  # noqa: F401
-import rapid7_healthcheck.audit.rules.local_engine_production_scope  # noqa: F401
-import rapid7_healthcheck.audit.rules.dynamic_groups_and_nested_tags  # noqa: F401
-import rapid7_healthcheck.audit.rules.scan_report_schedule_overlap  # noqa: F401
-import rapid7_healthcheck.audit.rules.engine_version_drift  # noqa: F401
-# Side-effect imports: register all 7 user-permission audit rules.
-import rapid7_healthcheck.audit.user_permission.rules.privileged_user_without_mfa  # noqa: F401
-import rapid7_healthcheck.audit.user_permission.rules.local_account_when_sso_configured  # noqa: F401
-import rapid7_healthcheck.audit.user_permission.rules.multiple_global_administrators  # noqa: F401
-import rapid7_healthcheck.audit.user_permission.rules.locked_user_account  # noqa: F401
-import rapid7_healthcheck.audit.user_permission.rules.disabled_user_with_role_bindings  # noqa: F401
-import rapid7_healthcheck.audit.user_permission.rules.user_with_role_but_no_access  # noqa: F401
-import rapid7_healthcheck.audit.user_permission.rules.superuser_flag_outside_global_admin  # noqa: F401
 from rapid7_healthcheck.checks import Check, CheckResult
 from rapid7_healthcheck.checks.asset_coverage import AssetCoverageCheck
 from rapid7_healthcheck.checks.data_quality import DataQualityCheck

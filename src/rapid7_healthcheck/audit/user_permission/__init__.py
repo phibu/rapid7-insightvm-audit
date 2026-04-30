@@ -4,9 +4,10 @@ Sibling to the configuration audit (see ``rapid7_healthcheck.audit``).
 Operates on user / RBAC data exposed by ``/api/3/users`` and friends.
 
 Rule files live under ``audit/user_permission/rules/`` and self-register
-via ``@register_user_rule`` at import time. The package's
-``__main__.py`` imports each rule module so the registry is populated
-before any audit runs.
+via ``@register_user_rule`` at import time. Rule modules are imported as
+a side effect of importing this package, so the registry is populated
+whenever ``rapid7_healthcheck.audit.user_permission`` is loaded
+(typically by ``__main__.py``).
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ import time
 from typing import Any
 
 from rapid7_healthcheck.audit import RuleResult, Rule, _flatten_findings, _rollup_audit_status
+from rapid7_healthcheck.audit.snapshot import EnvSnapshot
 from rapid7_healthcheck.checks import CheckResult, Finding
 from rapid7_healthcheck.config import AppConfig
 
@@ -54,7 +56,6 @@ class UserPermissionAuditCheck:
                 rule_results=[],
             )
 
-        from rapid7_healthcheck.audit.snapshot import EnvSnapshot
         snapshot = EnvSnapshot(
             client,
             full_scan=config.user_audit.full_scan,
@@ -138,3 +139,17 @@ class UserPermissionAuditCheck:
             duration_ms=int((time.monotonic() - start) * 1000),
             rule_results=rule_results,
         )
+
+
+# Side-effect imports: register all 7 user-permission audit rules at
+# package-import time. Adding a new rule = one new file under
+# `audit/user_permission/rules/` + one line here.
+from rapid7_healthcheck.audit.user_permission.rules import (  # noqa: E402,F401
+    privileged_user_without_mfa,
+    local_account_when_sso_configured,
+    multiple_global_administrators,
+    locked_user_account,
+    disabled_user_with_role_bindings,
+    user_with_role_but_no_access,
+    superuser_flag_outside_global_admin,
+)

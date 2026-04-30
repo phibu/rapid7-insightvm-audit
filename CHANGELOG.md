@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-04-30
+
+### Changed
+- Removed the unused `error` severity filter CSS rule from the report
+  template. The URL-hash whitelist already excluded `error` and no Error
+  chip was ever rendered, so the rule was dead code.
+- `syncHash` empty-state in the report's filter JS no longer relies on a
+  literal-space sentinel; the no-filter case is handled cleanly via
+  `hash || (location.pathname + location.search)` in `replaceState`.
+- Theme-toggle `apply()` now reads `localStorage.theme` once and skips
+  the write when the value already matches what we're about to set.
+  Cosmetic; the FOUC head script makes init calls idempotent.
+- `_validate_dict_schema` helper extracted in `config.py`. The two
+  audit-config validators (`_build_audit_config`, `_build_user_audit_config`)
+  now share their unknown-keys / required-keys logic. `_build_report_config`
+  intentionally keeps its custom error-message wording.
+- Side-effect rule-registration imports moved out of `__main__.py` into
+  `audit/__init__.py` and `audit/user_permission/__init__.py`. Adding a
+  new audit rule now touches one rule file plus one entry in the audit
+  package's `__init__.py`.
+- `EnvSnapshot` import hoisted to module level in both audit orchestrators
+  (`audit/__init__.py`, `audit/user_permission/__init__.py`); the deferred
+  forms inside `.run()` were vestigial.
+
+### Added
+- New regression test `tests/test_report_filtering.py` pins the
+  `section.check > details` child-combinator filter rule (commit
+  `a91f6d1`). The bare descendant form would hide inner finding-details
+  alongside the outer rule card; the test catches that regression
+  structurally from rendered HTML.
+- New orchestrator test for the `/api/3/users` 404 self-skip path in
+  `UserPermissionAuditCheck.run()`.
+- New sanity tests `tests/test_audit_registry.py` assert that both audit
+  registries (`_RULE_REGISTRY`, `_USER_RULE_REGISTRY`) populate on
+  package import.
+
+### Documentation
+- `CLAUDE.md` "Audit subsystem internals" section updated to reflect
+  the side-effect imports moving into the package `__init__.py` files.
+- One-line comment in
+  `audit/user_permission/rules/disabled_user_with_role_bindings.py`
+  clarifying that `role["id"]` is a role-name string (e.g. `"global-admin"`),
+  not a numeric identifier.
+
 ## [0.2.0] - 2026-04-30
 
 ### Added
@@ -497,7 +541,8 @@ InsightVM environment.
 - CI on Python 3.11 and 3.12 (GitHub Actions).
 - 153 unit tests covering checks, rules, config, client, and report rendering.
 
-[Unreleased]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.10...v0.2.0
 [0.1.10]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.9...v0.1.10
 [0.1.9]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.8...v0.1.9
