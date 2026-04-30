@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re as _re
-import time as _time
+import re
+import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -171,9 +171,9 @@ def _compute_delta(*, prior: dict | None, current: dict) -> dict | None:
     }
 
 
-_STATE_BLOB_RE = _re.compile(
+_STATE_BLOB_RE = re.compile(
     r'<script id="report-state" type="application/json">(.*?)</script>',
-    _re.DOTALL,
+    re.DOTALL,
 )
 
 
@@ -211,7 +211,7 @@ def _load_prior_state(
         return None
 
     if max_age_days is not None:
-        now = _time.time()
+        now = time.time()
         max_age_seconds = max_age_days * 86400
         candidates = [p for p in candidates if (now - p.stat().st_mtime) <= max_age_seconds]
         if not candidates:
@@ -241,7 +241,7 @@ def _metrics(results: list[CheckResult]) -> dict:
     Counts every rule across every check that has rule_results, and every
     finding from both rule_results-bearing checks and operational checks.
     """
-    rules_total = rules_fail = rules_warn = rules_pass = rules_skipped = rules_sampled = 0
+    rules_total = rules_fail = rules_warn = rules_pass = rules_skipped = rules_error = rules_sampled = 0
     findings_total = findings_fail = findings_warn = 0
     total_duration_ms = 0
 
@@ -266,6 +266,8 @@ def _metrics(results: list[CheckResult]) -> dict:
                     rules_pass += 1
                 elif rr.status == "skipped":
                     rules_skipped += 1
+                elif rr.status == "error":
+                    rules_error += 1
                 if rr.sampled:
                     rules_sampled += 1
                 for f in rr.findings:
@@ -280,6 +282,7 @@ def _metrics(results: list[CheckResult]) -> dict:
         "rules_warn": rules_warn,
         "rules_pass": rules_pass,
         "rules_skipped": rules_skipped,
+        "rules_error": rules_error,
         "rules_sampled": rules_sampled,
         "findings_total": findings_total,
         "findings_fail": findings_fail,

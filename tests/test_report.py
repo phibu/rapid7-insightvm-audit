@@ -269,14 +269,17 @@ def test_metrics_rollup_counts():
                        severity="info", status="pass"),
             RuleResult(rule_id="d", rule_name="D", description="d",
                        severity="warn", status="skipped"),
+            RuleResult(rule_id="e", rule_name="E", description="d",
+                       severity="fail", status="error", error="boom"),
         ],
     )
     m = _metrics([cr])
-    assert m["rules_total"] == 4
+    assert m["rules_total"] == 5
     assert m["rules_fail"] == 1
     assert m["rules_warn"] == 1
     assert m["rules_pass"] == 1
     assert m["rules_skipped"] == 1
+    assert m["rules_error"] == 1
     assert m["rules_sampled"] == 1
     assert m["total_duration_ms"] == 2500
     assert m["findings_total"] == 2
