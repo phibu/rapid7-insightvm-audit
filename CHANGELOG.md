@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-04-30
+
+### Fixed
+- **`agent_unauth_collision` 404:** the rule's per-asset fallback called `GET /api/3/assets/{id}/history`, an endpoint that does not exist per the Rapid7 v3 API spec (verified via Context7). The `history[]` array is a field on the asset record itself. Now: read `asset["history"]` inline; treat assets with neither `agent` nor `history` as "no agent signal" and skip. `EnvSnapshot.asset_history` deleted.
+- **`privileged_user_without_mfa` auth-failed mystery solved:** per-user calls to `/api/3/users/{id}/2FA` can return 401 either because the calling key lacks Global Administrator OR because the user has no MFA configured (Rapid7's "no resource" pattern). The rule now traps 401 per-user and disambiguates post-pass: 100% 401 → self-skip with info finding pointing at GA requirement; mixed → 401 users get findings as "no MFA configured." Rule description and README annotated with the GA requirement.
+- **Default-on log file** now creates the parent directory if missing (`Path(log_file).parent.mkdir(parents=True, exist_ok=True)`), mirroring `write_report`. The previous "Error: No such file or directory" warning is gone for the common case where `report.output_dir` doesn't yet exist on disk. Warning text reworded to clarify it's a log-only issue, not a fatal error.
+
+### Added
+- **New audit rule: `insight_agent_deployed`** — reports whether any Insight Agents are deployed in the environment. Configurable severity (default `info`) since some environments are intentionally agentless. Self-skips cleanly when `/api/3/agents` is unavailable.
+- **New audit rule: `insight_agent_version_currency`** — flags agents more than `version_drift_minor` (default 1) minor versions behind the newest version observed in the fleet. Newest-in-fleet reference (self-bootstrapping). Parses agent versions out of `agent.software[]` entries.
+- **`EnvSnapshot.agents()`** — new lazy accessor returning `(sample_list, total_count)` for the agent fleet. Mirrors `users()` / `sites()` pattern. 404-safe.
+- New `_agent_version.py` parser module with focused tests.
+
+### Documentation
+- README: two new rows in the Configuration Audit rules table for the new agent rules.
+- README: Complementary Scanning audit documented as a gap — the `/api/3/scan_templates` schema does not expose this field; users should audit via the Security Console UI.
+
 ## [0.2.2] - 2026-04-30
 
 ### Fixed
@@ -561,7 +578,8 @@ InsightVM environment.
 - CI on Python 3.11 and 3.12 (GitHub Actions).
 - 153 unit tests covering checks, rules, config, client, and report rendering.
 
-[Unreleased]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.2.3...HEAD
+[0.2.3]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.10...v0.2.0
