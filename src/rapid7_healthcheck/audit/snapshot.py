@@ -26,7 +26,6 @@ class EnvSnapshot:
         self._site_asset_count: dict[int, int] = {}
         self._scan_templates: dict[str, dict] = {}
         self._site_recent_scans: dict[tuple[int, int], list[dict]] = {}
-        self._asset_history: dict[int, list[dict]] = {}
         self._asset_samples: dict[int, tuple[list[dict], int]] = {}
         self._asset_groups: list[dict] | None = None
         self._tags: list[dict] | None = None
@@ -147,22 +146,16 @@ class EnvSnapshot:
             self._asset_samples[site_id] = (items, total)
         return self._asset_samples[site_id]
 
-    def asset_history(self, asset_id: int) -> list[dict]:
-        if asset_id not in self._asset_history:
-            body = self._client.get(f"/api/3/assets/{asset_id}/history")
-            self._asset_history[asset_id] = list(body.get("history", body.get("resources", [])))
-        return self._asset_history[asset_id]
-
     def asset_has_agent(self, asset: dict) -> bool | None:
         """Cheap agent-presence check: returns True/False from the asset record
         directly when possible, None when the record doesn't carry the signal
-        (caller should fall back to `asset_history`).
+        (caller should fall back to reading asset["history"] inline).
 
         The Rapid7 /api/3 asset payload typically includes an `agent` block
         (with `agentId`) when the asset has been correlated with an Insight
         Agent. Some console versions and asset shapes don't populate it; in
-        that case we return None and let the caller decide whether to do
-        the more expensive history check.
+        that case we return None and let the caller read the inline `history`
+        field from the asset record instead.
         """
         agent = asset.get("agent")
         if isinstance(agent, dict):

@@ -34,7 +34,6 @@ class FakeSnapshot:
         self._scan_templates: dict[str, dict] = {}
         self._site_recent_scans: dict[int, list[dict]] = {}
         self._asset_samples: dict[int, tuple[list[dict], int]] = {}
-        self._asset_history: dict[int, list[dict]] = {}
         self._asset_groups: list[dict] = []
         self._asset_group_search_criteria: dict[int, dict] = {}
         self._asset_group_sites: dict[int, set[int]] = {}
@@ -69,7 +68,6 @@ class FakeSnapshot:
     def set_scan_template(self, template_id: str, template: dict) -> None: self._scan_templates[template_id] = template
     def set_site_recent_scans(self, site_id: int, scans: list[dict]) -> None: self._site_recent_scans[site_id] = scans
     def set_asset_sample(self, site_id: int, assets: list[dict], total: int) -> None: self._asset_samples[site_id] = (assets, total)
-    def set_asset_history(self, asset_id: int, history: list[dict]) -> None: self._asset_history[asset_id] = history
     def set_asset_groups(self, groups: list[dict]) -> None: self._asset_groups = groups
     def set_asset_group_search_criteria(self, group_id: int, sc: dict) -> None: self._asset_group_search_criteria[group_id] = sc
     def set_asset_group_sites(self, group_id: int, site_ids: set[int]) -> None: self._asset_group_sites[group_id] = set(site_ids)
@@ -133,11 +131,6 @@ class FakeSnapshot:
         if site_id not in self._asset_samples:
             raise AssertionError(f"FakeSnapshot.asset_sample({site_id}) not registered")
         return self._asset_samples[site_id]
-
-    def asset_history(self, asset_id: int) -> list[dict]:
-        if asset_id not in self._asset_history:
-            raise AssertionError(f"FakeSnapshot.asset_history({asset_id}) not registered")
-        return self._asset_history[asset_id]
 
     def asset_has_agent(self, asset: dict) -> bool | None:
         """Mirrors EnvSnapshot.asset_has_agent — pure logic, no network."""

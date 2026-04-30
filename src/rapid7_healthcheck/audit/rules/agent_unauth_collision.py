@@ -13,11 +13,10 @@ def _has_agent_history(history: list[dict]) -> bool:
 class AgentUnauthCollisionRule:
     # Performance note (0.2.2): originally this rule called snapshot.asset_history
     # for every asset in the per-site sample. At fleet scale (>100k assets across
-    # many sites) that fans out to thousands of GET /api/3/assets/{id}/history
-    # calls, exceeding the request_timeout_seconds * max_retries budget on slow
-    # consoles. Now we prefer the agent-presence signal that the assets endpoint
-    # already returns; asset_history is the fallback for assets whose record
-    # doesn't carry that signal.
+    # many sites) that fans out to thousands of per-asset calls.
+    # 0.2.2: prefer the agent-presence signal that the assets endpoint already
+    # returns. 0.2.3: GET /api/3/assets/{id}/history does not exist per the
+    # Rapid7 v3 API spec; fallback now reads asset["history"] inline.
     rule_id = "agent_unauth_collision"
     rule_name = "Insight Agent Asset Scanned Without Authentication"
     description = (
@@ -68,8 +67,14 @@ class AgentUnauthCollisionRule:
                 elif cheap is False:
                     continue
                 else:
-                    # Fallback for assets whose record didn't carry the signal.
-                    if _has_agent_history(snapshot.asset_history(asset["id"])):
+                    # Fallback: read inline history from the asset record.
+                    # /api/3/assets/{id}/history does not exist; the history
+                    # array is a field on the asset object itself when the
+                    # bulk-listing endpoint includes it. Assets without
+                    # either the `agent` block OR inline `history` are
+                    # treated as "no agent signal" and skipped.
+                    history = asset.get("history")
+                    if isinstance(history, list) and _has_agent_history(history):
                         agent_count += 1
 
             if agent_count > 0:
