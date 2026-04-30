@@ -208,6 +208,10 @@
     section.check:first-of-type { page-break-before: avoid; }
     details { page-break-inside: avoid; }
     details[open] summary { page-break-after: avoid; }
+    /* Force-expand all <details> for print — paper readers can't click. */
+    details { display: block; }
+    details > summary { list-style: none; }
+    details > *:not(summary) { display: block !important; }
     a[href]::after { content: " (" attr(href) ")"; font-size: 0.85em; color: #555; }
     a[href^="#"]::after { content: ""; }
   }
