@@ -650,6 +650,48 @@
   // Expose syncHash for Tasks 5 & 6 to call after their state changes.
   window.__phase2_syncHash = syncHash;
 })();
+(function(){
+  var input = document.querySelector('.filter-search');
+  if (!input) return;
+  var rules = document.querySelectorAll('section.check details[data-search-text]');
+  var debounceTimer = null;
+  function apply(query) {
+    var q = query.trim().toLowerCase();
+    if (!q) {
+      document.body.removeAttribute('data-filter-search');
+      document.body.removeAttribute('data-filter-search-q');
+      rules.forEach(function(r){ r.removeAttribute('data-match'); });
+    } else {
+      document.body.setAttribute('data-filter-search', '');
+      document.body.setAttribute('data-filter-search-q', q);
+      rules.forEach(function(r){
+        var hay = r.getAttribute('data-search-text') || '';
+        if (hay.indexOf(q) >= 0) r.setAttribute('data-match', '');
+        else r.removeAttribute('data-match');
+      });
+    }
+    if (window.__phase2_syncHash) window.__phase2_syncHash();
+  }
+  input.addEventListener('input', function(){
+    clearTimeout(debounceTimer);
+    var v = input.value;
+    debounceTimer = setTimeout(function(){ apply(v); }, 150);
+  });
+  // Restore from hash on load.
+  var hash = location.hash.replace(/^#/, '');
+  if (hash) {
+    var params = {};
+    hash.split('&').forEach(function(p){
+      var eq = p.indexOf('=');
+      if (eq < 0) params[p] = true;
+      else params[p.slice(0, eq)] = decodeURIComponent(p.slice(eq + 1));
+    });
+    if (params.search) {
+      input.value = params.search;
+      apply(params.search);
+    }
+  }
+})();
 </script>
 
 </body>
