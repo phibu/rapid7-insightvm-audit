@@ -162,6 +162,38 @@ def _check_scalar(field_name: str, value: Any, expected: type, path: str) -> Non
         )
 
 
+def _validate_dict_schema(
+    data: Any,
+    *,
+    expected: set[str],
+    required: set[str],
+    name: str,
+) -> dict:
+    """Validate `data` is a mapping with only `expected` keys and all `required` keys.
+
+    Returns `data` cast to dict on success. Raises `ConfigError` matching
+    the wording used by `_build_audit_config` and `_build_user_audit_config`
+    so existing error messages remain stable:
+
+      - "{name}: expected mapping"
+      - "{name}: unknown key(s): [...]"
+      - "{name}: missing required key(s): [...]"
+
+    Not used for `_build_report_config`, which has different error wording
+    (`"report: expected mapping, got <type>"`) and a custom required/optional
+    split.
+    """
+    if not isinstance(data, dict):
+        raise ConfigError(f"{name}: expected mapping")
+    unknown = set(data.keys()) - expected
+    if unknown:
+        raise ConfigError(f"{name}: unknown key(s): {sorted(unknown)}")
+    missing = required - set(data.keys())
+    if missing:
+        raise ConfigError(f"{name}: missing required key(s): {sorted(missing)}")
+    return data
+
+
 def _from_dict(cls: type, data: Any, path: str) -> Any:
     if not isinstance(data, dict):
         raise ConfigError(f"{path}: expected mapping, got {type(data).__name__}")
@@ -254,17 +286,22 @@ def _build_thresholds(data: Any) -> Thresholds:
 def _build_audit_config(data: dict | None) -> AuditConfig:
     if data is None:
         return AuditConfig(enabled=False, full_scan=False, sample_size=500, rules={})
-    if not isinstance(data, dict):
-        raise ConfigError("audit: expected mapping")
-    expected = {"enabled", "full_scan", "sample_size", "rules"}
-    unknown = set(data.keys()) - expected
-    if unknown:
-        raise ConfigError(f"audit: unknown key(s): {sorted(unknown)}")
+    _validate_dict_schema(
+        data,
+        expected={"enabled", "full_scan", "sample_size", "rules"},
+        required=set(),  # legacy: only `unknown` was checked here, missing
+                         # keys fall through to the field checks below
+        name="audit",
+    )
     if not isinstance(data.get("enabled"), bool):
         raise ConfigError("audit.enabled: expected bool")
     if not isinstance(data.get("full_scan"), bool):
         raise ConfigError("audit.full_scan: expected bool")
-    if not isinstance(data.get("sample_size"), int) or isinstance(data.get("sample_size"), bool) or data["sample_size"] <= 0:
+    if (
+        not isinstance(data.get("sample_size"), int)
+        or isinstance(data.get("sample_size"), bool)
+        or data["sample_size"] <= 0
+    ):
         raise ConfigError("audit.sample_size: expected positive int")
 
     raw_rules = data.get("rules") or {}
@@ -299,17 +336,21 @@ def _build_user_audit_config(data: dict | None) -> UserAuditConfig:
     but uses `_VALID_USER_AUDIT_RULE_IDS` and the `UserAuditConfig` shape."""
     if data is None:
         return UserAuditConfig(enabled=False, full_scan=False, sample_size=500, rules={})
-    if not isinstance(data, dict):
-        raise ConfigError("user_audit: expected mapping")
-    expected = {"enabled", "full_scan", "sample_size", "rules"}
-    unknown = set(data.keys()) - expected
-    if unknown:
-        raise ConfigError(f"user_audit: unknown key(s): {sorted(unknown)}")
+    _validate_dict_schema(
+        data,
+        expected={"enabled", "full_scan", "sample_size", "rules"},
+        required=set(),
+        name="user_audit",
+    )
     if not isinstance(data.get("enabled"), bool):
         raise ConfigError("user_audit.enabled: expected bool")
     if not isinstance(data.get("full_scan"), bool):
         raise ConfigError("user_audit.full_scan: expected bool")
-    if not isinstance(data.get("sample_size"), int) or isinstance(data.get("sample_size"), bool) or data["sample_size"] <= 0:
+    if (
+        not isinstance(data.get("sample_size"), int)
+        or isinstance(data.get("sample_size"), bool)
+        or data["sample_size"] <= 0
+    ):
         raise ConfigError("user_audit.sample_size: expected positive int")
 
     raw_rules = data.get("rules") or {}
@@ -347,6 +388,10 @@ def _build_report_config(data: Any) -> ReportConfig:
       - integer >= 0 -> use as-is
       - null/None    -> delta disabled
     Rejects unknown keys (consistent with `_from_dict`).
+
+    Not routed through `_validate_dict_schema` because this validator has a
+    distinct error-message wording (`expected mapping, got <type>`) and a
+    custom optional/required split that doesn't generalize cleanly.
     """
     if not isinstance(data, dict):
         raise ConfigError(f"report: expected mapping, got {type(data).__name__}")
