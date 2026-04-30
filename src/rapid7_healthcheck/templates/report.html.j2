@@ -265,6 +265,68 @@
     --fail-fg: #e6786b; --fail-bg: rgba(230,120,107,0.14);
     --info-fg: #6aa6ee; --info-bg: rgba(106,166,238,0.14);
   }
+  /* Filter bar — sticky from where it first appears in flow. */
+  .filter-bar {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    margin: 1rem 0 1.5rem 0;
+    padding: 0.6rem 0.75rem;
+    background: var(--bg);
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 0.75rem;
+    align-items: center;
+  }
+  .filter-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+  .chip {
+    padding: 0.25rem 0.65rem;
+    background: var(--surface);
+    color: var(--neutral-muted);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background 150ms, color 150ms, border-color 150ms;
+  }
+  .chip[aria-pressed="true"] {
+    background: var(--info-bg);
+    color: var(--info-fg);
+    border-color: var(--info-fg);
+  }
+  .chip[data-severity="fail"][aria-pressed="true"] { background: var(--fail-bg); color: var(--fail-fg); border-color: var(--fail-fg); }
+  .chip[data-severity="warn"][aria-pressed="true"] { background: var(--warn-bg); color: var(--warn-fg); border-color: var(--warn-fg); }
+  .chip[data-severity="pass"][aria-pressed="true"] { background: var(--pass-bg); color: var(--pass-fg); border-color: var(--pass-fg); }
+  .filter-search {
+    flex: 1;
+    min-width: 180px;
+    padding: 0.3rem 0.6rem;
+    background: var(--bg);
+    color: var(--neutral-fg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font: inherit;
+    font-size: 13px;
+  }
+  /* CSS-driven filtering — JS sets body attributes; CSS hides non-matching cards. */
+  body[data-filter-severity="fail"]    section.check details:not([data-severity="fail"]),
+  body[data-filter-severity="warn"]    section.check details:not([data-severity="warn"]),
+  body[data-filter-severity="pass"]    section.check details:not([data-severity="pass"]),
+  body[data-filter-severity="skipped"] section.check details:not([data-severity="skipped"]),
+  body[data-filter-severity="error"]   section.check details:not([data-severity="error"]) { display: none; }
+  body[data-filter-changed]            section.check details:not([data-changed]) { display: none; }
+  body[data-filter-search]             section.check details:not([data-match])    { display: none; }
+  /* Reduced motion. */
+  @media (prefers-reduced-motion: reduce) {
+    .chip, .theme-toggle { transition: none; }
+  }
 </style>
 </head>
 <body>
@@ -356,6 +418,21 @@
   </tbody>
 </table>
 
+<div class="filter-bar" role="toolbar" aria-label="Filter findings">
+  <div class="filter-chips" role="group" aria-label="Filter by severity">
+    <button class="chip" type="button" aria-pressed="true"  data-severity="all">All</button>
+    <button class="chip" type="button" aria-pressed="false" data-severity="fail">Fail</button>
+    <button class="chip" type="button" aria-pressed="false" data-severity="warn">Warn</button>
+    <button class="chip" type="button" aria-pressed="false" data-severity="pass">Pass</button>
+    <button class="chip" type="button" aria-pressed="false" data-severity="skipped">Skipped</button>
+    {% if delta %}
+    <button class="chip" type="button" aria-pressed="false" data-filter="changed">Changed</button>
+    {% endif %}
+  </div>
+  <input class="filter-search" type="search" placeholder="Search rules…"
+         aria-label="Search rules and findings">
+</div>
+
 {% for r in results %}
 <section class="check" id="check-{{ loop.index }}">
   <h2>{{ r.name }} <span class="badge {{ r.status }}">{{ r.status|upper }}</span></h2>
@@ -392,7 +469,9 @@
       </table>
 
       {% for rr in r.rule_results %}
-      <details id="rule-{{ rr.rule_id }}">
+      <details id="rule-{{ rr.rule_id }}"
+               data-severity="{{ rr.status }}"
+               data-search-text="{{ (rr.rule_name|lower ~ ' ' ~ rr.findings|map(attribute='message')|join(' ')|lower)[:200] }}">
         <summary><b>{{ rr.rule_name }}</b> <span class="badge {{ rr.status }}">{{ rr.status|upper }}</span></summary>
         <p class="check-desc">{{ rr.description }}</p>
 
