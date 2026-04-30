@@ -695,6 +695,7 @@
     }
   }
 })();
+{% if delta %}
 (function(){
   var chip = document.querySelector('.chip[data-filter="changed"]');
   if (!chip) return;
@@ -708,7 +709,7 @@
   } catch(e) { return; }
   // Build signature set from delta.
   var sigs = {};
-  ['res'+'olved', 'new_fails', 'severity_changed'].forEach(function(k){
+  ['resolved', 'new_fails', 'severity_changed'].forEach(function(k){
     (delta[k] || []).forEach(function(f){ if (f.signature) sigs[f.signature] = true; });
   });
   // Walk state blob, mark each rule card that has any finding signature in sigs.
@@ -736,6 +737,7 @@
     setChanged(true);
   }
 })();
+{% endif %}
 </script>
 
 </body>
