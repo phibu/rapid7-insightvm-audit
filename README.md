@@ -196,6 +196,8 @@ Rules:
 | Excessive dynamic asset groups or nested tag references | warn | Console Best Practices |
 | Scan and report schedules overlap on shared scope | warn | Console Best Practices |
 | Scan engine version drift or stale content refresh | warn | Console Best Practices |
+| Insight Agent fleet presence | info | docs.rapid7.com Insight Agent overview |
+| Insight Agent version currency | warn | docs.rapid7.com Insight Agent overview |
 
 Per-rule severity and enable/disable live in the `audit:` block of `config.yaml`. Each finding in the report links back to the Rapid7 source documenting the rule.
 
@@ -204,6 +206,10 @@ Per-rule severity and enable/disable live in the `audit:` block of `config.yaml`
 > **Note on scope.** `audit.sample_size` and `user_audit.sample_size` apply only to the audit verticals (Configuration Audit, User & Permission Audit). Operational checks — Scan Engines, Scan Activity, Asset Coverage, Data Quality — run against the full population by design, since they produce aggregate counts where sampling would give a misleading smaller number.
 
 See `docs/examples/config.yaml` for the full audit configuration block.
+
+**Rules NOT implemented (and why).** Some commonly-requested configuration-audit rules cannot be implemented because the Rapid7 v3 API does not expose the underlying data:
+
+- **Complementary Scanning** — the `/api/3/scan_templates` schema does not expose a `complementaryScanning` field or any equivalent flag (verified against the canonical `ScanTemplate` schema). This is a runtime characteristic of scans, not a documented template configuration. Audit it via the Security Console UI: Site → Scan Configuration → Complementary Scanning.
 
 ## User & Permission Audit
 
