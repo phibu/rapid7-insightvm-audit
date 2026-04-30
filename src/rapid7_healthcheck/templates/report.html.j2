@@ -1,9 +1,20 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="no-js">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{ title }}</title>
+<script>
+(function(){
+  document.documentElement.classList.remove('no-js');
+  try {
+    var t = localStorage.getItem('theme');
+    if (t === 'light' || t === 'dark') {
+      document.documentElement.setAttribute('data-theme', t);
+    }
+  } catch(e) {}
+})();
+</script>
 <style>
   :root {
     --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -215,6 +226,9 @@
     a[href]::after { content: " (" attr(href) ")"; font-size: 0.85em; color: #555; }
     a[href^="#"]::after { content: ""; }
   }
+  /* JS-disabled fallback: hide chrome that depends on JS to function. */
+  .no-js .filter-bar,
+  .no-js .theme-toggle { display: none; }
 </style>
 </head>
 <body>
