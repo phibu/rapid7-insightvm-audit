@@ -26,13 +26,14 @@ class EnvSnapshot:
         self._site_asset_count: dict[int, int] = {}
         self._scan_templates: dict[str, dict] = {}
         self._site_recent_scans: dict[tuple[int, int], list[dict]] = {}
-        self._asset_history: dict[int, list[dict]] = {}
         self._asset_samples: dict[int, tuple[list[dict], int]] = {}
         self._asset_groups: list[dict] | None = None
         self._tags: list[dict] | None = None
         self._reports: list[dict] | None = None
         self._administration_properties: dict | None = None
         self._total_asset_count: int | None = None
+        self._agents_cache: tuple[list[dict], int] | None = None
+        self._agents_unavailable: bool = False
         self._users: list[dict] | None = None
         self._users_endpoints_unavailable: bool = False
         self._authentication_sources: list[dict] | None = None
@@ -147,22 +148,16 @@ class EnvSnapshot:
             self._asset_samples[site_id] = (items, total)
         return self._asset_samples[site_id]
 
-    def asset_history(self, asset_id: int) -> list[dict]:
-        if asset_id not in self._asset_history:
-            body = self._client.get(f"/api/3/assets/{asset_id}/history")
-            self._asset_history[asset_id] = list(body.get("history", body.get("resources", [])))
-        return self._asset_history[asset_id]
-
     def asset_has_agent(self, asset: dict) -> bool | None:
         """Cheap agent-presence check: returns True/False from the asset record
         directly when possible, None when the record doesn't carry the signal
-        (caller should fall back to `asset_history`).
+        (caller should fall back to reading asset["history"] inline).
 
         The Rapid7 /api/3 asset payload typically includes an `agent` block
         (with `agentId`) when the asset has been correlated with an Insight
         Agent. Some console versions and asset shapes don't populate it; in
-        that case we return None and let the caller decide whether to do
-        the more expensive history check.
+        that case we return None and let the caller read the inline `history`
+        field from the asset record instead.
         """
         agent = asset.get("agent")
         if isinstance(agent, dict):
@@ -308,6 +303,48 @@ class EnvSnapshot:
             body = self._client.get("/api/3/assets", params={"size": 1})
             self._total_asset_count = int(body.get("page", {}).get("totalResources", 0))
         return self._total_asset_count
+
+    def agents(self) -> tuple[list[dict], int]:
+        """Return (sample_list, total_count) for the Insight Agent fleet.
+
+        Lazily fetched and cached on first call. Honors `sample_size` when
+        `full_scan` is False — `total_count` comes from `page.totalResources`,
+        `sample_list` is capped at `sample_size`. Returns `([], 0)` cleanly
+        when /api/3/agents is unavailable (404 on older consoles or non-GA
+        keys); the `_agents_unavailable` flag is set so dependent rules can
+        self-skip honestly rather than treat the empty list as 'no agents'.
+        """
+        if self._agents_cache is not None:
+            return self._agents_cache
+        try:
+            head = self._client.get("/api/3/agents", params={"size": 1})
+        except Rapid7ClientError as e:
+            if e.status_code == 404:
+                logger.info("agents endpoint not available on this console")
+                self._agents_unavailable = True
+                self._agents_cache = ([], 0)
+                return self._agents_cache
+            raise
+
+        total = int(head.get("page", {}).get("totalResources", 0))
+
+        sample: list[dict] = []
+        if total > 0:
+            it = self._client.paginate("/api/3/agents")
+            if self._full_scan:
+                sample = list(it)
+            else:
+                sample = list(itertools.islice(it, self._sample_size))
+
+        self._agents_cache = (sample, total)
+        return self._agents_cache
+
+    def is_agents_unavailable(self) -> bool:
+        """True if /api/3/agents returned 404 — pure read of the cached flag.
+
+        Callers should invoke `agents()` first to prime the flag.
+        """
+        return self._agents_unavailable
 
     # --- User & Permission audit accessors -------------------------------
 

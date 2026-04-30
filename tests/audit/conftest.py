@@ -20,11 +20,16 @@ class FakeSnapshot:
         self._shared_credentials: list[dict] = []
         self._blackouts: list[dict] = []
         self._blackouts_unavailable: bool = False
+        # Agent fleet
+        self._agents: list[dict] = []
+        self._agents_total: int = 0
+        self._agents_unavailable: bool = False
         # User & permission audit
         self._users: list[dict] = []
         self._users_endpoints_unavailable: bool = False
         self._authentication_sources: list[dict] = []
         self._user_2fa: dict[int, bool | None] = {}
+        self._user_2fa_raises: dict[int, Exception] = {}
         self._user_sites: dict[int, list[dict]] = {}
         self._user_asset_groups: dict[int, list[dict]] = {}
         self._site_credentials: dict[int, list[dict]] = {}
@@ -34,7 +39,6 @@ class FakeSnapshot:
         self._scan_templates: dict[str, dict] = {}
         self._site_recent_scans: dict[int, list[dict]] = {}
         self._asset_samples: dict[int, tuple[list[dict], int]] = {}
-        self._asset_history: dict[int, list[dict]] = {}
         self._asset_groups: list[dict] = []
         self._asset_group_search_criteria: dict[int, dict] = {}
         self._asset_group_sites: dict[int, set[int]] = {}
@@ -51,6 +55,11 @@ class FakeSnapshot:
 
     # ---- registration helpers used by tests ----
 
+    def set_agents(self, agents_list: list[dict], total: int | None = None, *, unavailable: bool = False) -> None:
+        self._agents = agents_list
+        self._agents_total = total if total is not None else len(agents_list)
+        self._agents_unavailable = unavailable
+
     def set_sites(self, sites: list[dict]) -> None: self._sites = sites
     def set_scan_engines(self, engines: list[dict]) -> None: self._scan_engines = engines
     def set_shared_credentials(self, creds: list[dict]) -> None: self._shared_credentials = creds
@@ -60,6 +69,9 @@ class FakeSnapshot:
     def set_users_endpoints_unavailable(self, unavailable: bool) -> None: self._users_endpoints_unavailable = unavailable
     def set_authentication_sources(self, sources: list[dict]) -> None: self._authentication_sources = sources
     def set_user_2fa_enabled(self, user_id: int, enabled: bool | None) -> None: self._user_2fa[user_id] = enabled
+    def set_user_2fa_raises(self, user_id: int, exc: Exception) -> None:
+        """Configure user_2fa_enabled to raise `exc` for this user_id."""
+        self._user_2fa_raises[user_id] = exc
     def set_user_sites(self, user_id: int, sites: list[dict]) -> None: self._user_sites[user_id] = sites
     def set_user_asset_groups(self, user_id: int, groups: list[dict]) -> None: self._user_asset_groups[user_id] = groups
     def set_site_credentials(self, site_id: int, creds: list[dict]) -> None: self._site_credentials[site_id] = creds
@@ -69,7 +81,6 @@ class FakeSnapshot:
     def set_scan_template(self, template_id: str, template: dict) -> None: self._scan_templates[template_id] = template
     def set_site_recent_scans(self, site_id: int, scans: list[dict]) -> None: self._site_recent_scans[site_id] = scans
     def set_asset_sample(self, site_id: int, assets: list[dict], total: int) -> None: self._asset_samples[site_id] = (assets, total)
-    def set_asset_history(self, asset_id: int, history: list[dict]) -> None: self._asset_history[asset_id] = history
     def set_asset_groups(self, groups: list[dict]) -> None: self._asset_groups = groups
     def set_asset_group_search_criteria(self, group_id: int, sc: dict) -> None: self._asset_group_search_criteria[group_id] = sc
     def set_asset_group_sites(self, group_id: int, site_ids: set[int]) -> None: self._asset_group_sites[group_id] = set(site_ids)
@@ -79,6 +90,12 @@ class FakeSnapshot:
     def set_total_asset_count(self, n: int) -> None: self._total_asset_count = n
 
     # ---- mirror of EnvSnapshot's public API ----
+
+    def agents(self) -> tuple[list[dict], int]:
+        return list(self._agents), self._agents_total
+
+    def is_agents_unavailable(self) -> bool:
+        return self._agents_unavailable
 
     def sites(self) -> list[dict]: return self._sites
     def scan_engines(self) -> list[dict]: return self._scan_engines
@@ -91,6 +108,8 @@ class FakeSnapshot:
     def authentication_sources(self) -> list[dict]: return self._authentication_sources
 
     def user_2fa_enabled(self, user_id: int) -> bool | None:
+        if user_id in self._user_2fa_raises:
+            raise self._user_2fa_raises[user_id]
         return self._user_2fa.get(user_id, False)
 
     def user_sites(self, user_id: int) -> list[dict]:
@@ -133,11 +152,6 @@ class FakeSnapshot:
         if site_id not in self._asset_samples:
             raise AssertionError(f"FakeSnapshot.asset_sample({site_id}) not registered")
         return self._asset_samples[site_id]
-
-    def asset_history(self, asset_id: int) -> list[dict]:
-        if asset_id not in self._asset_history:
-            raise AssertionError(f"FakeSnapshot.asset_history({asset_id}) not registered")
-        return self._asset_history[asset_id]
 
     def asset_has_agent(self, asset: dict) -> bool | None:
         """Mirrors EnvSnapshot.asset_has_agent — pure logic, no network."""

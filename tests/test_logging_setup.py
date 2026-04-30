@@ -80,4 +80,25 @@ def test_setup_logging_degrades_gracefully_on_permission_error(monkeypatch, capl
     with caplog.at_level(logging.WARNING):
         _setup_logging(verbose=False, log_file="/cannot/write/here.log")
 
-    assert any("could not open log file" in r.message.lower() for r in caplog.records)
+    assert any("log file unavailable" in r.message.lower() for r in caplog.records)
+
+
+def test_setup_logging_creates_parent_dir_when_missing(tmp_path, caplog):
+    """When the log file's parent dir doesn't exist, _setup_logging should
+    create it rather than degrading to a stderr warning. Mirrors what
+    write_report does for the HTML output dir."""
+    import logging
+    from rapid7_healthcheck.__main__ import _setup_logging
+
+    log_path = tmp_path / "does-not-exist-yet" / "run.log"
+    assert not log_path.parent.exists(), "test setup error: parent dir already exists"
+
+    with caplog.at_level(logging.WARNING):
+        _setup_logging(verbose=False, log_file=str(log_path))
+
+    assert log_path.parent.exists(), "expected parent dir to be auto-created"
+    # No warning about log file unavailability — directory was created cleanly.
+    assert not any(
+        "could not open log file" in r.message.lower() or "log file unavailable" in r.message.lower()
+        for r in caplog.records
+    ), f"unexpected warning when parent dir was auto-creatable: {[r.message for r in caplog.records]}"

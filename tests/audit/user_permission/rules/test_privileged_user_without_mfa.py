@@ -72,3 +72,65 @@ def test_skipped_when_2fa_endpoint_unavailable(fake_snapshot):
     r = PrivilegedUserWithoutMfaRule().run(fake_snapshot, "fail", False, 500, {})
     assert r.status == "skipped"
     assert r.summary["endpoint_available"] is False
+
+
+def test_self_skip_when_all_users_return_401(fake_snapshot):
+    """If every privileged user's 2FA endpoint returns 401, the calling key
+    likely lacks Global Administrator — self-skip with an info finding."""
+    from rapid7_healthcheck.client import Rapid7ClientError
+
+    fake_snapshot.set_users([
+        _user(1, "alice", "global-admin"),
+        _user(2, "bob", "global-admin"),
+        _user(3, "carol", "custom-role", superuser=True),
+    ])
+    err = Rapid7ClientError("401 at /api/3/users/X/2FA: auth", status_code=401)
+    fake_snapshot.set_user_2fa_raises(1, err)
+    fake_snapshot.set_user_2fa_raises(2, err)
+    fake_snapshot.set_user_2fa_raises(3, err)
+
+    r = PrivilegedUserWithoutMfaRule().run(fake_snapshot, "fail", False, 500, {})
+
+    assert r.status == "skipped"
+    assert len(r.findings) == 1
+    assert r.findings[0].severity == "info"
+    msg = r.findings[0].message.lower()
+    assert "global administrator" in msg or "401" in msg
+
+
+def test_findings_when_some_users_succeed_others_401(fake_snapshot):
+    """Mixed 200/401: 401 → treat as no-MFA-configured (a finding)."""
+    from rapid7_healthcheck.client import Rapid7ClientError
+
+    fake_snapshot.set_users([
+        _user(1, "alice", "global-admin"),   # False  → finding
+        _user(2, "bob", "global-admin"),     # True   → no finding
+        _user(3, "carol", "global-admin"),   # 401    → finding (disambiguation)
+    ])
+    fake_snapshot.set_user_2fa_enabled(1, False)
+    fake_snapshot.set_user_2fa_enabled(2, True)
+    fake_snapshot.set_user_2fa_raises(3, Rapid7ClientError("401", status_code=401))
+
+    r = PrivilegedUserWithoutMfaRule().run(fake_snapshot, "fail", False, 500, {})
+
+    assert len(r.findings) == 2
+    logins = {f.details["login"] for f in r.findings}
+    assert logins == {"alice", "carol"}
+
+
+def test_findings_when_all_users_return_explicit_status(fake_snapshot):
+    """All users returned a 2FA status (no 401s); no disambiguation needed."""
+    fake_snapshot.set_users([
+        _user(1, "alice", "global-admin"),
+        _user(2, "bob", "global-admin"),
+        _user(3, "carol", "global-admin"),
+    ])
+    fake_snapshot.set_user_2fa_enabled(1, False)
+    fake_snapshot.set_user_2fa_enabled(2, False)
+    fake_snapshot.set_user_2fa_enabled(3, True)
+
+    r = PrivilegedUserWithoutMfaRule().run(fake_snapshot, "fail", False, 500, {})
+
+    assert len(r.findings) == 2
+    logins = {f.details["login"] for f in r.findings}
+    assert logins == {"alice", "bob"}

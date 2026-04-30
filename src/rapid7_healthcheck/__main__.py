@@ -61,9 +61,10 @@ def _setup_logging(verbose: bool, log_file: str | None) -> None:
     file_open_error: str | None = None
     if log_file:
         try:
+            Path(log_file).parent.mkdir(parents=True, exist_ok=True)
             handlers.append(logging.FileHandler(log_file, encoding="utf-8"))
         except OSError as e:
-            file_open_error = f"could not open log file {log_file!r}: {e}"
+            file_open_error = f"log file unavailable ({log_file}); continuing without file logging: {e}"
     if file_open_error:
         logging.getLogger(__name__).warning(file_open_error)
     logging.basicConfig(

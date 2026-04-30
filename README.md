@@ -196,6 +196,8 @@ Rules:
 | Excessive dynamic asset groups or nested tag references | warn | Console Best Practices |
 | Scan and report schedules overlap on shared scope | warn | Console Best Practices |
 | Scan engine version drift or stale content refresh | warn | Console Best Practices |
+| Insight Agent fleet presence | info | docs.rapid7.com Insight Agent overview |
+| Insight Agent version currency | warn | docs.rapid7.com Insight Agent overview |
 
 Per-rule severity and enable/disable live in the `audit:` block of `config.yaml`. Each finding in the report links back to the Rapid7 source documenting the rule.
 
@@ -205,6 +207,10 @@ Per-rule severity and enable/disable live in the `audit:` block of `config.yaml`
 
 See `docs/examples/config.yaml` for the full audit configuration block.
 
+**Rules NOT implemented (and why).** Some commonly-requested configuration-audit rules cannot be implemented because the Rapid7 v3 API does not expose the underlying data:
+
+- **Complementary Scanning** — the `/api/3/scan_templates` schema does not expose a `complementaryScanning` field or any equivalent flag (verified against the canonical `ScanTemplate` schema). This is a runtime characteristic of scans, not a documented template configuration. Audit it via the Security Console UI: Site → Scan Configuration → Complementary Scanning.
+
 ## User & Permission Audit
 
 A sibling audit category to the configuration audit, scoped to console user accounts and authentication settings. Toggled separately via `checks.user_permission_audit` and configured via the `user_audit:` block.
@@ -213,7 +219,7 @@ A sibling audit category to the configuration audit, scoped to console user acco
 
 | Rule | Default | Notes |
 | --- | --- | --- |
-| Privileged user without MFA | fail | Scoped to GA / `role.superuser` users only. Service accounts that legitimately use HTTP Basic Auth (which bypasses MFA) can be allowlisted via `mfa_exempt_logins`. |
+| Privileged user without MFA | fail | Scoped to GA / `role.superuser` users only. Service accounts that legitimately use HTTP Basic Auth (which bypasses MFA) can be allowlisted via `mfa_exempt_logins`. Requires Global Administrator key — non-GA keys receive 401 from `/api/3/users/{id}/2FA` and the rule self-skips with an info finding. |
 | Local accounts when SSO is configured | warn | Excessive local accounts when LDAP/SAML/Kerberos is configured. Knob: `max_local_accounts_when_sso` (default 2). |
 | Multiple Global Administrators | warn | Privilege creep. Knob: `max_global_administrators` (default 2). |
 | Locked user account | warn | Stuck account or brute-force indicator. |
