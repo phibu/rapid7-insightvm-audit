@@ -143,3 +143,21 @@ class ConfigurationAuditCheck:
             duration_ms=int((time.monotonic() - start) * 1000),
             rule_results=rule_results,
         )
+
+
+# Side-effect imports: register all 12 audit rules at package-import time.
+# Adding a new rule = one new file under `audit/rules/` + one line here.
+from rapid7_healthcheck.audit.rules import (  # noqa: E402,F401
+    agent_unauth_collision,
+    site_vuln_template_no_creds,
+    credential_failure_in_recent_scans,
+    overlapping_scan_windows,
+    single_engine_overload,
+    discovery_template_on_prod_site,
+    policy_and_vuln_in_same_template,
+    store_invulnerable_results,
+    local_engine_production_scope,
+    dynamic_groups_and_nested_tags,
+    scan_report_schedule_overlap,
+    engine_version_drift,
+)
