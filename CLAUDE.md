@@ -78,6 +78,8 @@ There is a second audit category sibling to the configuration audit: **User & Pe
 
 `Finding` is `frozen=True`. `report._annotate_findings` uses `object.__setattr__` to attach a pre-serialized `details_json` slot to each finding before rendering — this avoids autoescape mangling JSON-with-`<` inside the Jinja template. The mutation is intentional and confined to the render path. Don't try to "fix" it by un-freezing `Finding` or by serializing inside the template.
 
+The 0.1.9 layout embeds a `<script id="report-state" type="application/json">` blob at the end of `<body>`. It is a *trimmed projection* of the run (signatures + severity + short message — never the full `details`), capped at 1 MB by `_state_blob_projection`. The next run's `_load_prior_state` regex-extracts this blob to compute deltas via `_compute_delta`, and the footer's "Run hash" is the SHA-256 prefix of its serialized form. Don't remove the blob thinking it's dead code — it's load-bearing across runs.
+
 ## Configuration
 
 `config.yaml` is the single source of truth for thresholds, check toggles, and audit rules. `docs/examples/config.yaml` is the canonical template — keep it and the validator in `config.py` in lock-step. The report footer prints the applied thresholds so users can see what's tuned; if you add a threshold, also surface it in the thresholds table.

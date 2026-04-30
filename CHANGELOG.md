@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.10] - 2026-04-30
+
+### Changed
+- User-audit rule `sources` URLs standardized on `docs.rapid7.com/insightvm/`,
+  with deep-section anchors where clear. Verified all URLs return HTTP 200 at
+  release time.
+
+### Added
+- `rules_error` metric bucket. The metric grid now shows error-status rules in
+  their own tile, and `rules_total` matches the sum of severity buckets again.
+- `_compute_delta` now includes operational-check top-level findings (scan
+  engines, scan activity, asset coverage, data quality). Previously deltas
+  covered audit-rule findings only.
+- Print stylesheet now force-expands `<details>` cards on paper, so printed
+  reports show finding details, sources, and sample notes inline.
+
+### Internal
+- `report.py` import aliases (`_re`, `_time`) replaced with plain `re` / `time`.
+- `CLAUDE.md` documents the embedded state-blob convention introduced in 0.1.9.
+
 ## [0.1.9] - 2026-04-29
 
 ### Changed
@@ -451,7 +471,8 @@ InsightVM environment.
 - CI on Python 3.11 and 3.12 (GitHub Actions).
 - 153 unit tests covering checks, rules, config, client, and report rendering.
 
-[Unreleased]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.9...HEAD
+[Unreleased]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.10...HEAD
+[0.1.10]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.9...v0.1.10
 [0.1.9]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.8...v0.1.9
 [0.1.8]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.7...v0.1.8
 [0.1.7]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.1.6...v0.1.7
