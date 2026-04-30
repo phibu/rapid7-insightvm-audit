@@ -587,12 +587,18 @@
     btn.setAttribute('aria-label', 'Theme: ' + state.name);
     btn.querySelector('.theme-icon use').setAttribute('href', state.icon);
     btn.querySelector('.theme-label').textContent = state.label;
+    var stored = null;
+    try { stored = localStorage.getItem('theme'); } catch(e) {}
     if (state.name === 'system') {
       document.documentElement.removeAttribute('data-theme');
-      try { localStorage.removeItem('theme'); } catch(e) {}
+      if (stored !== null) {
+        try { localStorage.removeItem('theme'); } catch(e) {}
+      }
     } else {
       document.documentElement.setAttribute('data-theme', state.name);
-      try { localStorage.setItem('theme', state.name); } catch(e) {}
+      if (stored !== state.name) {
+        try { localStorage.setItem('theme', state.name); } catch(e) {}
+      }
     }
   }
   // Restore state from <html data-theme> set by the FOUC head script.
@@ -628,9 +634,9 @@
     if (document.body.hasAttribute('data-filter-changed')) parts.push('changed');
     var search = document.body.getAttribute('data-filter-search-q');
     if (search) parts.push('search=' + encodeURIComponent(search));
-    var hash = parts.length ? '#' + parts.join('&') : ' ';
+    var hash = parts.length ? '#' + parts.join('&') : '';
     if (location.hash !== hash) {
-      history.replaceState({}, '', hash === ' ' ? location.pathname + location.search : hash);
+      history.replaceState({}, '', hash || (location.pathname + location.search));
     }
   }
   sevChips.forEach(function(c){
