@@ -26,7 +26,7 @@ class PrivilegedUserWithoutMfaRule:
     default_severity = "fail"
     expensive = True
     sources = [
-        "https://docs.rapid7.com/insightvm/managing-users-and-authentication/",
+        "https://docs.rapid7.com/insightvm/managing-users-and-authentication/#enabling-two-factor-authentication",
     ]
 
     def run(self, snapshot, severity, full_scan, sample_size, rule_config) -> RuleResult:

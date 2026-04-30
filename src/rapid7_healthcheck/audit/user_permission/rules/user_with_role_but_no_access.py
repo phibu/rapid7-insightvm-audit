@@ -19,7 +19,7 @@ class UserWithRoleButNoAccessRule:
     default_severity = "info"
     expensive = True
     sources = [
-        "https://docs.rapid7.com/nexpose/managing-users-and-authentication/",
+        "https://docs.rapid7.com/insightvm/managing-users-and-authentication/#assigning-roles-to-users",
     ]
 
     def run(self, snapshot, severity, full_scan, sample_size, rule_config) -> RuleResult:

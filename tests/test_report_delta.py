@@ -229,3 +229,37 @@ def test_load_prior_state_max_age_none_disables_check(tmp_path):
     )
     # max_age_days=None disables the staleness filter; the file is loaded.
     assert blob is not None
+
+
+def test_compute_delta_includes_operational_check_resolved():
+    """A scan-engine warning that disappears between runs counts as resolved."""
+    from rapid7_healthcheck.report import _compute_delta
+    prior = _state([{
+        "name": "Scan Engines", "status": "warn", "duration_ms": 100,
+        "findings": [_f("op_a", severity="warn")], "rule_results": [],
+    }])
+    cur = _state([{
+        "name": "Scan Engines", "status": "pass", "duration_ms": 100,
+        "findings": [], "rule_results": [],
+    }])
+    delta = _compute_delta(prior=prior, current=cur)
+    assert delta is not None
+    assert len(delta["resolved"]) == 1
+    assert delta["resolved"][0]["signature"] == "op_a"
+
+
+def test_compute_delta_operational_check_new_fail():
+    """A new fail-severity finding in an operational check shows up in new_fails."""
+    from rapid7_healthcheck.report import _compute_delta
+    prior = _state([{
+        "name": "Scan Engines", "status": "pass", "duration_ms": 100,
+        "findings": [], "rule_results": [],
+    }])
+    cur = _state([{
+        "name": "Scan Engines", "status": "fail", "duration_ms": 100,
+        "findings": [_f("op_b", severity="fail")], "rule_results": [],
+    }])
+    delta = _compute_delta(prior=prior, current=cur)
+    assert delta is not None
+    assert len(delta["new_fails"]) == 1
+    assert delta["new_fails"][0]["signature"] == "op_b"

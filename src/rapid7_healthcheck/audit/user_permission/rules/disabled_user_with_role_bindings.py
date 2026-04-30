@@ -27,7 +27,7 @@ class DisabledUserWithRoleBindingsRule:
     default_severity = "info"
     expensive = False
     sources = [
-        "https://docs.rapid7.com/nexpose/managing-users-and-authentication/",
+        "https://docs.rapid7.com/insightvm/managing-users-and-authentication/#disabling-a-user-account",
     ]
 
     def run(self, snapshot, severity, full_scan, sample_size, rule_config) -> RuleResult:
