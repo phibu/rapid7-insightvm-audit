@@ -568,6 +568,9 @@
 {% if state_blob_json %}
 <script id="report-state" type="application/json">{{ state_blob_json | safe }}</script>
 {% endif %}
+{% if delta %}
+<script id="report-delta" type="application/json">{{ delta | tojson | safe }}</script>
+{% endif %}
 
 <script>
 (function(){
@@ -690,6 +693,47 @@
       input.value = params.search;
       apply(params.search);
     }
+  }
+})();
+(function(){
+  var chip = document.querySelector('.chip[data-filter="changed"]');
+  if (!chip) return;
+  var deltaEl = document.getElementById('report-delta');
+  var stateEl = document.getElementById('report-state');
+  if (!deltaEl || !stateEl) return;
+  var delta, state;
+  try {
+    delta = JSON.parse(deltaEl.textContent);
+    state = JSON.parse(stateEl.textContent);
+  } catch(e) { return; }
+  // Build signature set from delta.
+  var sigs = {};
+  ['res'+'olved', 'new_fails', 'severity_changed'].forEach(function(k){
+    (delta[k] || []).forEach(function(f){ if (f.signature) sigs[f.signature] = true; });
+  });
+  // Walk state blob, mark each rule card that has any finding signature in sigs.
+  (state.results || []).forEach(function(r){
+    (r.rule_results || []).forEach(function(rr){
+      var match = (rr.findings || []).some(function(f){ return sigs[f.signature]; });
+      if (match) {
+        var card = document.getElementById('rule-' + rr.rule_id);
+        if (card) card.setAttribute('data-changed', '');
+      }
+    });
+  });
+  function setChanged(active) {
+    chip.setAttribute('aria-pressed', active ? 'true' : 'false');
+    if (active) document.body.setAttribute('data-filter-changed', '');
+    else        document.body.removeAttribute('data-filter-changed');
+    if (window.__phase2_syncHash) window.__phase2_syncHash();
+  }
+  chip.addEventListener('click', function(){
+    setChanged(chip.getAttribute('aria-pressed') !== 'true');
+  });
+  // Restore from hash.
+  var hash = location.hash.replace(/^#/, '');
+  if (hash.split('&').indexOf('changed') >= 0) {
+    setChanged(true);
   }
 })();
 </script>
