@@ -22,7 +22,7 @@ class LocalAccountWhenSsoConfiguredRule:
     default_severity = "warn"
     expensive = False
     sources = [
-        "https://docs.rapid7.com/insightvm/managing-users-and-authentication/",
+        "https://docs.rapid7.com/insightvm/managing-users-and-authentication/#configuring-external-authentication",
     ]
 
     def run(self, snapshot, severity, full_scan, sample_size, rule_config) -> RuleResult:
