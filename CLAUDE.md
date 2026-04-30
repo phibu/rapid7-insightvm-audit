@@ -114,4 +114,6 @@ The 0.1.9 layout embeds a `<script id="report-state" type="application/json">` b
 
 `config.yaml` is the single source of truth for thresholds, check toggles, and audit rules. `docs/examples/config.yaml` is the canonical template — keep it and the validator in `config.py` in lock-step. The report footer prints the applied thresholds so users can see what's tuned; if you add a threshold, also surface it in the thresholds table.
 
+`audit.sample_size` and `user_audit.sample_size` apply **only** to the audit verticals (Configuration Audit, User & Permission Audit). Operational checks (`checks/*.py` — scan engines, scan activity, asset coverage, data quality) run against the full population by design and do not honor `sample_size`. They produce aggregate counts where sampling would give a misleading smaller number; if a count is too slow, the fix is to compute it more efficiently (e.g. read `page.totalResources` from the first response), not to sample.
+
 The `R7_API_KEY` environment variable is the only secret. The tool also loads `.env` via `python-dotenv` (non-overriding) at startup.
