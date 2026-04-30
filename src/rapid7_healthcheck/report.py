@@ -143,12 +143,19 @@ def _compute_delta(*, prior: dict | None, current: dict) -> dict | None:
         """Map signature -> finding-projection (with rule_id attached)."""
         out: dict[str, dict] = {}
         for r in state.get("results", []):
+            check_name = r.get("name")
+            # Audit-rule findings.
             for rr in r.get("rule_results", []) or []:
                 rule_id = rr.get("rule_id")
                 for f in rr.get("findings", []):
                     sig = f.get("signature")
                     if sig:
                         out[sig] = {**f, "rule_id": rule_id}
+            # Operational-check top-level findings (use check_name as namespace).
+            for f in r.get("findings", []) or []:
+                sig = f.get("signature")
+                if sig:
+                    out[sig] = {**f, "rule_id": check_name}
         return out
 
     prior_idx = index(prior)
