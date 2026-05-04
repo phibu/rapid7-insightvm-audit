@@ -51,6 +51,11 @@ audit:
   sample_size: 500
   rules:
     agent_unauth_collision:
+      # Note: in fast mode (audit.full_scan: false), this rule's per-site
+      # enumeration is capped at audit.sample_size and short-circuits on the
+      # first agent-managed asset found. Sites that exceed the cap without a
+      # match are listed in a single aggregate info finding. Set
+      # audit.full_scan: true to remove the cap.
       enabled: true
       severity: fail
     site_vuln_template_no_creds:
@@ -103,6 +108,14 @@ audit:
       enabled: true
       severity: warn
       version_drift_minor: 1
+      # Pin to an exact version for change-control-managed fleets. When set,
+      # both behind-pin and ahead-of-pin agents are flagged. Mutually exclusive
+      # with use_latest_known (pinned wins).
+      # pinned_version: "4.1.0.2"
+
+      # Compare against the tool-maintained "current latest" Insight Agent
+      # version. Honors version_drift_minor as the tolerance.
+      # use_latest_known: false
 
 # User & Permission Audit — sibling to `audit:`, scoped to console user
 # accounts and authentication settings. Requires the API key to belong
@@ -134,10 +147,10 @@ user_audit:
       severity: warn
     disabled_user_with_role_bindings:
       enabled: true
-      severity: info
+      severity: warn
     user_with_role_but_no_access:
       enabled: true
-      severity: info
+      severity: warn
     superuser_flag_outside_global_admin:
       enabled: true
       severity: fail
