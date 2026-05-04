@@ -23,10 +23,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Check` Protocol gains an optional `snapshot=None` kwarg. Existing checks continue to satisfy the protocol unchanged. `__main__._run_checks` now builds a single `EnvSnapshot` and passes it to op-checks that accept it, eliminating repeated lazy-loading and caching.
 - **`op.scan_engines.unpaired` finding details enriched.** The "Engines not paired with any sites" finding previously surfaced only the engine ID. It now includes `name`, `address`, `port`, `host` (`address:port`), `status`, `product_version`, `content_version`, `serial_number`, and `last_refreshed` so operators can identify the engine in the report without cross-referencing the Security Console by ID.
 
-### Fixed
-
-- **Asset Coverage rules now emit one Finding per affected asset/group instead of a single summary Finding.** The report's per-rule "Findings" column previously showed `1` even when a rule found hundreds of stale assets — the count lived only in `summary` and the finding's `details["total"]`. All six Asset Coverage rules (`stale_assets`, `never_scanned_assets`, `dead_asset_groups`, `unauth_only_assets`, `no_services_detected`, `agent_only_assets`) now emit one Finding per item, capped at 500 with a single rollup Finding for the remainder so the report stays bounded. `data_quality.py` retains its `post_one(size=10) + page.totalResources` pattern by design — it never paginates the full result set, and per-asset findings would force an expensive behavior change.
-
 ### Removed
 
 - **`credential_failure_in_recent_scans` audit rule** removed. The rule
@@ -47,6 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Asset Coverage rules now emit one Finding per affected asset/group instead of a single summary Finding.** The report's per-rule "Findings" column rendered `rr.findings|length`, but every Asset Coverage rule collapsed all affected assets into one summary Finding — so the column always read `1` even when a rule found hundreds of stale assets. The true count lived only in `summary` and the finding's `details["total"]`. All six Asset Coverage rules (`stale_assets`, `never_scanned_assets`, `dead_asset_groups`, `unauth_only_assets`, `no_services_detected`, `agent_only_assets`) now emit one Finding per item, capped at 500 with a single rollup Finding for the remainder so report payloads stay bounded. `data_quality.py` retains its `post_one(size=10) + page.totalResources` pattern by design — it never paginates the full result set, and per-asset findings would force an expensive behavior change in large environments.
 - **`agent_unauth_collision` audit rule** no longer times out at ~20 minutes
   and no longer silently produces 0 findings. Detection previously relied on
   `asset.agent.agentId` and `asset.history` AGENT-IMPORT entries inline on
