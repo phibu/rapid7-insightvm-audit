@@ -4,6 +4,7 @@ import time
 from typing import TYPE_CHECKING, Any
 
 from rapid7_healthcheck.audit import RuleResult
+from rapid7_healthcheck.client import Rapid7ClientError
 
 if TYPE_CHECKING:
     from rapid7_healthcheck.audit.snapshot import EnvSnapshot
@@ -37,6 +38,7 @@ class AssetCoverageCheck:
             self._stale_assets(client, t),
             self._never_scanned_assets(client, t),
             self._dead_asset_groups(snapshot, t),
+            self._unauth_only_assets(client, t),
         ]
 
         return CheckResult(
@@ -186,4 +188,63 @@ class AssetCoverageCheck:
             sources=sources,
             summary={"dead_groups_count": len(dead), "total_groups": len(groups)},
             duration_ms=int((time.monotonic() - rule_start) * 1000),
+        )
+
+    def _unauth_only_assets(self, client: Any, t) -> RuleResult:
+        rid = "op.asset_coverage.unauth_only_assets"
+        name = "Assets scanned but not authenticated"
+        desc = (
+            "Assets where vulnerability-assessed=false — they were discovered "
+            "and possibly port-scanned but never assessed for vulnerabilities. "
+            "Surface-level visibility only; masks real risk."
+        )
+        sources = [_SRC_FILTERED_SEARCH]
+
+        if not t.flag_unauth_only_assets:
+            return skipped_rule(rule_id=rid, rule_name=name, description=desc, sources=sources)
+
+        rule_start = time.monotonic()
+        body = {
+            "filters": [
+                {"field": "vulnerability-assessed", "operator": "is", "value": False},
+            ],
+            "match": "all",
+        }
+        try:
+            unauth = list(client.paginate_post("/api/3/assets/search", json_body=body))
+        except Rapid7ClientError as e:
+            msg = (
+                "filter not supported by this console version"
+                if getattr(e, "status_code", None) == 400
+                else str(e)[:200]
+            )
+            # make_rule_result derives status from finding severity (no "error" mapping); construct directly.
+            return RuleResult(
+                rule_id=rid,
+                rule_name=name,
+                description=desc,
+                severity="fail",
+                status="error",
+                findings=[Finding(severity="warn", message=msg)],
+                summary={"unauth_only_count": 0, "error": msg},
+                sources=sources,
+                duration_ms=int((time.monotonic() - rule_start) * 1000),
+            )
+
+        findings: list[Finding] = []
+        if unauth:
+            findings.append(Finding(
+                severity="fail",
+                message=f"{len(unauth)} asset(s) scanned but never authenticated",
+                details={"total": len(unauth), "examples": _example_hostnames(unauth)},
+            ))
+        return make_rule_result(
+            rule_id=rid,
+            rule_name=name,
+            description=desc,
+            findings=findings,
+            sources=sources,
+            summary={"unauth_only_count": len(unauth)},
+            duration_ms=int((time.monotonic() - rule_start) * 1000),
+            default_severity="fail",
         )
