@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rapid7-insightvm-audit"
-version = "0.2.5"
+version = "0.2.6"
 description = "Read-only health check and configuration audit for a Rapid7 InsightVM environment"
 readme = "README.md"
 license = { text = "MIT" }
