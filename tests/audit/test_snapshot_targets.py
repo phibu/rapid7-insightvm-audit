@@ -94,3 +94,17 @@ def test_all_included_targets_contains_helper():
     assert t.contains("10.0.0.99") is True
     assert t.contains("192.168.1.5") is True
     assert t.contains("172.16.0.1") is False
+
+
+def test_all_included_targets_oversized_range_records_endpoints_only():
+    """Ranges larger than the cap (1024) record only the two endpoint IPs,
+    not the full expansion — bounded-memory fallback."""
+    sites = [{"id": 1}]
+    # /16 has 65536 addresses; far above range_cap=1024.
+    targets = {1: ["10.0.0.0-10.0.255.255"]}
+    snap = _snap(sites, targets)
+    result = snap.all_included_targets()
+    assert "10.0.0.0" in result.literals
+    assert "10.0.255.255" in result.literals
+    # Interior addresses are intentionally NOT expanded.
+    assert "10.0.128.0" not in result.literals

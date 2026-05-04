@@ -3,7 +3,7 @@ from __future__ import annotations
 import itertools
 import logging
 from dataclasses import dataclass, field
-from ipaddress import IPv4Address, IPv6Address, ip_address, ip_network
+from ipaddress import IPv4Address, IPv4Network, IPv6Address, IPv6Network, ip_address, ip_network
 from typing import Any
 
 from rapid7_healthcheck.client import Rapid7ClientError
@@ -20,8 +20,8 @@ class IncludedTargets:
     `contains(ip_str)` to test membership without having to know which bucket
     the address lives in.
     """
-    networks: list = field(default_factory=list)
-    literals: set = field(default_factory=set)
+    networks: list[IPv4Network | IPv6Network] = field(default_factory=list)
+    literals: set[str] = field(default_factory=set)
 
     def contains(self, ip_str: str) -> bool:
         if ip_str in self.literals:
@@ -33,17 +33,18 @@ class IncludedTargets:
         return any(addr in net for net in self.networks)
 
 
-def _expand_target(entry: str, *, range_cap: int = 1024) -> tuple[list, set]:
+def _expand_target(entry: str, *, range_cap: int = 1024) -> tuple[list[IPv4Network | IPv6Network], set[str]]:
     """Parse a single included-targets entry into (networks, literals).
 
     Accepts CIDR blocks ('10.0.0.0/24'), single IPs ('10.0.0.5'), and
     Rapid7-style ranges ('10.0.0.1-10.0.0.10'). Ranges are expanded into
-    literal IPs up to `range_cap` addresses; oversized ranges fall back to
-    being treated as the bounding /CIDR network so we don't blow up memory.
-    Invalid entries return ([], set()) — caller logs and skips.
+    literal IPs up to `range_cap` addresses; oversized ranges record only
+    the two endpoint IPs as literals so memory stays bounded — callers may
+    miss interior IPs from oversized ranges but won't OOM. Invalid entries
+    return ([], set()) — caller logs and skips.
     """
-    networks: list = []
-    literals: set = set()
+    networks: list[IPv4Network | IPv6Network] = []
+    literals: set[str] = set()
     entry = entry.strip()
     if not entry:
         return networks, literals
@@ -166,8 +167,8 @@ class EnvSnapshot:
         if self._all_included_targets_cache is not None:
             return self._all_included_targets_cache
 
-        networks: list = []
-        literals: set = set()
+        networks: list[IPv4Network | IPv6Network] = []
+        literals: set[str] = set()
         for site in self.sites():
             site_id = site.get("id")
             if site_id is None:
