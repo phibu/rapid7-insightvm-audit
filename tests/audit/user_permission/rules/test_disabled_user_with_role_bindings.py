@@ -21,13 +21,13 @@ def test_pass_when_users_with_bindings_are_enabled(fake_snapshot):
     assert r.status == "pass"
 
 
-def test_warn_finding_for_disabled_user_with_role(fake_snapshot):
+def test_info_finding_for_disabled_user_with_role(fake_snapshot):
     fake_snapshot.set_users([
         {"id": 1, "login": "stale", "enabled": False, "role": {"id": "user", "name": "User"}},
     ])
-    r = DisabledUserWithRoleBindingsRule().run(fake_snapshot, "warn", False, 500, {})
-    # Warn findings escalate status to warn.
-    assert r.status == "warn"
+    r = DisabledUserWithRoleBindingsRule().run(fake_snapshot, "info", False, 500, {})
+    # Info-only findings keep status at pass per the existing rollup logic.
+    assert r.status == "pass"
     assert r.summary["users_flagged"] == 1
     assert "stale" in r.findings[0].message
 
