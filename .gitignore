@@ -11,3 +11,4 @@ dist/
 .claude/
 backlog.md
 .superpowers/
+.worktrees/
