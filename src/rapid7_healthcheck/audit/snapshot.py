@@ -2,11 +2,82 @@ from __future__ import annotations
 
 import itertools
 import logging
+from dataclasses import dataclass, field
+from ipaddress import IPv4Address, IPv6Address, ip_address, ip_network
 from typing import Any
 
 from rapid7_healthcheck.client import Rapid7ClientError
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class IncludedTargets:
+    """Normalized union of every site's included scan targets.
+
+    `networks` holds CIDR blocks; `literals` holds individual IPs (including
+    those expanded from range syntax like '10.0.0.1-10.0.0.10'). Use
+    `contains(ip_str)` to test membership without having to know which bucket
+    the address lives in.
+    """
+    networks: list = field(default_factory=list)
+    literals: set = field(default_factory=set)
+
+    def contains(self, ip_str: str) -> bool:
+        if ip_str in self.literals:
+            return True
+        try:
+            addr = ip_address(ip_str)
+        except (ValueError, TypeError):
+            return False
+        return any(addr in net for net in self.networks)
+
+
+def _expand_target(entry: str, *, range_cap: int = 1024) -> tuple[list, set]:
+    """Parse a single included-targets entry into (networks, literals).
+
+    Accepts CIDR blocks ('10.0.0.0/24'), single IPs ('10.0.0.5'), and
+    Rapid7-style ranges ('10.0.0.1-10.0.0.10'). Ranges are expanded into
+    literal IPs up to `range_cap` addresses; oversized ranges fall back to
+    being treated as the bounding /CIDR network so we don't blow up memory.
+    Invalid entries return ([], set()) — caller logs and skips.
+    """
+    networks: list = []
+    literals: set = set()
+    entry = entry.strip()
+    if not entry:
+        return networks, literals
+    # Range syntax (a-b)
+    if "-" in entry and entry.count(".") >= 6:
+        try:
+            lo_str, hi_str = entry.split("-", 1)
+            lo = ip_address(lo_str.strip())
+            hi = ip_address(hi_str.strip())
+            if int(hi) < int(lo):
+                return networks, literals
+            span = int(hi) - int(lo) + 1
+            if span <= range_cap:
+                cls = IPv4Address if isinstance(lo, IPv4Address) else IPv6Address
+                for i in range(span):
+                    literals.add(str(cls(int(lo) + i)))
+                return networks, literals
+            # Oversized range — fall back to the broadest covering network.
+            # Conservative: include both endpoints as literals so callers don't lose them.
+            literals.add(str(lo))
+            literals.add(str(hi))
+            return networks, literals
+        except (ValueError, TypeError):
+            return networks, literals
+    # CIDR or single IP
+    try:
+        if "/" in entry:
+            networks.append(ip_network(entry, strict=False))
+        else:
+            ip_address(entry)  # validate
+            literals.add(entry)
+    except (ValueError, TypeError):
+        return [], set()
+    return networks, literals
 
 
 class EnvSnapshot:
@@ -38,6 +109,7 @@ class EnvSnapshot:
         self._user_2fa: dict[int, bool | None] = {}
         self._user_sites: dict[int, list[dict]] = {}
         self._user_asset_groups: dict[int, list[dict]] = {}
+        self._all_included_targets_cache: IncludedTargets | None = None
 
     @property
     def full_scan(self) -> bool:
@@ -83,6 +155,39 @@ class EnvSnapshot:
                 body.get("addresses", body.get("resources", []))
             )
         return self._site_included_targets[site_id]
+
+    def all_included_targets(self) -> IncludedTargets:
+        """Build the normalized union of every site's included scan targets.
+
+        Walks every site once via `sites()` (which is itself cached), then calls
+        `site_included_targets(site_id)` per site (also cached). Result cached on
+        first call.
+        """
+        if self._all_included_targets_cache is not None:
+            return self._all_included_targets_cache
+
+        networks: list = []
+        literals: set = set()
+        for site in self.sites():
+            site_id = site.get("id")
+            if site_id is None:
+                continue
+            try:
+                entries = self.site_included_targets(int(site_id))
+            except Rapid7ClientError as e:
+                logger.warning("included_targets fetch failed for site %s: %s", site_id, e)
+                continue
+            for entry in entries:
+                # Rapid7 returns either bare strings or {"address": "..."} dicts depending on endpoint version.
+                value = entry if isinstance(entry, str) else entry.get("address") or entry.get("ip")
+                if not value:
+                    continue
+                n, l = _expand_target(str(value))
+                networks.extend(n)
+                literals |= l
+
+        self._all_included_targets_cache = IncludedTargets(networks=networks, literals=literals)
+        return self._all_included_targets_cache
 
     def site_asset_count(self, site_id: int) -> int:
         if site_id not in self._site_asset_count:
