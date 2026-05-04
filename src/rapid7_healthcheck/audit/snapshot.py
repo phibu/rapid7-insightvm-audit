@@ -30,6 +30,16 @@ class IncludedTargets:
             addr = ip_address(ip_str)
         except (ValueError, TypeError):
             return False
+        # Normalized re-test against literals: handles cases where the literal
+        # set holds e.g. "10.0.0.005" or an oversized-range endpoint string
+        # but the asset reports "10.0.0.5". Compare parsed forms so equivalent
+        # addresses match regardless of textual representation.
+        for lit in self.literals:
+            try:
+                if ip_address(lit) == addr:
+                    return True
+            except (ValueError, TypeError):
+                continue
         return any(addr in net for net in self.networks)
 
 
