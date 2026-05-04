@@ -118,3 +118,44 @@ def test_does_not_call_asset_history_endpoint(fake_snapshot):
 
     assert r.status == "fail"
     assert r.findings[0].details["agent_count"] == 1
+
+
+def test_short_circuits_on_first_agent_match(fake_snapshot):
+    """Site with 50 assets where only the 3rd is agent-managed. Rule must
+    consume exactly 3 items from the iterator and then break."""
+    fake_snapshot.set_sites([_site(1, "tpl-vuln", "ProdSite")])
+    fake_snapshot.set_scan_template("tpl-vuln", {
+        "id": "tpl-vuln", "name": "Vuln",
+        "vulnerabilityChecks": {"enabled": True},
+    })
+    fake_snapshot.set_site_credentials(1, [])
+    fake_snapshot.set_shared_credentials([])
+
+    # Build a list of 50 assets where only the 3rd has an agent.
+    assets = []
+    for i in range(50):
+        if i == 2:
+            assets.append({"id": 100 + i, "agent": {"agentId": "abc"}})
+        else:
+            assets.append({"id": 100 + i})
+    fake_snapshot.set_site_assets_iter(1, assets)
+    fake_snapshot.set_site_asset_count(1, 50)
+
+    # Wrap iter_site_assets to count how many items the RULE consumes.
+    consumed: list[int] = []
+    original_iter = fake_snapshot.iter_site_assets
+
+    def counting_iter(site_id):
+        for asset in original_iter(site_id):
+            consumed.append(asset["id"])
+            yield asset
+    fake_snapshot.iter_site_assets = counting_iter
+
+    r = AgentUnauthCollisionRule().run(fake_snapshot, "fail", False, 500, {})
+
+    assert r.status == "fail"
+    # Rule consumed assets 100, 101, 102 only (broke after finding agent on 102).
+    assert consumed == [100, 101, 102]
+    f = [f for f in r.findings if f.severity == "fail"][0]
+    assert f.details["examined"] == 3
+    assert f.details["short_circuited"] is True
