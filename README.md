@@ -184,7 +184,7 @@ Rules:
 
 | Rule | Default severity | Source |
 |------|-----------------:|--------|
-| Insight Agent asset scanned without authentication | fail | docs.rapid7.com Console Best Practices, 6.6.229 release notes |
+| Insight Agent asset scanned without authentication | fail | docs.rapid7.com Console Best Practices, 6.6.229 release notes. In fast mode, per-site enumeration is capped at `audit.sample_size` and short-circuits on first agent-managed asset; sites that hit the cap without a match are listed in a single aggregate info finding. Set `full_scan: true` to remove the cap. |
 | Vulnerability template without credentials | fail | Scan Template Best Practices, Configuring Scan Credentials |
 | Credential failure in recent scans | warn | Configuring Site-Specific Scan Credentials |
 | Overlapping scan windows or blackout conflicts | warn | Scan Blackouts, Console Best Practices |
@@ -197,7 +197,7 @@ Rules:
 | Scan and report schedules overlap on shared scope | warn | Console Best Practices |
 | Scan engine version drift or stale content refresh | warn | Console Best Practices |
 | Insight Agent fleet presence | info | docs.rapid7.com Insight Agent overview |
-| Insight Agent version currency | warn | docs.rapid7.com Insight Agent overview |
+| Insight Agent version currency | warn | docs.rapid7.com Insight Agent overview. Three modes (in precedence): `pinned_version: "4.1.0.2"` for exact match (flags both behind and ahead), `use_latest_known: true` for tool-maintained latest-known reference, otherwise self-bootstrapping fleet-newest. |
 
 Per-rule severity and enable/disable live in the `audit:` block of `config.yaml`. Each finding in the report links back to the Rapid7 source documenting the rule.
 
@@ -219,12 +219,12 @@ A sibling audit category to the configuration audit, scoped to console user acco
 
 | Rule | Default | Notes |
 | --- | --- | --- |
-| Privileged user without MFA | fail | Scoped to GA / `role.superuser` users only. Service accounts that legitimately use HTTP Basic Auth (which bypasses MFA) can be allowlisted via `mfa_exempt_logins`. Requires Global Administrator key — non-GA keys receive 401 from `/api/3/users/{id}/2FA` and the rule self-skips with an info finding. |
+| Privileged user without MFA | fail | Scoped to GA / `role.superuser` users only. Service accounts that legitimately use HTTP Basic Auth (which bypasses MFA) can be allowlisted via `mfa_exempt_logins`. Requires Global Administrator key — non-GA keys receive 401 from `/api/3/users/{id}/2FA` and the rule self-skips with an info finding. External-auth users (SAML/LDAP/Kerberos) are excluded from local 2FA checks; their MFA enforcement is delegated to the IdP and they are surfaced in a single aggregate info finding. |
 | Local accounts when SSO is configured | warn | Excessive local accounts when LDAP/SAML/Kerberos is configured. Knob: `max_local_accounts_when_sso` (default 2). |
 | Multiple Global Administrators | warn | Privilege creep. Knob: `max_global_administrators` (default 2). |
 | Locked user account | warn | Stuck account or brute-force indicator. |
-| Disabled user with active role bindings | info | Hygiene cleanup. |
-| User has role but no site/asset-group access | info | Misconfigured user. Honours `sample_size`. |
+| Disabled user with active role bindings | warn | Hygiene cleanup. |
+| User has role but no site/asset-group access | warn | Misconfigured user. Honours `sample_size`. |
 | Superuser flag outside Global Administrator | fail | RBAC bypass — should never happen. |
 
 **Rules NOT implemented (and why).** Some commonly-requested user-audit rules cannot be implemented because the Rapid7 v3 API does not expose the underlying data. Audit them in the Security Console UI:
