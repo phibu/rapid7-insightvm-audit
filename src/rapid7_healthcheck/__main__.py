@@ -21,6 +21,7 @@ from rapid7_healthcheck.checks.asset_coverage import AssetCoverageCheck
 from rapid7_healthcheck.checks.data_quality import DataQualityCheck
 from rapid7_healthcheck.checks.scan_activity import ScanActivityCheck
 from rapid7_healthcheck.checks.scan_engines import ScanEnginesCheck
+from rapid7_healthcheck._log import FlushingFileHandler
 from rapid7_healthcheck.client import Rapid7AuthError, Rapid7Client, Rapid7ClientError
 from rapid7_healthcheck.config import AppConfig, ConfigError, load_config
 from rapid7_healthcheck.report import ReportContext, write_report
@@ -62,7 +63,7 @@ def _setup_logging(verbose: bool, log_file: str | None) -> None:
     if log_file:
         try:
             Path(log_file).parent.mkdir(parents=True, exist_ok=True)
-            handlers.append(logging.FileHandler(log_file, encoding="utf-8"))
+            handlers.append(FlushingFileHandler(log_file, encoding="utf-8"))
         except OSError as e:
             file_open_error = f"log file unavailable ({log_file}); continuing without file logging: {e}"
     if file_open_error:

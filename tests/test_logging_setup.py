@@ -74,7 +74,7 @@ def test_setup_logging_degrades_gracefully_on_permission_error(monkeypatch, capl
         def __init__(self, *a, **kw):
             raise PermissionError("simulated permission error")
 
-    monkeypatch.setattr("logging.FileHandler", _FailingFileHandler)
+    monkeypatch.setattr("rapid7_healthcheck.__main__.FlushingFileHandler", _FailingFileHandler)
 
     # Should not raise.
     with caplog.at_level(logging.WARNING):

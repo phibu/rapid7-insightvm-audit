@@ -33,3 +33,37 @@ def test_flushing_file_handler_is_a_filehandler_subclass():
     """Sanity check: behaves like a normal FileHandler for the rest of the
     Logging stack (level, formatter, baseFilename, etc.)."""
     assert issubclass(FlushingFileHandler, logging.FileHandler)
+
+
+import logging as _logging  # noqa: E402  (deliberately separate import for clarity below)
+
+from rapid7_healthcheck.__main__ import _setup_logging  # noqa: E402
+
+
+def test_setup_logging_uses_flushing_file_handler_when_log_file_set(tmp_path):
+    """When _setup_logging is called with a log_file path, the resulting
+    root logger handlers must include a FlushingFileHandler (NOT a plain
+    logging.FileHandler)."""
+    log_path = tmp_path / "out.log"
+    _setup_logging(verbose=False, log_file=str(log_path))
+
+    file_handlers = [
+        h for h in _logging.root.handlers
+        if isinstance(h, _logging.FileHandler)
+    ]
+    assert len(file_handlers) == 1
+    assert isinstance(file_handlers[0], FlushingFileHandler), (
+        f"expected FlushingFileHandler, got {type(file_handlers[0]).__name__}"
+    )
+
+
+def test_setup_logging_no_file_handler_when_log_file_none(tmp_path):
+    """Without --log-file, only the stderr StreamHandler runs; no
+    FileHandler-of-any-kind is added."""
+    _setup_logging(verbose=True, log_file=None)
+
+    file_handlers = [
+        h for h in _logging.root.handlers
+        if isinstance(h, _logging.FileHandler)
+    ]
+    assert file_handlers == []
