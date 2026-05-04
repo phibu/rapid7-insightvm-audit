@@ -10,6 +10,7 @@ from rapid7_healthcheck.client import (
     Rapid7AuthError,
     Rapid7Client,
     Rapid7ClientError,
+    _summarize_params,
 )
 
 
@@ -290,3 +291,48 @@ def test_network_error_message_includes_method_path_and_attempt_count(session):
     assert "3 attempt(s)" in msg
     # Underlying error is preserved.
     assert "Read timed out" in msg
+
+
+def test_summarize_params_none_returns_empty_string():
+    assert _summarize_params(None) == ""
+
+
+def test_summarize_params_empty_dict_returns_empty_string():
+    assert _summarize_params({}) == ""
+
+
+def test_summarize_params_basic_kv_pairs():
+    out = _summarize_params({"page": 0, "size": 100})
+    # Order may vary (dict iteration is insertion-order in 3.7+, but be
+    # tolerant). Both keys + values appear, prefixed with "?".
+    assert out.startswith("?")
+    assert "page=0" in out
+    assert "size=100" in out
+
+
+def test_summarize_params_redacts_sensitive_keys():
+    """Defense-in-depth: any key whose lowercased name contains
+    'key', 'token', 'secret', 'password', or 'auth' must be redacted."""
+    out = _summarize_params({
+        "q": "x",
+        "api_key": "MUST-NOT-LEAK-1",
+        "auth_token": "MUST-NOT-LEAK-2",
+        "user_password": "MUST-NOT-LEAK-3",
+        "session_secret": "MUST-NOT-LEAK-4",
+        "X-Api-Key": "MUST-NOT-LEAK-5",
+    })
+    assert "MUST-NOT-LEAK-1" not in out
+    assert "MUST-NOT-LEAK-2" not in out
+    assert "MUST-NOT-LEAK-3" not in out
+    assert "MUST-NOT-LEAK-4" not in out
+    assert "MUST-NOT-LEAK-5" not in out
+    assert "***" in out
+    assert "q=x" in out  # non-sensitive keys still appear
+
+
+def test_summarize_params_caps_output_at_200_chars():
+    """Long params dicts get truncated with an ellipsis marker so log
+    lines stay scannable."""
+    big = {f"k{i}": f"v{i}" for i in range(100)}
+    out = _summarize_params(big)
+    assert len(out) <= 200

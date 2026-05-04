@@ -55,6 +55,35 @@ _ALLOWED_VERBS = frozenset({"GET", "POST"})
 # requires a deliberate code edit and review.
 _ALLOWED_POST_PATHS = frozenset({"/api/3/assets/search"})
 
+_SENSITIVE_PARAM_SUBSTRINGS = ("key", "token", "secret", "password", "auth")
+_PARAM_SUMMARY_MAX_LEN = 200
+
+
+def _summarize_params(params: dict | None) -> str:
+    """Format a params dict as `?k1=v1&k2=v2` for log lines.
+
+    Sanitizer: any key whose lowercased name contains one of
+    {"key", "token", "secret", "password", "auth"} has its value replaced
+    with "***" — defense-in-depth against a future endpoint accidentally
+    accepting a credential as a query param.
+
+    Output is capped at 200 chars to keep log lines scannable; if the cap
+    is hit, the trailing portion is replaced with "...".
+    """
+    if not params:
+        return ""
+    parts: list[str] = []
+    for k, v in params.items():
+        key_lower = str(k).lower()
+        if any(s in key_lower for s in _SENSITIVE_PARAM_SUBSTRINGS):
+            parts.append(f"{k}=***")
+        else:
+            parts.append(f"{k}={v}")
+    body = "&".join(parts)
+    if len(body) > _PARAM_SUMMARY_MAX_LEN - 1:  # -1 for the leading "?"
+        body = body[:_PARAM_SUMMARY_MAX_LEN - 4] + "..."
+    return "?" + body
+
 
 class Rapid7Client:
     def __init__(
