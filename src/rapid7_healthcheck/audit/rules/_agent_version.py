@@ -9,6 +9,10 @@ from __future__ import annotations
 
 import re
 
+# Tool-maintained "current latest" Insight Agent version. Bumped manually as
+# Rapid7 ships new releases. As of 2026-05-04 the latest GA build is 4.1.0.2.
+LATEST_KNOWN_INSIGHT_AGENT_VERSION: tuple[int, int, int, int] = (4, 1, 0, 2)
+
 _VERSION_RE = re.compile(r"^(\d+)\.(\d+)(?:\.(\d+)(?:\.(\d+))?)?$")
 
 
