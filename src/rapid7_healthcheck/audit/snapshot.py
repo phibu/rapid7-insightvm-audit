@@ -148,6 +148,19 @@ class EnvSnapshot:
             self._asset_samples[site_id] = (items, total)
         return self._asset_samples[site_id]
 
+    def iter_site_assets(self, site_id: int):
+        """Yield assets for a site one at a time WITHOUT materializing or caching.
+
+        Used by rules that need to break out of the iteration early (e.g. on
+        first agent-managed asset found). Distinct from `asset_sample()`, which
+        materializes the whole sample and caches it for repeat use. Honors the
+        underlying client's pagination — caller decides when to stop.
+
+        Yields:
+            dict: each asset record from /api/3/sites/{id}/assets, in API order.
+        """
+        yield from self._client.paginate(f"/api/3/sites/{site_id}/assets")
+
     def asset_has_agent(self, asset: dict) -> bool | None:
         """Cheap agent-presence check: returns True/False from the asset record
         directly when possible, None when the record doesn't carry the signal
