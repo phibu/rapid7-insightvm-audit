@@ -117,6 +117,17 @@ def pick_exit_code(results: list[CheckResult]) -> int:
 
 
 def _run_checks(client: Any, cfg: AppConfig, progress: "ProgressReporter | None" = None) -> list[CheckResult]:
+    from rapid7_healthcheck.audit.snapshot import EnvSnapshot
+
+    # Single snapshot shared with op-checks. Lazy-loads on first access; methods
+    # cache. Audit checks build their own snapshot internally today (deferred
+    # cleanup — see backlog).
+    snapshot = EnvSnapshot(
+        client,
+        full_scan=cfg.audit.full_scan,
+        sample_size=cfg.audit.sample_size,
+    )
+
     results: list[CheckResult] = []
     total = len(_REGISTRY)
     for idx, (name, check_cls) in enumerate(_REGISTRY.items(), start=1):
@@ -135,11 +146,14 @@ def _run_checks(client: Any, cfg: AppConfig, progress: "ProgressReporter | None"
         logger.info("running check: %s", instance.name)
         start = time.monotonic()
         try:
-            # Audit orchestrators accept progress; operational checks don't.
             if name in ("configuration_audit", "user_permission_audit"):
+                # These checks build their own snapshot internally today.
+                # Threading the shared one is a future cleanup (see backlog).
                 results.append(instance.run(client, cfg, progress=progress))
             else:
-                results.append(instance.run(client, cfg))
+                # Op-checks accept an optional snapshot; only asset_coverage
+                # uses it currently. Others tolerate it via **_kwargs.
+                results.append(instance.run(client, cfg, snapshot=snapshot))
         except Exception as e:  # per-check isolation
             duration_ms = int((time.monotonic() - start) * 1000)
             logger.exception("check %s failed", instance.name)

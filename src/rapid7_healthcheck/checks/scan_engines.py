@@ -31,7 +31,7 @@ class ScanEnginesCheck:
     name = "Scan Engines"
     description = "Health and pairing status of all configured scan engines."
 
-    def run(self, client: Any, config: AppConfig) -> CheckResult:
+    def run(self, client: Any, config: AppConfig, **_kwargs: object) -> CheckResult:
         start = time.monotonic()
         thresholds = config.thresholds.scan_engines
         body = client.get("/api/3/scan_engines")

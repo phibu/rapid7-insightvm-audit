@@ -594,3 +594,60 @@ def test_r4_errors_when_snapshot_missing(fake_client, app_config):
     result = AssetCoverageCheck().run(fake_client, cfg)  # no snapshot
     rule = _rule(result, "op.asset_coverage.agent_only_assets")
     assert rule.status == "error"
+
+
+# ----- integration: shape, rollup, backwards-compat -----
+
+def test_run_returns_six_rule_results(fake_client, app_config):
+    fake_client.set_paginate_post("/api/3/assets/search", [])
+    snap = _FakeSnapshot(asset_groups=[])
+    result = AssetCoverageCheck().run(fake_client, app_config, snapshot=snap)
+    assert len(result.rule_results) == 6
+    rule_ids = [r.rule_id for r in result.rule_results]
+    assert rule_ids == [
+        "op.asset_coverage.stale_assets",
+        "op.asset_coverage.never_scanned_assets",
+        "op.asset_coverage.dead_asset_groups",
+        "op.asset_coverage.unauth_only_assets",
+        "op.asset_coverage.no_services_detected",
+        "op.asset_coverage.agent_only_assets",
+    ]
+
+
+def test_check_status_rolls_up_to_fail_when_any_rule_fails(fake_client, app_config):
+    """One fail rule (R2 unauth_only) drives the check to fail."""
+    from tests.conftest import FakeRapid7Client
+    fc = FakeRapid7Client()
+
+    def paginate_post(path, json_body, params=None, page_size=500):
+        if "vulnerability-assessed" in str(json_body):
+            yield from [_asset(f"unauth-{i}", i) for i in range(3)]
+        else:
+            yield from []
+
+    fc.paginate_post = paginate_post  # type: ignore[assignment]
+    snap = _FakeSnapshot(asset_groups=[])
+    result = AssetCoverageCheck().run(fc, app_config, snapshot=snap)
+    assert result.status == "fail"
+
+
+def test_check_status_pass_when_all_rules_pass(fake_client, app_config):
+    fake_client.set_paginate_post("/api/3/assets/search", [])
+    snap = _FakeSnapshot(asset_groups=[])
+    result = AssetCoverageCheck().run(fake_client, app_config, snapshot=snap)
+    assert result.status == "pass"
+
+
+def test_optional_snapshot_kwarg_is_backwards_compatible(fake_client, app_config):
+    """Calling without snapshot still works for client-only rules; snapshot-needing rules return error."""
+    fake_client.set_paginate_post("/api/3/assets/search", [])
+    result = AssetCoverageCheck().run(fake_client, app_config)  # no snapshot
+    # Client-only rules complete normally
+    assert _rule(result, "op.asset_coverage.stale_assets").status == "pass"
+    assert _rule(result, "op.asset_coverage.never_scanned_assets").status == "pass"
+    assert _rule(result, "op.asset_coverage.unauth_only_assets").status == "pass"
+    assert _rule(result, "op.asset_coverage.no_services_detected").status == "pass"
+    # Snapshot-dependent rules error cleanly (don't crash)
+    assert _rule(result, "op.asset_coverage.dead_asset_groups").status == "error"
+    # R4 is skipped because flag_agent_only_assets=False by default — toggle check fires before snapshot check
+    assert _rule(result, "op.asset_coverage.agent_only_assets").status == "skipped"

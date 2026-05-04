@@ -254,7 +254,7 @@ def test_run_check_exception_becomes_error_status(tmp_path, monkeypatch):
     cfg.write_text(body, encoding="utf-8")
     monkeypatch.setenv("R7_API_KEY", "k")
 
-    def boom(self, client, config):
+    def boom(self, client, config, **_kwargs):
         raise RuntimeError("simulated check failure")
 
     with patch("rapid7_healthcheck.__main__.Rapid7Client") as MockClient, \

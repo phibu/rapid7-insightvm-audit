@@ -34,7 +34,7 @@ class DataQualityCheck:
         "long-stale assets, and duplicate hostnames/IPs."
     )
 
-    def run(self, client: Any, config: AppConfig) -> CheckResult:
+    def run(self, client: Any, config: AppConfig, **_kwargs: object) -> CheckResult:
         start = time.monotonic()
         t = config.thresholds.data_quality
         rule_results: list[RuleResult] = []

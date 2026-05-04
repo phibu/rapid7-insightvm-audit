@@ -34,7 +34,7 @@ class ScanActivityCheck:
     name = "Scan Activity"
     description = "Recent scan success/failure, sites with no recent scans, and stuck scans."
 
-    def run(self, client: Any, config: AppConfig) -> CheckResult:
+    def run(self, client: Any, config: AppConfig, **_kwargs: object) -> CheckResult:
         start = time.monotonic()
         t = config.thresholds.scan_activity
         now = datetime.now(timezone.utc)
