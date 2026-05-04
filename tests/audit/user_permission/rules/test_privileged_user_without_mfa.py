@@ -166,3 +166,71 @@ def test_external_saml_user_skipped_no_2fa_call(fake_snapshot):
     assert info_findings[0].details["external_auth_users"] == [
         {"login": "saml-admin", "auth_type": "saml"},
     ]
+
+
+def test_mixed_local_and_external(fake_snapshot):
+    """One local-without-MFA + 1 SAML + 1 LDAP. The local user gets a fail
+    finding; both external users get aggregated into one info finding."""
+    fake_snapshot.set_users([
+        _user_with_auth(1, "alice", "normal"),
+        _user_with_auth(2, "saml-admin", "saml"),
+        _user_with_auth(3, "ldap-admin", "ldap"),
+    ])
+    fake_snapshot.set_user_2fa_enabled(1, False)
+    r = PrivilegedUserWithoutMfaRule().run(fake_snapshot, "fail", False, 500, {})
+    assert r.status == "fail"
+    assert r.summary["users_without_mfa"] == 1
+    assert r.summary["users_external_auth"] == 2
+    fail_findings = [f for f in r.findings if f.severity == "fail"]
+    info_findings = [f for f in r.findings if f.severity == "info"]
+    assert len(fail_findings) == 1
+    assert "alice" in fail_findings[0].message
+    assert len(info_findings) == 1
+    logins_in_info = {e["login"] for e in info_findings[0].details["external_auth_users"]}
+    assert logins_in_info == {"saml-admin", "ldap-admin"}
+
+
+def test_exempt_wins_over_external(fake_snapshot):
+    """A user in mfa_exempt_logins is counted as exempt, not external,
+    even when their authentication.type is non-normal."""
+    fake_snapshot.set_users([_user_with_auth(1, "saml-svc", "saml")])
+    r = PrivilegedUserWithoutMfaRule().run(
+        fake_snapshot, "fail", False, 500,
+        {"mfa_exempt_logins": ["saml-svc"]},
+    )
+    assert r.status == "pass"
+    assert r.summary["users_exempt"] == 1
+    assert r.summary["users_external_auth"] == 0
+    # No aggregate info finding (external_auth_users is empty)
+    info_findings = [f for f in r.findings if f.severity == "info"]
+    assert info_findings == []
+
+
+def test_all_privileged_external_no_2fa_calls(fake_snapshot):
+    """When every privileged user is external, zero 2FA calls happen and
+    only the aggregate info finding is emitted; status is pass."""
+    fake_snapshot.set_users([
+        _user_with_auth(1, "krb-admin-1", "kerberos"),
+        _user_with_auth(2, "krb-admin-2", "kerberos"),
+    ])
+    # Configure user_2fa_enabled to RAISE if called — proves no call happened.
+    from rapid7_healthcheck.client import Rapid7ClientError
+    fake_snapshot.set_user_2fa_raises(1, Rapid7ClientError("must not be called", status_code=500))
+    fake_snapshot.set_user_2fa_raises(2, Rapid7ClientError("must not be called", status_code=500))
+    r = PrivilegedUserWithoutMfaRule().run(fake_snapshot, "fail", False, 500, {})
+    assert r.status == "pass"
+    assert r.summary["users_external_auth"] == 2
+    assert r.summary["users_without_mfa"] == 0
+    info_findings = [f for f in r.findings if f.severity == "info"]
+    assert len(info_findings) == 1
+
+
+def test_missing_authentication_field_treated_as_local(fake_snapshot):
+    """If the user has no authentication field, fall back to local-account
+    handling (existing 2FA-call path runs)."""
+    fake_snapshot.set_users([_user_with_auth(1, "alice", None)])  # no auth field
+    fake_snapshot.set_user_2fa_enabled(1, True)
+    r = PrivilegedUserWithoutMfaRule().run(fake_snapshot, "fail", False, 500, {})
+    assert r.status == "pass"
+    assert r.summary["users_external_auth"] == 0
+    # users_without_mfa is 0 because mfa was True
