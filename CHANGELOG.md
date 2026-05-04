@@ -7,21 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.7] - 2026-05-04
+
 ### Added
 
-- **Asset Coverage check expanded from 2 to 6 rules.** The check now detects blind spots across four dimensions: temporal (stale/never scanned), structural (dead asset groups), depth (unauthenticated-only assets, no services detected), and scope (Insight Agent assets outside site scan ranges). New rules:
+- **Asset Coverage check expanded from 2 to 6 rules.** The check now detects
+  blind spots across four dimensions: temporal (stale / never scanned),
+  structural (dead asset groups), depth (unauthenticated-only assets, no
+  services detected), and scope (Insight Agent assets outside site scan
+  ranges). New rules:
   - `op.asset_coverage.dead_asset_groups` (warn) — asset groups with zero members.
   - `op.asset_coverage.unauth_only_assets` (fail) — assets discovered but never authenticated.
   - `op.asset_coverage.no_services_detected` (warn) — recently scanned assets with zero services.
-  - `op.asset_coverage.agent_only_assets` (warn, default off) — Insight Agent assets outside scheduled scan scope. Requires `audit.full_scan: true`.
-- New `AssetCoverageThresholds` config toggles: `flag_dead_asset_groups`, `flag_unauth_only_assets`, `flag_no_services_detected`, `flag_agent_only_assets`. All default to `true` except the last (default `false`).
-- `EnvSnapshot.all_included_targets()` accessor — normalizes every site's included scan targets into CIDR networks + literal IPs with a `contains(ip_str)` helper. Used by the new `agent_only_assets` rule to detect coverage gaps in Insight Agent fleet scope.
+  - `op.asset_coverage.agent_only_assets` (warn, default off) — Insight Agent
+    assets outside scheduled scan scope. Requires `audit.full_scan: true`.
+- New `AssetCoverageThresholds` config toggles: `flag_dead_asset_groups`,
+  `flag_unauth_only_assets`, `flag_no_services_detected`,
+  `flag_agent_only_assets`. All default to `true` except the last (default
+  `false`).
+- `EnvSnapshot.all_included_targets()` accessor — normalizes every site's
+  included scan targets into CIDR networks + literal IPs with a
+  `contains(ip_str)` helper. Used by the new `agent_only_assets` rule to
+  detect coverage gaps in Insight Agent fleet scope.
 
 ### Changed
 
-- **`insight_agent_version_currency` aggregates findings per version, not per system.** Previously emitted one `Finding` per drifted agent — a 400-host fleet produced a 400-row table that duplicated what the Security Console UI already shows. The rule now emits one finding per *version bucket* (e.g. *"12 asset(s) on Insight Agent 4.0.10.5 — 2 minor versions behind 4.1.0.2"*) across all three modes (pinned behind/ahead, latest-known, fleet-newest). Unparseable agent versions collapse into a single info finding. A new info finding *"N asset(s) have no Insight Agent installed (of M total assets)"* surfaces the no-agent population (derived from `total_asset_count − agent_asset_ids`); suppressed when zero. Each version-bucket finding carries `asset_count`, `observed_version`, `reference_version`, drift metadata, and a capped `asset_ids_sample` (max 50 IDs + `asset_ids_truncated` flag) so report payloads stay bounded. New summary keys: `versions_observed`, `versions_drifted`, `assets_total`, `assets_with_agent`, `assets_without_agent`.
-- `Check` Protocol gains an optional `snapshot=None` kwarg. Existing checks continue to satisfy the protocol unchanged. `__main__._run_checks` now builds a single `EnvSnapshot` and passes it to op-checks that accept it, eliminating repeated lazy-loading and caching.
-- **`op.scan_engines.unpaired` finding details enriched.** The "Engines not paired with any sites" finding previously surfaced only the engine ID. It now includes `name`, `address`, `port`, `host` (`address:port`), `status`, `product_version`, `content_version`, `serial_number`, and `last_refreshed` so operators can identify the engine in the report without cross-referencing the Security Console by ID.
+- **`insight_agent_version_currency` aggregates findings per version, not per
+  system.** Previously emitted one `Finding` per drifted agent — a 400-host
+  fleet produced a 400-row table that duplicated what the Security Console UI
+  already shows. The rule now emits one finding per *version bucket* (e.g.
+  *"12 asset(s) on Insight Agent 4.0.10.5 — 2 minor versions behind 4.1.0.2"*)
+  across all three modes (pinned behind / ahead, latest-known, fleet-newest).
+  Unparseable agent versions collapse into a single info finding. A new info
+  finding *"N asset(s) have no Insight Agent installed (of M total assets)"*
+  surfaces the no-agent population (derived from
+  `total_asset_count − agent_asset_ids`); suppressed when zero. Each
+  version-bucket finding carries `asset_count`, `observed_version`,
+  `reference_version`, drift metadata, and a capped `asset_ids_sample` (max
+  50 IDs + `asset_ids_truncated` flag) so report payloads stay bounded. New
+  summary keys: `versions_observed`, `versions_drifted`, `assets_total`,
+  `assets_with_agent`, `assets_without_agent`.
+- `Check` Protocol gains an optional `snapshot=None` kwarg. Existing checks
+  continue to satisfy the protocol unchanged. `__main__._run_checks` now
+  builds a single `EnvSnapshot` and passes it to op-checks that accept it,
+  eliminating repeated lazy-loading and caching.
+- **`op.scan_engines.unpaired` finding details enriched.** The "Engines not
+  paired with any sites" finding previously surfaced only the engine ID. It
+  now includes `name`, `address`, `port`, `host` (`address:port`), `status`,
+  `product_version`, `content_version`, `serial_number`, and `last_refreshed`
+  so operators can identify the engine in the report without cross-referencing
+  the Security Console by ID.
 
 ### Removed
 
@@ -43,7 +78,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Asset Coverage rules now emit one Finding per affected asset/group instead of a single summary Finding.** The report's per-rule "Findings" column rendered `rr.findings|length`, but every Asset Coverage rule collapsed all affected assets into one summary Finding — so the column always read `1` even when a rule found hundreds of stale assets. The true count lived only in `summary` and the finding's `details["total"]`. All six Asset Coverage rules (`stale_assets`, `never_scanned_assets`, `dead_asset_groups`, `unauth_only_assets`, `no_services_detected`, `agent_only_assets`) now emit one Finding per item, capped at 500 with a single rollup Finding for the remainder so report payloads stay bounded. `data_quality.py` retains its `post_one(size=10) + page.totalResources` pattern by design — it never paginates the full result set, and per-asset findings would force an expensive behavior change in large environments.
+- **Asset Coverage rules now emit one Finding per affected asset / group
+  instead of a single summary Finding.** The report's per-rule "Findings"
+  column rendered `rr.findings|length`, but every Asset Coverage rule
+  collapsed all affected assets into one summary Finding — so the column
+  always read `1` even when a rule found hundreds of stale assets. The true
+  count lived only in `summary` and the finding's `details["total"]`. All
+  six Asset Coverage rules (`stale_assets`, `never_scanned_assets`,
+  `dead_asset_groups`, `unauth_only_assets`, `no_services_detected`,
+  `agent_only_assets`) now emit one Finding per item, capped at 500 with a
+  single rollup Finding for the remainder so report payloads stay bounded.
+  `data_quality.py` retains its `post_one(size=10) + page.totalResources`
+  pattern by design — it never paginates the full result set, and per-asset
+  findings would force an expensive behavior change in large environments.
 - **`agent_unauth_collision` audit rule** no longer times out at ~20 minutes
   and no longer silently produces 0 findings. Detection previously relied on
   `asset.agent.agentId` and `asset.history` AGENT-IMPORT entries inline on
@@ -62,6 +109,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   of silently passing. Short-circuit-on-first-hit, per-site cap, full-scan
   semantics, and the truncated-sites aggregate finding are unchanged.
   Read-only contract unchanged (no new verbs).
+- **`IncludedTargets.contains()` now matches normalized IP forms.** The
+  literal-set lookup compared raw strings, so a site target stored as
+  `10.0.0.005` (or an oversized-range endpoint kept as a literal) would
+  miss an asset reporting `10.0.0.5`. The accessor now falls back to a
+  parsed-equality re-test against `literals` before checking CIDR networks,
+  eliminating a class of false-positive "agent-only" findings driven by
+  textual representation differences.
 
 ## [0.2.6] - 2026-05-04
 
@@ -740,7 +794,11 @@ InsightVM environment.
 - CI on Python 3.11 and 3.12 (GitHub Actions).
 - 153 unit tests covering checks, rules, config, client, and report rendering.
 
-[Unreleased]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.2.3...HEAD
+[Unreleased]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.2.7...HEAD
+[0.2.7]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.2.6...v0.2.7
+[0.2.6]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.2.5...v0.2.6
+[0.2.5]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.2.4...v0.2.5
+[0.2.4]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.2.0...v0.2.1
