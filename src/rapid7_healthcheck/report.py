@@ -98,9 +98,15 @@ def _state_blob_projection(
                     "error_path": rr.error_path,
                     "error_status_code": rr.error_status_code,
                 })
-        check_findings = [
-            project_finding(r.name, i, f) for i, f in enumerate(r.findings)
-        ]
+        # Project top-level findings only when there are no rule_results.
+        # Every modern check has rule_results; r.findings is a flattened mirror
+        # of those rules' findings, so projecting it again would double-count.
+        if r.rule_results:
+            check_findings: list[dict] = []
+        else:
+            check_findings = [
+                project_finding(r.name, i, f) for i, f in enumerate(r.findings)
+            ]
         projected_results.append({
             "name": r.name,
             "status": r.status,
@@ -143,22 +149,32 @@ def _compute_delta(*, prior: dict | None, current: dict) -> dict | None:
         return None
 
     def index(state: dict) -> dict[str, dict]:
-        """Map signature -> finding-projection (with rule_id attached)."""
+        """Map signature -> finding-projection (with rule_id attached).
+
+        Every check now produces rule_results, so we index findings out of
+        rule_results only. The top-level `r.findings` is a flattened mirror —
+        indexing it would double-count each finding under check_name.
+
+        Pre-0.2.6 reports stored op-check findings only at the top level; for
+        backwards compatibility, we fall back to top-level findings when a
+        check has no rule_results.
+        """
         out: dict[str, dict] = {}
         for r in state.get("results", []):
             check_name = r.get("name")
-            # Audit-rule findings.
-            for rr in r.get("rule_results", []) or []:
-                rule_id = rr.get("rule_id")
-                for f in rr.get("findings", []):
+            rule_results = r.get("rule_results") or []
+            if rule_results:
+                for rr in rule_results:
+                    rule_id = rr.get("rule_id")
+                    for f in rr.get("findings", []):
+                        sig = f.get("signature")
+                        if sig:
+                            out[sig] = {**f, "rule_id": rule_id}
+            else:
+                for f in r.get("findings", []) or []:
                     sig = f.get("signature")
                     if sig:
-                        out[sig] = {**f, "rule_id": rule_id}
-            # Operational-check top-level findings (use check_name as namespace).
-            for f in r.get("findings", []) or []:
-                sig = f.get("signature")
-                if sig:
-                    out[sig] = {**f, "rule_id": check_name}
+                        out[sig] = {**f, "rule_id": check_name}
         return out
 
     prior_idx = index(prior)
@@ -258,13 +274,6 @@ def _metrics(results: list[CheckResult]) -> dict:
     for r in results:
         if r.duration_ms:
             total_duration_ms += r.duration_ms
-        # Top-level findings (operational checks).
-        for f in r.findings:
-            findings_total += 1
-            if f.severity == "fail":
-                findings_fail += 1
-            elif f.severity == "warn":
-                findings_warn += 1
         if r.rule_results:
             for rr in r.rule_results:
                 rules_total += 1
@@ -286,6 +295,14 @@ def _metrics(results: list[CheckResult]) -> dict:
                         findings_fail += 1
                     elif f.severity == "warn":
                         findings_warn += 1
+        else:
+            # No rule_results — count top-level findings (legacy / pre-0.2.6).
+            for f in r.findings:
+                findings_total += 1
+                if f.severity == "fail":
+                    findings_fail += 1
+                elif f.severity == "warn":
+                    findings_warn += 1
     return {
         "rules_total": rules_total,
         "rules_fail": rules_fail,

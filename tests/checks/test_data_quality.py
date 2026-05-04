@@ -3,6 +3,26 @@ from __future__ import annotations
 from dataclasses import replace
 
 from rapid7_healthcheck.checks.data_quality import DataQualityCheck
+from rapid7_healthcheck.config import DataQualityThresholds
+
+
+def _all_off_except(app_config, **kwargs):
+    """Build an AppConfig where every data_quality flag is False except those overridden."""
+    base = dict(
+        flag_missing_os=False,
+        flag_empty_sites=False,
+        flag_stale_assets=False,
+        stale_asset_days=180,
+        flag_duplicate_hostnames=False,
+        flag_duplicate_ips=False,
+    )
+    base.update(kwargs)
+    new = replace(app_config.thresholds, data_quality=DataQualityThresholds(**base))
+    return replace(app_config, thresholds=new)
+
+
+def _rule(result, rule_id: str):
+    return next(rr for rr in result.rule_results if rr.rule_id == rule_id)
 
 
 def test_all_quality_good(fake_client, app_config):
@@ -12,13 +32,19 @@ def test_all_quality_good(fake_client, app_config):
     )
     fake_client.set_paginate("/api/3/sites", [{"id": 1, "name": "Prod"}])
     fake_client.set_get("/api/3/sites/1/assets", {"resources": [], "page": {"totalResources": 5}})
+    fake_client.set_paginate("/api/3/assets", [
+        {"id": 1, "hostName": "host-a", "ip": "10.0.0.1"},
+        {"id": 2, "hostName": "host-b", "ip": "10.0.0.2"},
+    ])
     result = DataQualityCheck().run(fake_client, app_config)
     assert result.status == "pass"
-    assert result.summary["missing_os_count"] == 0
-    assert result.summary["empty_sites_count"] == 0
+    # Every rule is pass.
+    statuses = {rr.rule_id: rr.status for rr in result.rule_results}
+    assert all(s == "pass" for s in statuses.values()), statuses
 
 
 def test_missing_os_warns(fake_client, app_config):
+    cfg = _all_off_except(app_config, flag_missing_os=True)
     fake_client.set_post_one(
         "/api/3/assets/search",
         {
@@ -26,11 +52,11 @@ def test_missing_os_warns(fake_client, app_config):
             "page": {"totalResources": 2, "size": 10},
         },
     )
-    fake_client.set_paginate("/api/3/sites", [{"id": 1, "name": "Prod"}])
-    fake_client.set_get("/api/3/sites/1/assets", {"resources": [], "page": {"totalResources": 5}})
-    result = DataQualityCheck().run(fake_client, app_config)
+    result = DataQualityCheck().run(fake_client, cfg)
     assert result.status == "warn"
-    assert result.summary["missing_os_count"] == 2
+    rr = _rule(result, "op.data_quality.missing_os")
+    assert rr.status == "warn"
+    assert rr.summary["missing_os_count"] == 2
     # Critical: only ONE search call, not paginated.
     post_one_calls = [c for c in fake_client.calls if c[0] == "post_one"]
     assert len(post_one_calls) == 1
@@ -39,44 +65,159 @@ def test_missing_os_warns(fake_client, app_config):
 
 
 def test_empty_site_warns(fake_client, app_config):
-    fake_client.set_post_one(
-        "/api/3/assets/search",
-        {"resources": [], "page": {"totalResources": 0, "size": 10}},
-    )
+    cfg = _all_off_except(app_config, flag_empty_sites=True)
     fake_client.set_paginate("/api/3/sites", [{"id": 1, "name": "Empty"}])
     fake_client.set_get("/api/3/sites/1/assets", {"resources": [], "page": {"totalResources": 0}})
-    result = DataQualityCheck().run(fake_client, app_config)
+    result = DataQualityCheck().run(fake_client, cfg)
     assert result.status == "warn"
-    assert result.summary["empty_sites_count"] == 1
+    rr = _rule(result, "op.data_quality.empty_sites")
+    assert rr.status == "warn"
+    assert rr.summary["empty_sites_count"] == 1
 
 
 def test_missing_os_skipped_when_disabled(fake_client, app_config):
-    from rapid7_healthcheck.config import DataQualityThresholds
-    new = replace(
-        app_config.thresholds,
-        data_quality=DataQualityThresholds(flag_missing_os=False, flag_empty_sites=True),
-    )
-    cfg = replace(app_config, thresholds=new)
+    cfg = _all_off_except(app_config, flag_empty_sites=True)
     fake_client.set_paginate("/api/3/sites", [{"id": 1, "name": "Prod"}])
     fake_client.set_get("/api/3/sites/1/assets", {"resources": [], "page": {"totalResources": 5}})
     result = DataQualityCheck().run(fake_client, cfg)
     assert result.status == "pass"
-    # post_one was never called
+    # post_one was never called.
     assert not any(c[0] == "post_one" for c in fake_client.calls)
+    # The missing-os rule is reported as skipped.
+    assert _rule(result, "op.data_quality.missing_os").status == "skipped"
 
 
 def test_empty_sites_skipped_when_disabled(fake_client, app_config):
-    from rapid7_healthcheck.config import DataQualityThresholds
-    new = replace(
-        app_config.thresholds,
-        data_quality=DataQualityThresholds(flag_missing_os=True, flag_empty_sites=False),
-    )
-    cfg = replace(app_config, thresholds=new)
+    cfg = _all_off_except(app_config, flag_missing_os=True)
     fake_client.set_post_one(
         "/api/3/assets/search",
         {"resources": [], "page": {"totalResources": 0, "size": 10}},
     )
     result = DataQualityCheck().run(fake_client, cfg)
     assert result.status == "pass"
-    # No site iteration
+    # No site iteration.
     assert not any(c[0] == "paginate" and c[1] == "/api/3/sites" for c in fake_client.calls)
+    assert _rule(result, "op.data_quality.empty_sites").status == "skipped"
+
+
+# ---------- stale assets ----------
+
+def test_stale_assets_warn(fake_client, app_config):
+    cfg = _all_off_except(app_config, flag_stale_assets=True, stale_asset_days=180)
+    fake_client.set_post_one(
+        "/api/3/assets/search",
+        {
+            "resources": [{"id": 7, "hostName": "ancient-1"}],
+            "page": {"totalResources": 12, "size": 10},
+        },
+    )
+    result = DataQualityCheck().run(fake_client, cfg)
+    assert result.status == "warn"
+    rr = _rule(result, "op.data_quality.stale_assets")
+    assert rr.status == "warn"
+    assert rr.summary["stale_assets_count"] == 12
+    msg = rr.findings[0].message
+    assert "180" in msg and "stale" in msg.lower()
+    # Verify the filter we sent matches the documented v3 search shape.
+    post_one_calls = [c for c in fake_client.calls if c[0] == "post_one"]
+    assert len(post_one_calls) == 1
+    body = post_one_calls[0][3]
+    assert body == {
+        "filters": [
+            {"field": "last-scan-date", "operator": "is-earlier-than", "value": 180},
+        ],
+        "match": "all",
+    }
+
+
+def test_stale_assets_disabled_skips_call(fake_client, app_config):
+    cfg = _all_off_except(app_config, flag_missing_os=True)
+    fake_client.set_post_one(
+        "/api/3/assets/search",
+        {"resources": [], "page": {"totalResources": 0, "size": 10}},
+    )
+    DataQualityCheck().run(fake_client, cfg)
+    # Only the missing-os search call; no stale-asset search call.
+    post_one_calls = [c for c in fake_client.calls if c[0] == "post_one"]
+    assert len(post_one_calls) == 1
+
+
+# ---------- duplicate detection ----------
+
+def test_duplicate_hostnames_warn(fake_client, app_config):
+    cfg = _all_off_except(app_config, flag_duplicate_hostnames=True)
+    fake_client.set_paginate("/api/3/assets", [
+        {"id": 1, "hostName": "Web-01", "ip": "10.0.0.1"},
+        {"id": 2, "hostName": "web-01", "ip": "10.0.0.2"},  # case-insensitive collision
+        {"id": 3, "hostName": "db-01", "ip": "10.0.0.3"},
+    ])
+    result = DataQualityCheck().run(fake_client, cfg)
+    assert result.status == "warn"
+    host_rr = _rule(result, "op.data_quality.duplicate_hostnames")
+    assert host_rr.status == "warn"
+    assert host_rr.summary["duplicate_hostname_groups"] == 1
+    f = host_rr.findings[0]
+    assert f.details["duplicate_groups"] == 1
+    assert f.details["affected_assets"] == 2
+    # The IP rule is skipped because that flag is off.
+    assert _rule(result, "op.data_quality.duplicate_ips").status == "skipped"
+
+
+def test_duplicate_ips_warn(fake_client, app_config):
+    cfg = _all_off_except(app_config, flag_duplicate_ips=True)
+    fake_client.set_paginate("/api/3/assets", [
+        {"id": 1, "hostName": "host-a", "ip": "10.0.0.1"},
+        {"id": 2, "hostName": "host-b", "ip": "10.0.0.1"},
+        {"id": 3, "hostName": "host-c", "ip": "10.0.0.2"},
+    ])
+    result = DataQualityCheck().run(fake_client, cfg)
+    assert result.status == "warn"
+    ip_rr = _rule(result, "op.data_quality.duplicate_ips")
+    assert ip_rr.status == "warn"
+    assert ip_rr.summary["duplicate_ip_groups"] == 1
+    assert _rule(result, "op.data_quality.duplicate_hostnames").status == "skipped"
+
+
+def test_duplicates_share_one_paginate(fake_client, app_config):
+    """Both hostname and IP duplicate detection share a single /api/3/assets pass."""
+    cfg = _all_off_except(
+        app_config, flag_duplicate_hostnames=True, flag_duplicate_ips=True,
+    )
+    fake_client.set_paginate("/api/3/assets", [
+        {"id": 1, "hostName": "web-01", "ip": "10.0.0.1"},
+        {"id": 2, "hostName": "web-01", "ip": "10.0.0.1"},
+    ])
+    DataQualityCheck().run(fake_client, cfg)
+    asset_paginates = [
+        c for c in fake_client.calls
+        if c[0] == "paginate" and c[1] == "/api/3/assets"
+    ]
+    assert len(asset_paginates) == 1
+
+
+def test_duplicate_blank_identifiers_ignored(fake_client, app_config):
+    """Empty hostName / ip should not be grouped as 'duplicates'."""
+    cfg = _all_off_except(
+        app_config, flag_duplicate_hostnames=True, flag_duplicate_ips=True,
+    )
+    fake_client.set_paginate("/api/3/assets", [
+        {"id": 1, "hostName": "", "ip": ""},
+        {"id": 2, "hostName": "", "ip": ""},
+        {"id": 3, "hostName": None, "ip": None},
+    ])
+    result = DataQualityCheck().run(fake_client, cfg)
+    assert result.status == "pass"
+    assert _rule(result, "op.data_quality.duplicate_hostnames").summary["duplicate_hostname_groups"] == 0
+    assert _rule(result, "op.data_quality.duplicate_ips").summary["duplicate_ip_groups"] == 0
+
+
+def test_duplicates_disabled_skips_paginate(fake_client, app_config):
+    cfg = _all_off_except(app_config, flag_missing_os=True)
+    fake_client.set_post_one(
+        "/api/3/assets/search",
+        {"resources": [], "page": {"totalResources": 0, "size": 10}},
+    )
+    DataQualityCheck().run(fake_client, cfg)
+    assert not any(
+        c[0] == "paginate" and c[1] == "/api/3/assets" for c in fake_client.calls
+    )

@@ -9,12 +9,17 @@ def _asset(host: str, asset_id: int = 1) -> dict:
     return {"id": asset_id, "hostName": host}
 
 
+def _rule(result, rule_id: str):
+    """Pull a RuleResult by its op.* rule_id."""
+    return next(rr for rr in result.rule_results if rr.rule_id == rule_id)
+
+
 def test_all_assets_fresh(fake_client, app_config):
     fake_client.set_paginate_post("/api/3/assets/search", [])
     result = AssetCoverageCheck().run(fake_client, app_config)
     assert result.status == "pass"
-    assert result.summary["stale_count"] == 0
-    assert result.summary["unscanned_count"] == 0
+    assert _rule(result, "op.asset_coverage.stale_assets").summary["stale_count"] == 0
+    assert _rule(result, "op.asset_coverage.never_scanned_assets").summary["unscanned_count"] == 0
 
 
 def test_stale_assets_warn(fake_client, app_config):
@@ -41,7 +46,9 @@ def test_stale_assets_warn(fake_client, app_config):
 
     result = AssetCoverageCheck().run(fc, app_config)
     assert result.status == "warn"
-    assert result.summary["stale_count"] == 3
+    stale_rule = _rule(result, "op.asset_coverage.stale_assets")
+    assert stale_rule.status == "warn"
+    assert stale_rule.summary["stale_count"] == 3
 
 
 def test_never_scanned_assets_fail(fake_client, app_config):
@@ -61,7 +68,9 @@ def test_never_scanned_assets_fail(fake_client, app_config):
     fc.paginate_post = paginate_post  # type: ignore[assignment]
     result = AssetCoverageCheck().run(fc, app_config)
     assert result.status == "fail"
-    assert result.summary["unscanned_count"] == 2
+    ns = _rule(result, "op.asset_coverage.never_scanned_assets")
+    assert ns.status == "fail"
+    assert ns.summary["unscanned_count"] == 2
 
 
 def test_unscanned_check_skipped_when_disabled(fake_client, app_config):
@@ -85,6 +94,9 @@ def test_unscanned_check_skipped_when_disabled(fake_client, app_config):
     paginate_post_calls = [c for c in fc.calls if c[0] == "paginate_post"]
     # Only the stale query should have run.
     assert len(paginate_post_calls) == 1
+    # The never-scanned rule should be skipped.
+    ns = _rule(result, "op.asset_coverage.never_scanned_assets")
+    assert ns.status == "skipped"
 
 
 def test_top_10_examples_in_finding_details(fake_client, app_config):

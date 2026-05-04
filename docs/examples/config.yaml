@@ -36,6 +36,16 @@ thresholds:
   data_quality:
     flag_missing_os: true
     flag_empty_sites: true
+    # Flag assets whose last scan is older than this many days. Distinct from
+    # asset_coverage.never_scanned_days — that signals a coverage gap; this
+    # signals the asset record itself is so stale the data is unreliable.
+    flag_stale_assets: true
+    stale_asset_days: 180
+    # Flag duplicate asset records (same hostName / same ip across multiple
+    # asset IDs). Classic agent + scan-engine collision; also surfaces
+    # DHCP-driven re-IPing when MAC tracking is incomplete.
+    flag_duplicate_hostnames: true
+    flag_duplicate_ips: true
 
 checks:
   scan_engines: true
@@ -77,9 +87,6 @@ audit:
     policy_and_vuln_in_same_template:
       enabled: true
       severity: warn
-    store_invulnerable_results:
-      enabled: true
-      severity: info
     local_engine_production_scope:
       enabled: true
       severity: warn

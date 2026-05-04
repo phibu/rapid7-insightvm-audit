@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import typing
-from dataclasses import dataclass, field, fields
+from dataclasses import MISSING, dataclass, field, fields
 from pathlib import Path
 from typing import Any
 
@@ -56,6 +56,10 @@ class AssetCoverageThresholds:
 class DataQualityThresholds:
     flag_missing_os: bool
     flag_empty_sites: bool
+    flag_stale_assets: bool = True
+    stale_asset_days: int = 180
+    flag_duplicate_hostnames: bool = True
+    flag_duplicate_ips: bool = True
 
 
 @dataclass(frozen=True)
@@ -74,7 +78,6 @@ _VALID_RULE_IDS = {
     "single_engine_overload",
     "discovery_template_on_prod_site",
     "policy_and_vuln_in_same_template",
-    "store_invulnerable_results",
     "local_engine_production_scope",
     "dynamic_groups_and_nested_tags",
     "scan_report_schedule_overlap",
@@ -204,15 +207,22 @@ def _from_dict(cls: type, data: Any, path: str) -> Any:
     unknown = set(data.keys()) - expected
     if unknown:
         raise ConfigError(f"{path}: unknown key(s): {sorted(unknown)}")
-    missing = expected - set(data.keys())
+    required = {
+        f.name
+        for f in fields(cls)
+        if f.default is MISSING and f.default_factory is MISSING  # type: ignore[misc]
+    }
+    missing = required - set(data.keys())
     if missing:
         raise ConfigError(f"{path}: missing required key(s): {sorted(missing)}")
 
     hints = typing.get_type_hints(cls)
+    kwargs: dict[str, Any] = {}
     for f in fields(cls):
-        _check_scalar(f.name, data[f.name], hints[f.name], path)
-
-    return cls(**{f.name: data[f.name] for f in fields(cls)})
+        if f.name in data:
+            _check_scalar(f.name, data[f.name], hints[f.name], path)
+            kwargs[f.name] = data[f.name]
+    return cls(**kwargs)
 
 
 _THRESHOLD_NESTED = {
