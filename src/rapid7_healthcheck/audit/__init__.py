@@ -178,7 +178,7 @@ class ConfigurationAuditCheck:
         )
 
 
-# Side-effect imports: register all 14 audit rules at package-import time.
+# Side-effect imports: register all 13 audit rules at package-import time.
 # Adding a new rule = one new file under `audit/rules/` + one line here.
 from rapid7_healthcheck.audit.rules import (  # noqa: E402,F401
     agent_unauth_collision,
@@ -188,7 +188,6 @@ from rapid7_healthcheck.audit.rules import (  # noqa: E402,F401
     single_engine_overload,
     discovery_template_on_prod_site,
     policy_and_vuln_in_same_template,
-    store_invulnerable_results,
     local_engine_production_scope,
     dynamic_groups_and_nested_tags,
     scan_report_schedule_overlap,

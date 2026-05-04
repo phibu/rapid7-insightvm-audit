@@ -396,9 +396,6 @@ def test_run_with_audit_enabled_writes_audit_report(tmp_path, monkeypatch):
             policy_and_vuln_in_same_template:
               enabled: false
               severity: warn
-            store_invulnerable_results:
-              enabled: false
-              severity: info
     """).strip()
     cfg = tmp_path / "config.yaml"
     cfg.write_text(body, encoding="utf-8")

@@ -173,9 +173,6 @@ AUDIT_BLOCK = textwrap.dedent("""
         policy_and_vuln_in_same_template:
           enabled: true
           severity: warn
-        store_invulnerable_results:
-          enabled: true
-          severity: info
 """)
 
 
