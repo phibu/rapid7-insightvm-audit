@@ -445,3 +445,152 @@ def test_r3_no_services_detected_skipped_when_disabled(fake_client, app_config):
     result = AssetCoverageCheck().run(fake_client, cfg, snapshot=snap)
     rule = _rule(result, "op.asset_coverage.no_services_detected")
     assert rule.status == "skipped"
+
+
+# ----- R4: agent_only_assets -----
+
+def _enable_r4_via_full_scan(app_config):
+    """Helper: flip the toggle on AND set audit.full_scan=True."""
+    from dataclasses import replace
+    return replace(
+        app_config,
+        audit=replace(app_config.audit, full_scan=True),
+        thresholds=replace(
+            app_config.thresholds,
+            asset_coverage=replace(
+                app_config.thresholds.asset_coverage,
+                flag_agent_only_assets=True,
+            ),
+        ),
+    )
+
+
+def test_r4_skipped_by_default(fake_client, app_config):
+    """Default config has flag_agent_only_assets=false — rule must be skipped."""
+    fake_client.set_paginate_post("/api/3/assets/search", [])
+    snap = _FakeSnapshot(asset_groups=[])
+    result = AssetCoverageCheck().run(fake_client, app_config, snapshot=snap)
+    rule = _rule(result, "op.asset_coverage.agent_only_assets")
+    assert rule.status == "skipped"
+
+
+def test_r4_skipped_when_full_scan_off_even_if_toggle_on(fake_client, app_config):
+    from dataclasses import replace
+    cfg = replace(
+        app_config,
+        audit=replace(app_config.audit, full_scan=False),
+        thresholds=replace(
+            app_config.thresholds,
+            asset_coverage=replace(
+                app_config.thresholds.asset_coverage,
+                flag_agent_only_assets=True,
+            ),
+        ),
+    )
+    fake_client.set_paginate_post("/api/3/assets/search", [])
+    snap = _FakeSnapshot(asset_groups=[], agent_asset_ids={1, 2, 3})
+    result = AssetCoverageCheck().run(fake_client, cfg, snapshot=snap)
+    rule = _rule(result, "op.asset_coverage.agent_only_assets")
+    assert rule.status == "skipped"
+
+
+def test_r4_skipped_when_agents_endpoint_unavailable(fake_client, app_config):
+    cfg = _enable_r4_via_full_scan(app_config)
+    fake_client.set_paginate_post("/api/3/assets/search", [])
+    snap = _FakeSnapshot(asset_groups=[], agents_unavailable=True)
+    result = AssetCoverageCheck().run(fake_client, cfg, snapshot=snap)
+    rule = _rule(result, "op.asset_coverage.agent_only_assets")
+    assert rule.status == "skipped"
+
+
+def test_r4_pass_when_no_agents(fake_client, app_config):
+    cfg = _enable_r4_via_full_scan(app_config)
+    from rapid7_healthcheck.audit.snapshot import IncludedTargets
+    fake_client.set_paginate_post("/api/3/assets/search", [])
+    snap = _FakeSnapshot(
+        asset_groups=[],
+        agent_asset_ids=set(),
+        included_targets=IncludedTargets(),
+    )
+    result = AssetCoverageCheck().run(fake_client, cfg, snapshot=snap)
+    rule = _rule(result, "op.asset_coverage.agent_only_assets")
+    assert rule.status == "pass"
+    assert rule.summary["agent_only_count"] == 0
+
+
+def test_r4_pass_when_all_agents_inside_targets(fake_client, app_config):
+    from ipaddress import ip_network
+    from rapid7_healthcheck.audit.snapshot import IncludedTargets
+    cfg = _enable_r4_via_full_scan(app_config)
+
+    asset_details = {
+        100: {"id": 100, "ip": "10.0.0.5", "hostName": "agent-a"},
+        101: {"id": 101, "ip": "10.0.0.6", "hostName": "agent-b"},
+    }
+
+    from tests.conftest import FakeRapid7Client
+    fc = FakeRapid7Client()
+
+    def get(path, params=None):
+        if path.startswith("/api/3/assets/"):
+            aid = int(path.split("/")[-1])
+            return asset_details[aid]
+        raise AssertionError(f"unexpected GET: {path}")
+
+    fc.get = get  # type: ignore[assignment]
+    fc.set_paginate_post("/api/3/assets/search", [])
+
+    snap = _FakeSnapshot(
+        asset_groups=[],
+        agent_asset_ids={100, 101},
+        included_targets=IncludedTargets(networks=[ip_network("10.0.0.0/24")], literals=set()),
+    )
+    result = AssetCoverageCheck().run(fc, cfg, snapshot=snap)
+    rule = _rule(result, "op.asset_coverage.agent_only_assets")
+    assert rule.status == "pass"
+    assert rule.summary["agent_only_count"] == 0
+
+
+def test_r4_warn_when_agents_outside_targets(fake_client, app_config):
+    from ipaddress import ip_network
+    from rapid7_healthcheck.audit.snapshot import IncludedTargets
+    cfg = _enable_r4_via_full_scan(app_config)
+
+    asset_details = {
+        200: {"id": 200, "ip": "172.16.0.1", "hostName": "outside-1"},
+        201: {"id": 201, "ip": "172.16.0.2", "hostName": "outside-2"},
+        202: {"id": 202, "ip": "10.0.0.5", "hostName": "inside"},
+    }
+
+    from tests.conftest import FakeRapid7Client
+    fc = FakeRapid7Client()
+
+    def get(path, params=None):
+        if path.startswith("/api/3/assets/"):
+            aid = int(path.split("/")[-1])
+            return asset_details[aid]
+        raise AssertionError(f"unexpected GET: {path}")
+
+    fc.get = get  # type: ignore[assignment]
+    fc.set_paginate_post("/api/3/assets/search", [])
+
+    snap = _FakeSnapshot(
+        asset_groups=[],
+        agent_asset_ids={200, 201, 202},
+        included_targets=IncludedTargets(networks=[ip_network("10.0.0.0/24")], literals=set()),
+    )
+    result = AssetCoverageCheck().run(fc, cfg, snapshot=snap)
+    rule = _rule(result, "op.asset_coverage.agent_only_assets")
+    assert rule.status == "warn"
+    assert rule.summary["agent_only_count"] == 2
+    examples = rule.findings[0].details["examples"]
+    hostnames = {e["hostname"] for e in examples}
+    assert hostnames == {"outside-1", "outside-2"}
+
+
+def test_r4_errors_when_snapshot_missing(fake_client, app_config):
+    cfg = _enable_r4_via_full_scan(app_config)
+    fake_client.set_paginate_post("/api/3/assets/search", [])
+    result = AssetCoverageCheck().run(fake_client, cfg)  # no snapshot
+    rule = _rule(result, "op.asset_coverage.agent_only_assets")
+    assert rule.status == "error"

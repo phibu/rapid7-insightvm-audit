@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import logging
 import time
 from typing import TYPE_CHECKING, Any
+
+logger = logging.getLogger(__name__)
 
 from rapid7_healthcheck.audit import RuleResult
 from rapid7_healthcheck.client import Rapid7ClientError
@@ -21,6 +24,7 @@ from rapid7_healthcheck.config import AppConfig
 _EXAMPLES_LIMIT = 10
 _SRC_FILTERED_SEARCH = "https://docs.rapid7.com/insightvm/filtered-asset-search"
 _SRC_ASSET_GROUPS = "https://docs.rapid7.com/insightvm/asset-groups/"
+_SRC_INSIGHT_AGENT = "https://docs.rapid7.com/insightvm/insight-agent-overview/"
 
 
 def _example_hostnames(assets: list[dict]) -> list[str]:
@@ -40,6 +44,7 @@ class AssetCoverageCheck:
             self._dead_asset_groups(snapshot, t),
             self._unauth_only_assets(client, t),
             self._no_services_detected(client, t),
+            self._agent_only_assets(snapshot, client, t, config.audit),
         ]
 
         return CheckResult(
@@ -307,5 +312,107 @@ class AssetCoverageCheck:
             findings=findings,
             sources=sources,
             summary={"no_services_count": len(silent), "stale_asset_days": t.stale_asset_days},
+            duration_ms=int((time.monotonic() - rule_start) * 1000),
+        )
+
+    def _agent_only_assets(self, snapshot: "EnvSnapshot | None", client: Any, t, audit_cfg) -> RuleResult:
+        rid = "op.asset_coverage.agent_only_assets"
+        name = "Insight Agent assets outside scheduled scan scope"
+        desc = (
+            "Assets reporting via Insight Agent whose IP falls outside every "
+            "site's configured included_targets. These assets only get "
+            "opportunistic agent data; they're never reached by scheduled scans."
+        )
+        sources = [_SRC_INSIGHT_AGENT]
+
+        if not t.flag_agent_only_assets:
+            return skipped_rule(rule_id=rid, rule_name=name, description=desc, sources=sources)
+
+        if snapshot is None:
+            # make_rule_result derives status from finding severity (no "error" mapping); construct directly.
+            return RuleResult(
+                rule_id=rid,
+                rule_name=name,
+                description=desc,
+                severity="warn",
+                status="error",
+                findings=[Finding(severity="warn", message="snapshot required but not provided to check")],
+                summary={"agent_only_count": 0, "error": "snapshot required"},
+                sources=sources,
+            )
+
+        if not audit_cfg.full_scan:
+            return skipped_rule(
+                rule_id=rid,
+                rule_name=name,
+                description=desc + " (Requires audit.full_scan=true to run.)",
+                sources=sources,
+            )
+
+        if snapshot.is_agents_unavailable():
+            return skipped_rule(
+                rule_id=rid,
+                rule_name=f"{name} (agents endpoint unavailable on this console)",
+                description=desc,
+                sources=sources,
+            )
+
+        rule_start = time.monotonic()
+        agent_ids = snapshot.agent_asset_ids()
+        targets = snapshot.all_included_targets()
+
+        if targets is None:
+            # snapshot fake / edge case — treat as no scope coverage info, rule indeterminate.
+            return RuleResult(
+                rule_id=rid,
+                rule_name=name,
+                description=desc,
+                severity="warn",
+                status="error",
+                findings=[Finding(severity="warn", message="all_included_targets() returned None")],
+                summary={"agent_only_count": 0, "error": "no targets"},
+                sources=sources,
+            )
+
+        outsiders: list[dict] = []
+        fetched_count = 0
+        for aid in agent_ids:
+            try:
+                asset = client.get(f"/api/3/assets/{aid}")
+            except Rapid7ClientError as e:
+                logger.warning("agent_only_assets: skipping asset %s due to error: %s", aid, e)
+                continue
+            fetched_count += 1
+            ip_str = asset.get("ip")
+            if not ip_str:
+                continue
+            if not targets.contains(str(ip_str)):
+                outsiders.append({
+                    "asset_id": aid,
+                    "ip": str(ip_str),
+                    "hostname": asset.get("hostName"),
+                })
+
+        findings: list[Finding] = []
+        if outsiders:
+            findings.append(Finding(
+                severity="warn",
+                message=f"{len(outsiders)} agent-managed asset(s) outside every site's scan scope",
+                details={
+                    "total": len(outsiders),
+                    "examples": outsiders[:_EXAMPLES_LIMIT],
+                },
+            ))
+        return make_rule_result(
+            rule_id=rid,
+            rule_name=name,
+            description=desc,
+            findings=findings,
+            sources=sources,
+            summary={
+                "agent_only_count": len(outsiders),
+                "total_agents_checked": fetched_count,
+                "total_agents": len(agent_ids),
+            },
             duration_ms=int((time.monotonic() - rule_start) * 1000),
         )
