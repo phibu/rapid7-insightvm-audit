@@ -125,8 +125,8 @@ def test_unscanned_check_skipped_when_disabled(fake_client, app_config):
     result = AssetCoverageCheck().run(fc, cfg, snapshot=_FakeSnapshot())
     assert result.status == "pass"
     paginate_post_calls = [c for c in fc.calls if c[0] == "paginate_post"]
-    # never_scanned is skipped (off); stale and unauth_only still run.
-    assert len(paginate_post_calls) == 2
+    # never_scanned is skipped (off); stale, unauth_only, and no_services_detected still run.
+    assert len(paginate_post_calls) == 3
     # The never-scanned rule should be skipped.
     ns = _rule(result, "op.asset_coverage.never_scanned_assets")
     assert ns.status == "skipped"
@@ -169,21 +169,23 @@ def test_uses_is_earlier_than_operator_with_threshold(fake_client, app_config):
     fc.paginate_post = paginate_post  # type: ignore[assignment]
     AssetCoverageCheck().run(fc, app_config)
 
-    assert len(captured_filters) == 3  # stale + never-scanned + unauth_only
-    # The two date-based filters (stale, never-scanned) must use is-earlier-than;
-    # neither may use is-empty. The unauth_only filter uses a different field
-    # (vulnerability-assessed) and is excluded from this regression guard.
-    date_filters = [
+    assert len(captured_filters) == 4  # stale + never-scanned + unauth_only + no_services_detected
+    # The regression guards stale and never_scanned: those two send a
+    # single-filter body keyed on last-scan-date. They must use is-earlier-than;
+    # neither may use is-empty. Other rules' bodies (R2's vulnerability-assessed,
+    # R3's two-filter service-count + is-within-the-last) are intentionally
+    # excluded from this guard — they use different fields/operators by design.
+    single_lsd_filters = [
         f for f in captured_filters
-        if any(filt["field"] == "last-scan-date" for filt in f["filters"])
+        if len(f["filters"]) == 1 and f["filters"][0]["field"] == "last-scan-date"
     ]
-    assert len(date_filters) == 2
-    for f in date_filters:
+    assert len(single_lsd_filters) == 2
+    for f in single_lsd_filters:
         ops = [filt["operator"] for filt in f["filters"]]
         assert "is-empty" not in ops, f"is-empty operator must not be used: {f}"
         assert all(op == "is-earlier-than" for op in ops), f"unexpected operator: {f}"
     # never_scanned filter uses 90 (default).
-    never_scanned = [f for f in date_filters if f["filters"][0]["value"] == 90]
+    never_scanned = [f for f in single_lsd_filters if f["filters"][0]["value"] == 90]
     assert len(never_scanned) == 1
 
 
@@ -361,4 +363,85 @@ def test_r2_unauth_only_assets_skipped_when_disabled(fake_client, app_config):
     snap = _FakeSnapshot(asset_groups=[])
     result = AssetCoverageCheck().run(fake_client, cfg, snapshot=snap)
     rule = _rule(result, "op.asset_coverage.unauth_only_assets")
+    assert rule.status == "skipped"
+
+
+# ----- R3: no_services_detected -----
+
+def test_r3_no_services_detected_pass_when_empty(fake_client, app_config):
+    fake_client.set_paginate_post("/api/3/assets/search", [])
+    snap = _FakeSnapshot(asset_groups=[])
+    result = AssetCoverageCheck().run(fake_client, app_config, snapshot=snap)
+    rule = _rule(result, "op.asset_coverage.no_services_detected")
+    assert rule.status == "pass"
+    assert rule.summary["no_services_count"] == 0
+
+
+def test_r3_no_services_detected_warn_with_results(fake_client, app_config):
+    from tests.conftest import FakeRapid7Client
+    fc = FakeRapid7Client()
+    silent_assets = [_asset(f"silent-{i}", i) for i in range(7)]
+
+    def paginate_post(path, json_body, params=None, page_size=500):
+        # R3 is the rule whose body has BOTH service-count AND last-scan-date filters.
+        fields = [f.get("field") for f in json_body.get("filters", [])]
+        if "service-count" in fields and "last-scan-date" in fields:
+            yield from silent_assets
+        else:
+            yield from []
+
+    fc.paginate_post = paginate_post  # type: ignore[assignment]
+    snap = _FakeSnapshot(asset_groups=[])
+    result = AssetCoverageCheck().run(fc, app_config, snapshot=snap)
+    rule = _rule(result, "op.asset_coverage.no_services_detected")
+    assert rule.status == "warn"
+    assert rule.summary["no_services_count"] == 7
+
+
+def test_r3_no_services_detected_uses_two_filter_body(fake_client, app_config):
+    """Body must combine service-count==0 AND last-scan-date is-within stale_asset_days."""
+    from tests.conftest import FakeRapid7Client
+    fc = FakeRapid7Client()
+    captured: list[dict] = []
+
+    def paginate_post(path, json_body, params=None, page_size=500):
+        captured.append(json_body)
+        yield from []
+
+    fc.paginate_post = paginate_post  # type: ignore[assignment]
+    snap = _FakeSnapshot(asset_groups=[])
+    AssetCoverageCheck().run(fc, app_config, snapshot=snap)
+
+    r3_bodies = [
+        b for b in captured
+        if {"service-count", "last-scan-date"} <= {f.get("field") for f in b.get("filters", [])}
+    ]
+    assert len(r3_bodies) == 1
+    body = r3_bodies[0]
+    assert body["match"] == "all"
+    assert len(body["filters"]) == 2
+    sc_filter = next(f for f in body["filters"] if f["field"] == "service-count")
+    assert sc_filter == {"field": "service-count", "operator": "is", "value": 0}
+    ls_filter = next(f for f in body["filters"] if f["field"] == "last-scan-date")
+    assert ls_filter["operator"] == "is-within-the-last"
+    # Default fixture has stale_asset_days=30
+    assert ls_filter["value"] == app_config.thresholds.asset_coverage.stale_asset_days
+
+
+def test_r3_no_services_detected_skipped_when_disabled(fake_client, app_config):
+    from dataclasses import replace
+    cfg = replace(
+        app_config,
+        thresholds=replace(
+            app_config.thresholds,
+            asset_coverage=replace(
+                app_config.thresholds.asset_coverage,
+                flag_no_services_detected=False,
+            ),
+        ),
+    )
+    fake_client.set_paginate_post("/api/3/assets/search", [])
+    snap = _FakeSnapshot(asset_groups=[])
+    result = AssetCoverageCheck().run(fake_client, cfg, snapshot=snap)
+    rule = _rule(result, "op.asset_coverage.no_services_detected")
     assert rule.status == "skipped"
