@@ -99,6 +99,16 @@ def test_int_field_rejects_string(tmp_path):
         load_config(write(tmp_path, body))
 
 
+def test_asset_coverage_thresholds_have_new_toggles_with_defaults(tmp_path):
+    """The 4 new asset-coverage toggles are optional with sensible defaults."""
+    cfg = load_config(write(tmp_path, VALID_YAML))
+    ac = cfg.thresholds.asset_coverage
+    assert ac.flag_dead_asset_groups is True
+    assert ac.flag_unauth_only_assets is True
+    assert ac.flag_no_services_detected is True
+    assert ac.flag_agent_only_assets is False
+
+
 def test_int_field_rejects_bool(tmp_path):
     body = VALID_YAML.replace("request_timeout_seconds: 30", "request_timeout_seconds: true")
     with pytest.raises(ConfigError, match="request_timeout_seconds"):

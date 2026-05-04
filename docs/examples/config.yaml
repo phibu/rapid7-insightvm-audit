@@ -33,6 +33,21 @@ thresholds:
     stale_asset_days: 30
     flag_unscanned_assets: true
     never_scanned_days: 90
+    # New in 0.2.7 — see README "Asset Coverage" section.
+    # Flag asset groups whose membership criteria match zero assets
+    # (orphaned RBAC/report scopes).
+    flag_dead_asset_groups: true
+    # Flag assets where the most recent scan was unauthenticated
+    # (vulnerability-assessed=false) — surface-level visibility only.
+    flag_unauth_only_assets: true
+    # Flag assets recently scanned but with zero detected services —
+    # usually a firewall blocking the scan engine or a scope misconfig.
+    flag_no_services_detected: true
+    # Flag Insight Agent-managed assets that fall outside every site's
+    # configured scan target ranges — they only get opportunistic agent
+    # data, never scheduled scans. REQUIRES audit.full_scan: true to
+    # actually run (per-asset GETs are too expensive for the fast path).
+    flag_agent_only_assets: false
   data_quality:
     flag_missing_os: true
     flag_empty_sites: true
