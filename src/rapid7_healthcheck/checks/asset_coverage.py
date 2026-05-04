@@ -22,6 +22,7 @@ from rapid7_healthcheck.checks._op_rule import (
 from rapid7_healthcheck.config import AppConfig
 
 _EXAMPLES_LIMIT = 10
+_PER_ITEM_FINDING_CAP = 500
 _SRC_FILTERED_SEARCH = "https://docs.rapid7.com/insightvm/filtered-asset-search"
 _SRC_ASSET_GROUPS = "https://docs.rapid7.com/insightvm/asset-groups/"
 _SRC_INSIGHT_AGENT = "https://docs.rapid7.com/insightvm/insight-agent-overview/"
@@ -29,6 +30,54 @@ _SRC_INSIGHT_AGENT = "https://docs.rapid7.com/insightvm/insight-agent-overview/"
 
 def _example_hostnames(assets: list[dict]) -> list[str]:
     return [a.get("hostName") or a.get("ip") or f"id={a.get('id')}" for a in assets[:_EXAMPLES_LIMIT]]
+
+
+def _asset_label(asset: dict) -> str:
+    return asset.get("hostName") or asset.get("ip") or f"id={asset.get('id')}"
+
+
+def _per_asset_findings(
+    assets: list[dict],
+    severity: str,
+    message_for,
+    extra_details: dict | None = None,
+) -> list[Finding]:
+    """Emit one Finding per asset, capped at _PER_ITEM_FINDING_CAP.
+
+    Beyond the cap, append a single rollup Finding so the report's findings
+    count stays bounded while still reflecting the actual affected-asset count
+    in the row. ``message_for(asset) -> str`` builds the per-asset message.
+    """
+    findings: list[Finding] = []
+    head = assets[:_PER_ITEM_FINDING_CAP]
+    for asset in head:
+        details: dict = {
+            "asset_id": asset.get("id"),
+            "hostName": asset.get("hostName"),
+            "ip": asset.get("ip"),
+        }
+        if extra_details:
+            details.update(extra_details)
+        findings.append(Finding(
+            severity=severity,
+            message=message_for(asset),
+            details=details,
+        ))
+    remainder = len(assets) - len(head)
+    if remainder > 0:
+        rollup_details: dict = {
+            "remainder": remainder,
+            "total": len(assets),
+            "cap": _PER_ITEM_FINDING_CAP,
+        }
+        if extra_details:
+            rollup_details.update(extra_details)
+        findings.append(Finding(
+            severity=severity,
+            message=f"+ {remainder} more asset(s) (truncated; showing first {_PER_ITEM_FINDING_CAP})",
+            details=rollup_details,
+        ))
+    return findings
 
 
 class AssetCoverageCheck:
@@ -78,13 +127,14 @@ class AssetCoverageCheck:
             "match": "all",
         }
         stale = list(client.paginate_post("/api/3/assets/search", json_body=body))
-        findings: list[Finding] = []
-        if stale:
-            findings.append(Finding(
-                severity="warn",
-                message=f"{len(stale)} stale asset(s) (no scan in last {t.stale_asset_days} days)",
-                details={"total": len(stale), "examples": _example_hostnames(stale)},
-            ))
+        findings = _per_asset_findings(
+            stale,
+            severity="warn",
+            message_for=lambda a: (
+                f"Stale asset {_asset_label(a)}: no scan in last {t.stale_asset_days} days"
+            ),
+            extra_details={"stale_asset_days": t.stale_asset_days},
+        )
         return make_rule_result(
             rule_id=rid,
             rule_name=name,
@@ -119,16 +169,14 @@ class AssetCoverageCheck:
             "match": "all",
         }
         unscanned = list(client.paginate_post("/api/3/assets/search", json_body=body))
-        findings: list[Finding] = []
-        if unscanned:
-            findings.append(Finding(
-                severity="fail",
-                message=(
-                    f"{len(unscanned)} asset(s) have not been scanned in the last "
-                    f"{t.never_scanned_days} days"
-                ),
-                details={"total": len(unscanned), "examples": _example_hostnames(unscanned)},
-            ))
+        findings = _per_asset_findings(
+            unscanned,
+            severity="fail",
+            message_for=lambda a: (
+                f"Never-scanned asset {_asset_label(a)}: no scan in last {t.never_scanned_days} days"
+            ),
+            extra_details={"never_scanned_days": t.never_scanned_days},
+        )
         return make_rule_result(
             rule_id=rid,
             rule_name=name,
@@ -170,21 +218,24 @@ class AssetCoverageCheck:
         groups = snapshot.asset_groups()
         dead = [g for g in groups if int(g.get("assets") or 0) == 0]
         findings: list[Finding] = []
-        if dead:
+        head = dead[:_PER_ITEM_FINDING_CAP]
+        for g in head:
+            label = g.get("name") or f"id={g.get('id')}"
             findings.append(Finding(
                 severity="warn",
-                message=f"{len(dead)} asset group(s) have zero members",
+                message=f"Asset group '{label}' has zero members",
                 details={
-                    "total": len(dead),
-                    "examples": [
-                        {
-                            "group_id": g.get("id"),
-                            "group_name": g.get("name", f"id={g.get('id')}"),
-                            "type": g.get("type"),
-                        }
-                        for g in dead[:_EXAMPLES_LIMIT]
-                    ],
+                    "group_id": g.get("id"),
+                    "group_name": g.get("name"),
+                    "type": g.get("type"),
                 },
+            ))
+        remainder = len(dead) - len(head)
+        if remainder > 0:
+            findings.append(Finding(
+                severity="warn",
+                message=f"+ {remainder} more group(s) (truncated; showing first {_PER_ITEM_FINDING_CAP})",
+                details={"remainder": remainder, "total": len(dead), "cap": _PER_ITEM_FINDING_CAP},
             ))
         return make_rule_result(
             rule_id=rid,
@@ -237,13 +288,11 @@ class AssetCoverageCheck:
                 duration_ms=int((time.monotonic() - rule_start) * 1000),
             )
 
-        findings: list[Finding] = []
-        if unauth:
-            findings.append(Finding(
-                severity="fail",
-                message=f"{len(unauth)} asset(s) scanned but never authenticated",
-                details={"total": len(unauth), "examples": _example_hostnames(unauth)},
-            ))
+        findings = _per_asset_findings(
+            unauth,
+            severity="fail",
+            message_for=lambda a: f"Unauthenticated-only asset {_asset_label(a)}: scanned but never assessed",
+        )
         return make_rule_result(
             rule_id=rid,
             rule_name=name,
@@ -298,13 +347,14 @@ class AssetCoverageCheck:
                 duration_ms=int((time.monotonic() - rule_start) * 1000),
             )
 
-        findings: list[Finding] = []
-        if silent:
-            findings.append(Finding(
-                severity="warn",
-                message=f"{len(silent)} recently-scanned asset(s) with zero services detected",
-                details={"total": len(silent), "examples": _example_hostnames(silent)},
-            ))
+        findings = _per_asset_findings(
+            silent,
+            severity="warn",
+            message_for=lambda a: (
+                f"No services detected on recently-scanned asset {_asset_label(a)}"
+            ),
+            extra_details={"stale_asset_days": t.stale_asset_days},
+        )
         return make_rule_result(
             rule_id=rid,
             rule_name=name,
@@ -394,14 +444,20 @@ class AssetCoverageCheck:
                 })
 
         findings: list[Finding] = []
-        if outsiders:
+        head = outsiders[:_PER_ITEM_FINDING_CAP]
+        for o in head:
+            label = o.get("hostname") or o.get("ip") or f"id={o.get('asset_id')}"
             findings.append(Finding(
                 severity="warn",
-                message=f"{len(outsiders)} agent-managed asset(s) outside every site's scan scope",
-                details={
-                    "total": len(outsiders),
-                    "examples": outsiders[:_EXAMPLES_LIMIT],
-                },
+                message=f"Agent-managed asset {label} is outside every site's scan scope",
+                details=o,
+            ))
+        remainder = len(outsiders) - len(head)
+        if remainder > 0:
+            findings.append(Finding(
+                severity="warn",
+                message=f"+ {remainder} more asset(s) (truncated; showing first {_PER_ITEM_FINDING_CAP})",
+                details={"remainder": remainder, "total": len(outsiders), "cap": _PER_ITEM_FINDING_CAP},
             ))
         return make_rule_result(
             rule_id=rid,

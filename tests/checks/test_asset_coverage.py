@@ -132,8 +132,9 @@ def test_unscanned_check_skipped_when_disabled(fake_client, app_config):
     assert ns.status == "skipped"
 
 
-def test_top_10_examples_in_finding_details(fake_client, app_config):
-    """Stale path returns 25 assets — only first 10 surface as examples."""
+def test_per_asset_findings_stale(fake_client, app_config):
+    """Stale path returns 25 assets — emit one Finding per asset so the report's
+    Findings column reflects the true count."""
     from tests.conftest import FakeRapid7Client
     fc = FakeRapid7Client()
     stale = [_asset(f"host-{i}", i) for i in range(25)]
@@ -147,12 +148,48 @@ def test_top_10_examples_in_finding_details(fake_client, app_config):
             yield from stale
 
     fc.paginate_post = paginate_post  # type: ignore[assignment]
-    result = AssetCoverageCheck().run(fc, app_config)
-    stale_finding = next(f for f in result.findings if "stale" in f.message.lower())
-    assert stale_finding.details is not None
-    examples = stale_finding.details["examples"]
-    assert len(examples) == 10
-    assert stale_finding.details["total"] == 25
+    result = AssetCoverageCheck().run(fc, app_config, snapshot=_FakeSnapshot())
+    stale_rule = _rule(result, "op.asset_coverage.stale_assets")
+    # One Finding per stale asset; below the cap, no rollup.
+    assert len(stale_rule.findings) == 25
+    assert stale_rule.summary["stale_count"] == 25
+    for f in stale_rule.findings:
+        assert f.severity == "warn"
+        assert "stale asset" in f.message.lower()
+        assert f.details["asset_id"] is not None
+        assert f.details["stale_asset_days"] == 30
+
+
+def test_per_asset_findings_capped_with_rollup(fake_client, app_config):
+    """When affected assets exceed the per-item cap, emit cap + 1 rollup finding.
+
+    Keeps the report bounded while still letting summary["stale_count"] reflect
+    the true affected-asset count.
+    """
+    from rapid7_healthcheck.checks.asset_coverage import _PER_ITEM_FINDING_CAP
+    from tests.conftest import FakeRapid7Client
+
+    fc = FakeRapid7Client()
+    overflow = _PER_ITEM_FINDING_CAP + 17
+    stale = [_asset(f"host-{i}", i) for i in range(overflow)]
+
+    def paginate_post(path, json_body, params=None, page_size=500):
+        text = str(json_body)
+        if "'value': 90" in text or '"value": 90' in text:
+            yield from []
+        else:
+            yield from stale
+
+    fc.paginate_post = paginate_post  # type: ignore[assignment]
+    result = AssetCoverageCheck().run(fc, app_config, snapshot=_FakeSnapshot())
+    stale_rule = _rule(result, "op.asset_coverage.stale_assets")
+    assert len(stale_rule.findings) == _PER_ITEM_FINDING_CAP + 1
+    assert stale_rule.summary["stale_count"] == overflow
+    rollup = stale_rule.findings[-1]
+    assert "more asset" in rollup.message.lower()
+    assert rollup.details["remainder"] == 17
+    assert rollup.details["total"] == overflow
+    assert rollup.details["cap"] == _PER_ITEM_FINDING_CAP
 
 
 def test_uses_is_earlier_than_operator_with_threshold(fake_client, app_config):
@@ -215,10 +252,9 @@ def test_r1_dead_asset_groups_some_empty(fake_client, app_config):
     rule = _rule(result, "op.asset_coverage.dead_asset_groups")
     assert rule.status == "warn"
     assert rule.summary["dead_groups_count"] == 2
-    finding = rule.findings[0]
-    examples = finding.details["examples"]
-    assert len(examples) == 2
-    names = {e["group_name"] for e in examples}
+    # One Finding per dead group → Findings column reflects the true count.
+    assert len(rule.findings) == 2
+    names = {f.details["group_name"] for f in rule.findings}
     assert names == {"Decommissioned", "Old Pilot"}
 
 
@@ -297,7 +333,11 @@ def test_r2_unauth_only_assets_fail_with_examples(fake_client, app_config):
     rule = _rule(result, "op.asset_coverage.unauth_only_assets")
     assert rule.status == "fail"
     assert rule.summary["unauth_only_count"] == 15
-    assert len(rule.findings[0].details["examples"]) == 10  # capped at _EXAMPLES_LIMIT
+    # One Finding per unauth-only asset → Findings column reflects the true count.
+    assert len(rule.findings) == 15
+    for f in rule.findings:
+        assert f.severity == "fail"
+        assert "unauthenticated-only" in f.message.lower()
 
 
 def test_r2_unauth_only_assets_uses_correct_filter_body(fake_client, app_config):
@@ -583,8 +623,9 @@ def test_r4_warn_when_agents_outside_targets(fake_client, app_config):
     rule = _rule(result, "op.asset_coverage.agent_only_assets")
     assert rule.status == "warn"
     assert rule.summary["agent_only_count"] == 2
-    examples = rule.findings[0].details["examples"]
-    hostnames = {e["hostname"] for e in examples}
+    # One Finding per agent-only asset → Findings column reflects the true count.
+    assert len(rule.findings) == 2
+    hostnames = {f.details["hostname"] for f in rule.findings}
     assert hostnames == {"outside-1", "outside-2"}
 
 
