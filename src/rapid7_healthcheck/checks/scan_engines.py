@@ -91,10 +91,24 @@ class ScanEnginesCheck:
                     engine_worst = "warn"
 
             if not sites:
+                address = engine.get("address")
+                port = engine.get("port")
+                host = f"{address}:{port}" if address and port else address
                 unpaired_findings.append(Finding(
                     severity="warn",
                     message=f"Engine '{name}' is not paired with any sites",
-                    details={"id": engine.get("id")},
+                    details={
+                        "id": engine.get("id"),
+                        "name": name,
+                        "address": address,
+                        "port": port,
+                        "host": host,
+                        "status": status,
+                        "product_version": engine.get("productVersion"),
+                        "content_version": engine.get("contentVersion"),
+                        "serial_number": engine.get("serialNumber"),
+                        "last_refreshed": engine.get("lastRefreshedDate"),
+                    },
                 ))
                 if engine_worst != "fail":
                     engine_worst = "warn"

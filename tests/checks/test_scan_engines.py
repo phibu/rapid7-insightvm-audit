@@ -89,6 +89,45 @@ def test_engine_with_no_sites_is_warn(fake_client, app_config):
     assert any("not paired" in f.message.lower() for f in result.findings)
 
 
+def test_unpaired_engine_finding_includes_identification_details(fake_client, app_config):
+    # Operators need more than the engine ID to act on an unpaired engine.
+    # Surface address, port, status, and version info in the finding's details
+    # so the report renders something actionable.
+    fake_client.set_get(
+        "/api/3/scan_engines",
+        {
+            "resources": [
+                {
+                    "id": 7,
+                    "name": "lonely",
+                    "address": "engine.example.com",
+                    "port": 40814,
+                    "status": "active",
+                    "productVersion": "6.6.250",
+                    "contentVersion": "1.2.3",
+                    "serialNumber": "ABC-123",
+                    "lastRefreshedDate": _now_iso(0),
+                    "sites": [],
+                },
+            ]
+        },
+    )
+    result = ScanEnginesCheck().run(fake_client, app_config)
+    unpaired = [f for f in result.findings if "not paired" in f.message.lower()]
+    assert len(unpaired) == 1
+    d = unpaired[0].details
+    assert d["id"] == 7
+    assert d["name"] == "lonely"
+    assert d["address"] == "engine.example.com"
+    assert d["port"] == 40814
+    assert d["host"] == "engine.example.com:40814"
+    assert d["status"] == "active"
+    assert d["product_version"] == "6.6.250"
+    assert d["content_version"] == "1.2.3"
+    assert d["serial_number"] == "ABC-123"
+    assert d["last_refreshed"] is not None
+
+
 def test_missing_last_refreshed_is_warn(fake_client, app_config):
     fake_client.set_get(
         "/api/3/scan_engines",
