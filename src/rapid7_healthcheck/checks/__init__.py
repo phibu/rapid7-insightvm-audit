@@ -7,6 +7,7 @@ from rapid7_healthcheck.config import AppConfig
 
 if TYPE_CHECKING:
     from rapid7_healthcheck.audit import RuleResult
+    from rapid7_healthcheck.audit.snapshot import EnvSnapshot
 
 
 Severity = Literal["info", "warn", "fail"]
@@ -49,5 +50,5 @@ class Check(Protocol):
         client: Any,
         config: AppConfig,
         *,
-        snapshot: Any = None,
+        snapshot: "EnvSnapshot | None" = None,
     ) -> CheckResult: ...
