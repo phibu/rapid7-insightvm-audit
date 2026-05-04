@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from rapid7_healthcheck.audit import RuleResult
+
+if TYPE_CHECKING:
+    from rapid7_healthcheck.audit.snapshot import EnvSnapshot
 from rapid7_healthcheck.checks import CheckResult, Finding
 from rapid7_healthcheck.checks._op_rule import (
     flatten_findings,
@@ -27,7 +30,7 @@ class AssetCoverageCheck:
     name = "Asset Coverage"
     description = "Stale and never-scanned assets relative to configured thresholds."
 
-    def run(self, client: Any, config: AppConfig, *, snapshot: Any = None) -> CheckResult:
+    def run(self, client: Any, config: AppConfig, *, snapshot: "EnvSnapshot | None" = None) -> CheckResult:
         start = time.monotonic()
         t = config.thresholds.asset_coverage
         rule_results: list[RuleResult] = [
@@ -129,7 +132,7 @@ class AssetCoverageCheck:
             default_severity="fail",
         )
 
-    def _dead_asset_groups(self, snapshot: Any, t) -> RuleResult:
+    def _dead_asset_groups(self, snapshot: "EnvSnapshot | None", t) -> RuleResult:
         rid = "op.asset_coverage.dead_asset_groups"
         name = "Asset groups with zero members"
         desc = (
@@ -143,6 +146,7 @@ class AssetCoverageCheck:
             return skipped_rule(rule_id=rid, rule_name=name, description=desc, sources=sources)
 
         if snapshot is None:
+            # make_rule_result derives status from finding severity (no "error" mapping); construct directly.
             return RuleResult(
                 rule_id=rid,
                 rule_name=name,
