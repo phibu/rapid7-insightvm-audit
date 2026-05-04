@@ -7,8 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Data Quality** check gains three new findings: long-stale assets
+  (no scan in over `stale_asset_days`, default 180 days — distinct from
+  Asset Coverage's coverage-gap framing), duplicate hostnames
+  (case-insensitive), and duplicate IPs. The two duplicate detections
+  share a single `/api/3/assets` paginate. New thresholds under
+  `thresholds.data_quality`: `flag_stale_assets`, `stale_asset_days`,
+  `flag_duplicate_hostnames`, `flag_duplicate_ips` — all default `true`.
+
+### Changed
+
+- **Unified report rendering for operational checks.** Scan Engines, Scan
+  Activity, Asset Coverage, and Data Quality now emit `RuleResult`s per
+  concept (e.g. "Stuck scans", "Duplicate hostnames", "Engines past
+  last-contact threshold") instead of flat finding lists. The HTML report
+  uses a single rendering path for both verticals: per-rule `<details>`
+  cards with status badge, description, findings table, and source links.
+  The filter bar (severity / search / changed) now operates uniformly
+  across operational and audit findings. Op-check rule IDs follow the
+  `op.<check>.<concept>` convention (e.g. `op.data_quality.missing_os`)
+  to keep them distinct from audit rule IDs in the delta-blob index.
+- **First-run delta after upgrade will look noisy.** Op-check finding
+  signatures move from being keyed on the check name to being keyed on
+  the new `op.*` rule IDs, so the first report after upgrading shows all
+  pre-existing op-check findings as "resolved" and re-emits them as
+  "new fails" / "new warns". Subsequent runs track normally.
+
 ### Removed
 
+- **`store_invulnerable_results` audit rule** retired. Verification
+  against the canonical v3 `ScanTemplate` schema (field-by-field) showed
+  the "Store invulnerable results" toggle is not exposed anywhere in
+  `/api/3/scan_templates` — `ScanTemplateDatabase` only contains `db2`,
+  `oracle`, `postgres` for credentialed-DB scanning. The rule has been
+  silently non-functional since v0.1.x (every real run hit a
+  "could not locate field" diagnostic). Now documented as a v3 API gap
+  in the README "Rules NOT implemented" section, with a pointer to the
+  Security Console UI under each scan template's Database settings.
 - **Blackout-conflict sub-check** removed from the `overlapping_scan_windows`
   rule. Verification against the canonical v3 OpenAPI spec
   (`docs/research/api-v3.json`, 207 paths) showed `/api/3/blackouts` does not
