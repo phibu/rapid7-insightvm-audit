@@ -211,6 +211,7 @@ class Rapid7Client:
         attempt = 0
         last_error: Exception | None = None
         while attempt <= self._max_retries:
+            logger.debug("→ %s %s%s", method, path, _summarize_params(params))
             try:
                 start = time.monotonic()
                 resp = self._session.request(
@@ -224,10 +225,10 @@ class Rapid7Client:
                     verify=self._verify,
                 )
                 elapsed_ms = int((time.monotonic() - start) * 1000)
-                logger.debug("%s %s -> %s (%d ms)", method, path, resp.status_code, elapsed_ms)
+                logger.debug("← %s %s %d in %dms", method, path, resp.status_code, elapsed_ms)
             except requests.RequestException as e:
                 last_error = e
-                logger.debug("%s %s network error: %s", method, path, e)
+                logger.debug("✗ %s %s network error: %s", method, path, e)
                 if attempt >= self._max_retries:
                     raise Rapid7ClientError(
                         f"network error after {attempt + 1} attempt(s) "
@@ -238,6 +239,9 @@ class Rapid7Client:
                 continue
 
             if resp.status_code in (401, 403):
+                logger.warning(
+                    "✗ %s %s %d: auth failed", method, path, resp.status_code,
+                )
                 raise Rapid7AuthError(
                     f"auth failed ({resp.status_code}); check R7_API_KEY and base_url",
                     status_code=resp.status_code,
@@ -249,10 +253,18 @@ class Rapid7Client:
                         status_code=resp.status_code,
                     )
                 delay = self._retry_delay(resp, attempt)
+                logger.debug(
+                    "retry %d/%d for %s %s after %.1fs (status %d)",
+                    attempt + 1, self._max_retries, method, path, delay, resp.status_code,
+                )
                 time.sleep(delay)
                 attempt += 1
                 continue
             if resp.status_code >= 400:
+                logger.warning(
+                    "✗ %s %s %d: %s", method, path, resp.status_code,
+                    resp.text[:200] if resp.text else "<empty body>",
+                )
                 raise Rapid7ClientError(
                     f"HTTP {resp.status_code} from {method} {path}: {resp.text[:1500]}",
                     status_code=resp.status_code,

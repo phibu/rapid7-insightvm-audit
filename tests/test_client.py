@@ -336,3 +336,76 @@ def test_summarize_params_caps_output_at_200_chars():
     big = {f"k{i}": f"v{i}" for i in range(100)}
     out = _summarize_params(big)
     assert len(out) <= 200
+
+
+import logging
+
+
+def test_successful_get_emits_arrow_debug_lines(caplog, session):
+    """A successful GET produces both a `→` (request) and `←` (response)
+    DEBUG line, each containing method and path."""
+    caplog.set_level(logging.DEBUG, logger="rapid7_healthcheck.client")
+    session.request.return_value = _resp(200, {"ok": True})
+    c = make_client(session)
+    c.get("/api/3/test")
+
+    request_lines = [r for r in caplog.records if "→" in r.getMessage()]
+    response_lines = [r for r in caplog.records if "←" in r.getMessage()]
+    assert len(request_lines) >= 1
+    assert len(response_lines) >= 1
+    assert "GET" in request_lines[0].getMessage()
+    assert "/api/3/test" in request_lines[0].getMessage()
+    assert "GET" in response_lines[0].getMessage()
+    assert "200" in response_lines[0].getMessage()
+
+
+def test_get_with_params_includes_sanitized_querystring(caplog, session):
+    """Querystring appears in the `→` line; sensitive keys are redacted."""
+    caplog.set_level(logging.DEBUG, logger="rapid7_healthcheck.client")
+    session.request.return_value = _resp(200, {"ok": True})
+    c = make_client(session)
+    c.get("/api/3/test", params={"page": 0, "api_key": "SECRET"})
+
+    request_lines = [r for r in caplog.records if "→" in r.getMessage()]
+    assert any("page=0" in r.getMessage() for r in request_lines)
+    assert all("SECRET" not in r.getMessage() for r in request_lines)
+    assert any("***" in r.getMessage() for r in request_lines)
+
+
+def test_404_response_emits_x_warning_line(caplog, session):
+    """Non-retried error (404) emits a WARNING with `✗`, status, and body snippet."""
+    caplog.set_level(logging.DEBUG, logger="rapid7_healthcheck.client")
+    session.request.return_value = _resp(404, None)
+    # Manually set text for the body snippet assertion
+    session.request.return_value.text = "not found here"
+    c = make_client(session)
+
+    with pytest.raises(Rapid7ClientError):
+        c.get("/api/3/missing")
+
+    warning_lines = [
+        r for r in caplog.records
+        if r.levelno == logging.WARNING and "✗" in r.getMessage()
+    ]
+    assert len(warning_lines) == 1
+    msg = warning_lines[0].getMessage()
+    assert "404" in msg
+    assert "/api/3/missing" in msg
+    assert "not found here" in msg
+
+
+def test_retry_path_emits_debug_line(caplog, session, monkeypatch):
+    """A retry-status response (e.g. 429) followed by 200 emits a
+    `retry N/M` DEBUG line."""
+    caplog.set_level(logging.DEBUG, logger="rapid7_healthcheck.client")
+    monkeypatch.setattr("rapid7_healthcheck.client.time.sleep", lambda s: None)
+    session.request.side_effect = [
+        _resp(429, headers={"Retry-After": "0"}),
+        _resp(200, {"ok": True}),
+    ]
+    c = make_client(session, max_retries=2)
+    c.get("/api/3/flaky")
+
+    retry_lines = [r for r in caplog.records if "retry " in r.getMessage()]
+    assert len(retry_lines) >= 1
+    assert "/api/3/flaky" in retry_lines[0].getMessage()
