@@ -381,9 +381,6 @@ def test_run_with_audit_enabled_writes_audit_report(tmp_path, monkeypatch):
             site_vuln_template_no_creds:
               enabled: true
               severity: fail
-            credential_failure_in_recent_scans:
-              enabled: false
-              severity: warn
             overlapping_scan_windows:
               enabled: false
               severity: warn

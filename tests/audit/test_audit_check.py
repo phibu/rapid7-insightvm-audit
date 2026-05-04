@@ -7,7 +7,6 @@ import pytest
 from rapid7_healthcheck.audit import _RULE_REGISTRY, ConfigurationAuditCheck
 import rapid7_healthcheck.audit.rules.agent_unauth_collision  # noqa: F401
 import rapid7_healthcheck.audit.rules.site_vuln_template_no_creds  # noqa: F401
-import rapid7_healthcheck.audit.rules.credential_failure_in_recent_scans  # noqa: F401
 import rapid7_healthcheck.audit.rules.overlapping_scan_windows  # noqa: F401
 import rapid7_healthcheck.audit.rules.single_engine_overload  # noqa: F401
 import rapid7_healthcheck.audit.rules.discovery_template_on_prod_site  # noqa: F401
@@ -23,7 +22,7 @@ import rapid7_healthcheck.audit.rules.insight_agent_version_currency  # noqa: F4
 def test_all_rules_registered():
     expected = {
         "agent_unauth_collision", "site_vuln_template_no_creds",
-        "credential_failure_in_recent_scans", "overlapping_scan_windows",
+        "overlapping_scan_windows",
         "single_engine_overload", "discovery_template_on_prod_site",
         "policy_and_vuln_in_same_template",
         "local_engine_production_scope", "dynamic_groups_and_nested_tags",

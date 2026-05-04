@@ -73,7 +73,6 @@ class Thresholds:
 _VALID_RULE_IDS = {
     "agent_unauth_collision",
     "site_vuln_template_no_creds",
-    "credential_failure_in_recent_scans",
     "overlapping_scan_windows",
     "single_engine_overload",
     "discovery_template_on_prod_site",

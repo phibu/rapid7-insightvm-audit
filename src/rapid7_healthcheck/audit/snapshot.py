@@ -23,7 +23,6 @@ class EnvSnapshot:
         self._site_included_targets: dict[int, list[dict]] = {}
         self._site_asset_count: dict[int, int] = {}
         self._scan_templates: dict[str, dict] = {}
-        self._site_recent_scans: dict[tuple[int, int], list[dict]] = {}
         self._asset_samples: dict[int, tuple[list[dict], int]] = {}
         self._asset_groups: list[dict] | None = None
         self._tags: list[dict] | None = None
@@ -97,16 +96,6 @@ class EnvSnapshot:
                 f"/api/3/scan_templates/{template_id}"
             )
         return self._scan_templates[template_id]
-
-    def site_recent_scans(self, site_id: int, max_n: int = 20) -> list[dict]:
-        key = (site_id, max_n)
-        if key not in self._site_recent_scans:
-            body = self._client.get(
-                f"/api/3/sites/{site_id}/scans",
-                params={"sort": "startTime,DESC", "size": max_n},
-            )
-            self._site_recent_scans[key] = list(body.get("resources", []))
-        return self._site_recent_scans[key]
 
     def asset_sample(self, site_id: int) -> tuple[list[dict], int]:
         if site_id not in self._asset_samples:

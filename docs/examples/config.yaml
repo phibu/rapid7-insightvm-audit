@@ -71,9 +71,6 @@ audit:
     site_vuln_template_no_creds:
       enabled: true
       severity: fail
-    credential_failure_in_recent_scans:
-      enabled: true
-      severity: warn
     overlapping_scan_windows:
       enabled: true
       severity: warn

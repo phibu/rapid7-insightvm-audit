@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- **`credential_failure_in_recent_scans` audit rule** removed. The rule
+  scanned `/api/3/sites/{id}/scans` looking for a per-scan `messages` array
+  containing strings like "Credential Failure" or "Partial Credential
+  Success" — but the v3 `Scan` schema exposes only a singular `message`
+  status field, never the diagnostic list (which is a Scanning-Diagnostics
+  console-report feature, not a v3 API surface). Result: the rule could
+  not produce a real failure finding under v3 while still burning
+  ~20 minutes on per-site sequential scan-history GETs. No v3 alternative
+  exists (no asset-search filter or endpoint exposes credential-status
+  outcomes). Documented as a v3 API gap in README's "Rules NOT
+  implemented" section, directing users to the Security Console UI
+  (Site → Credential Success tile, scan Authentication tab) or SQL Query
+  Export reports (`fact_asset_scan_engine.credential_status_id`). The
+  orphaned `EnvSnapshot.site_recent_scans()` accessor was also removed —
+  this rule was its only consumer.
+
 ### Fixed
 
 - **`agent_unauth_collision` audit rule** no longer times out at ~20 minutes

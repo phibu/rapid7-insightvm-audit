@@ -192,7 +192,6 @@ Rules:
 |------|-----------------:|--------|
 | Insight Agent asset scanned without authentication | fail | docs.rapid7.com Console Best Practices, 6.6.229 release notes. In fast mode, per-site enumeration is capped at `audit.sample_size` and short-circuits on first agent-managed asset; sites that hit the cap without a match are listed in a single aggregate info finding. Set `full_scan: true` to remove the cap. |
 | Vulnerability template without credentials | fail | Scan Template Best Practices, Configuring Scan Credentials |
-| Credential failure in recent scans | warn | Configuring Site-Specific Scan Credentials |
 | Overlapping scan windows | warn | Console Best Practices |
 | Single scan engine overloaded | warn | Console Best Practices |
 | Discovery template on production site | warn (heuristic) | Scan Template Best Practices |
@@ -217,6 +216,7 @@ See `docs/examples/config.yaml` for the full audit configuration block.
 - **Complementary Scanning** — the `/api/3/scan_templates` schema does not expose a `complementaryScanning` field or any equivalent flag (verified against the canonical `ScanTemplate` schema). This is a runtime characteristic of scans, not a documented template configuration. Audit it via the Security Console UI: Site → Scan Configuration → Complementary Scanning.
 - **Store invulnerable results** — the toggle exists in the Security Console UI under each scan template's Database settings, but it is not exposed anywhere in the v3 `ScanTemplate` schema (verified field-by-field; `ScanTemplateDatabase` only contains `db2`, `oracle`, `postgres` for credentialed-DB scanning). Audit it via the Security Console UI: Administration → Scan Templates → \[template\] → Database.
 - **Scan blackout conflicts** — the v3 API has no `/api/3/blackouts` endpoint (verified against the canonical OpenAPI spec — `overrideBlackout` exists as a query parameter on POST `/api/3/sites/{id}/scans` but blackouts are not listable or readable via v3). The `Overlapping Scan Windows` rule therefore detects scan-vs-scan window/scope overlaps only; blackout conflicts must be audited via the Security Console UI: Administration → Global and Console Settings → Scan Blackouts.
+- **Credential failure in recent scans** — the v3 `Scan` schema exposes only a singular `message` status string, not the per-scan diagnostic list ("Credential Failure", "Partial Credential Success", "No Credentials Used") that surfaces in console reports when Scanning Diagnostics is enabled. There is no asset-search filter or `/credential_status` endpoint either. Audit it via the Security Console UI (Site dashboard → Credential Success tile, or each scan's Authentication tab) or via SQL Query Export reports against `fact_asset_scan_engine.credential_status_id`.
 
 ## User & Permission Audit
 
