@@ -14,9 +14,42 @@ def _rule(result, rule_id: str):
     return next(rr for rr in result.rule_results if rr.rule_id == rule_id)
 
 
+class _FakeSnapshot:
+    """Minimal fake EnvSnapshot for op-check tests.
+
+    Only implements the methods the asset_coverage rules touch. Add a method
+    here when a new rule needs new snapshot data.
+    """
+
+    def __init__(
+        self,
+        *,
+        sites: list[dict] | None = None,
+        asset_groups: list[dict] | None = None,
+        agent_asset_ids: set[int] | None = None,
+        agents_unavailable: bool = False,
+        included_targets=None,
+        full_scan: bool = False,
+        sample_size: int = 500,
+    ):
+        self._sites = sites or []
+        self._asset_groups = asset_groups or []
+        self._agent_asset_ids = agent_asset_ids or set()
+        self._agents_unavailable = agents_unavailable
+        self._included_targets = included_targets
+        self.full_scan = full_scan
+        self.sample_size = sample_size
+
+    def sites(self): return self._sites
+    def asset_groups(self): return self._asset_groups
+    def agent_asset_ids(self): return self._agent_asset_ids
+    def is_agents_unavailable(self): return self._agents_unavailable
+    def all_included_targets(self): return self._included_targets
+
+
 def test_all_assets_fresh(fake_client, app_config):
     fake_client.set_paginate_post("/api/3/assets/search", [])
-    result = AssetCoverageCheck().run(fake_client, app_config)
+    result = AssetCoverageCheck().run(fake_client, app_config, snapshot=_FakeSnapshot())
     assert result.status == "pass"
     assert _rule(result, "op.asset_coverage.stale_assets").summary["stale_count"] == 0
     assert _rule(result, "op.asset_coverage.never_scanned_assets").summary["unscanned_count"] == 0
@@ -44,7 +77,7 @@ def test_stale_assets_warn(fake_client, app_config):
 
     fc.paginate_post = paginate_post  # type: ignore[assignment]
 
-    result = AssetCoverageCheck().run(fc, app_config)
+    result = AssetCoverageCheck().run(fc, app_config, snapshot=_FakeSnapshot())
     assert result.status == "warn"
     stale_rule = _rule(result, "op.asset_coverage.stale_assets")
     assert stale_rule.status == "warn"
@@ -89,7 +122,7 @@ def test_unscanned_check_skipped_when_disabled(fake_client, app_config):
     fc = FakeRapid7Client()
     fc.set_paginate_post("/api/3/assets/search", [])
 
-    result = AssetCoverageCheck().run(fc, cfg)
+    result = AssetCoverageCheck().run(fc, cfg, snapshot=_FakeSnapshot())
     assert result.status == "pass"
     paginate_post_calls = [c for c in fc.calls if c[0] == "paginate_post"]
     # Only the stale query should have run.
@@ -145,3 +178,72 @@ def test_uses_is_earlier_than_operator_with_threshold(fake_client, app_config):
     # never_scanned filter uses 90 (default).
     never_scanned = [f for f in captured_filters if f["filters"][0]["value"] == 90]
     assert len(never_scanned) == 1
+
+
+# ----- R1: dead_asset_groups -----
+
+
+def test_r1_dead_asset_groups_all_populated(fake_client, app_config):
+    snap = _FakeSnapshot(asset_groups=[
+        {"id": 1, "name": "Prod Servers", "type": "dynamic", "assets": 250},
+        {"id": 2, "name": "Workstations", "type": "static", "assets": 50},
+    ])
+    fake_client.set_paginate_post("/api/3/assets/search", [])  # other rules
+    result = AssetCoverageCheck().run(fake_client, app_config, snapshot=snap)
+    rule = _rule(result, "op.asset_coverage.dead_asset_groups")
+    assert rule.status == "pass"
+    assert rule.summary["dead_groups_count"] == 0
+
+
+def test_r1_dead_asset_groups_some_empty(fake_client, app_config):
+    snap = _FakeSnapshot(asset_groups=[
+        {"id": 1, "name": "Prod Servers", "type": "dynamic", "assets": 250},
+        {"id": 2, "name": "Decommissioned", "type": "static", "assets": 0},
+        {"id": 3, "name": "Old Pilot", "type": "dynamic", "assets": 0},
+    ])
+    fake_client.set_paginate_post("/api/3/assets/search", [])
+    result = AssetCoverageCheck().run(fake_client, app_config, snapshot=snap)
+    rule = _rule(result, "op.asset_coverage.dead_asset_groups")
+    assert rule.status == "warn"
+    assert rule.summary["dead_groups_count"] == 2
+    finding = rule.findings[0]
+    examples = finding.details["examples"]
+    assert len(examples) == 2
+    names = {e["group_name"] for e in examples}
+    assert names == {"Decommissioned", "Old Pilot"}
+
+
+def test_r1_dead_asset_groups_no_groups(fake_client, app_config):
+    snap = _FakeSnapshot(asset_groups=[])
+    fake_client.set_paginate_post("/api/3/assets/search", [])
+    result = AssetCoverageCheck().run(fake_client, app_config, snapshot=snap)
+    rule = _rule(result, "op.asset_coverage.dead_asset_groups")
+    assert rule.status == "pass"
+    assert rule.summary["dead_groups_count"] == 0
+
+
+def test_r1_dead_asset_groups_skipped_when_disabled(fake_client, app_config):
+    from dataclasses import replace
+    cfg = replace(
+        app_config,
+        thresholds=replace(
+            app_config.thresholds,
+            asset_coverage=replace(
+                app_config.thresholds.asset_coverage,
+                flag_dead_asset_groups=False,
+            ),
+        ),
+    )
+    snap = _FakeSnapshot(asset_groups=[{"id": 1, "name": "g", "type": "static", "assets": 0}])
+    fake_client.set_paginate_post("/api/3/assets/search", [])
+    result = AssetCoverageCheck().run(fake_client, cfg, snapshot=snap)
+    rule = _rule(result, "op.asset_coverage.dead_asset_groups")
+    assert rule.status == "skipped"
+
+
+def test_r1_dead_asset_groups_errors_when_snapshot_missing(fake_client, app_config):
+    fake_client.set_paginate_post("/api/3/assets/search", [])
+    result = AssetCoverageCheck().run(fake_client, app_config)  # no snapshot
+    rule = _rule(result, "op.asset_coverage.dead_asset_groups")
+    assert rule.status == "error"
+    assert "snapshot" in (rule.findings[0].message if rule.findings else "")

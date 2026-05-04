@@ -16,6 +16,7 @@ from rapid7_healthcheck.config import AppConfig
 
 _EXAMPLES_LIMIT = 10
 _SRC_FILTERED_SEARCH = "https://docs.rapid7.com/insightvm/filtered-asset-search"
+_SRC_ASSET_GROUPS = "https://docs.rapid7.com/insightvm/asset-groups/"
 
 
 def _example_hostnames(assets: list[dict]) -> list[str]:
@@ -26,12 +27,13 @@ class AssetCoverageCheck:
     name = "Asset Coverage"
     description = "Stale and never-scanned assets relative to configured thresholds."
 
-    def run(self, client: Any, config: AppConfig) -> CheckResult:
+    def run(self, client: Any, config: AppConfig, *, snapshot: Any = None) -> CheckResult:
         start = time.monotonic()
         t = config.thresholds.asset_coverage
         rule_results: list[RuleResult] = [
             self._stale_assets(client, t),
             self._never_scanned_assets(client, t),
+            self._dead_asset_groups(snapshot, t),
         ]
 
         return CheckResult(
@@ -125,4 +127,59 @@ class AssetCoverageCheck:
             summary={"unscanned_count": len(unscanned), "never_scanned_days": t.never_scanned_days},
             duration_ms=int((time.monotonic() - rule_start) * 1000),
             default_severity="fail",
+        )
+
+    def _dead_asset_groups(self, snapshot: Any, t) -> RuleResult:
+        rid = "op.asset_coverage.dead_asset_groups"
+        name = "Asset groups with zero members"
+        desc = (
+            "Asset groups whose membership criteria match no assets — orphaned "
+            "RBAC/report scopes that were probably created for a project that "
+            "ended or for assets that have since been removed."
+        )
+        sources = [_SRC_ASSET_GROUPS]
+
+        if not t.flag_dead_asset_groups:
+            return skipped_rule(rule_id=rid, rule_name=name, description=desc, sources=sources)
+
+        if snapshot is None:
+            return RuleResult(
+                rule_id=rid,
+                rule_name=name,
+                description=desc,
+                severity="warn",
+                status="error",
+                findings=[Finding(severity="warn", message="snapshot required but not provided to check")],
+                summary={"dead_groups_count": 0, "error": "snapshot required"},
+                sources=sources,
+            )
+
+        rule_start = time.monotonic()
+        groups = snapshot.asset_groups()
+        dead = [g for g in groups if int(g.get("assets") or 0) == 0]
+        findings: list[Finding] = []
+        if dead:
+            findings.append(Finding(
+                severity="warn",
+                message=f"{len(dead)} asset group(s) have zero members",
+                details={
+                    "total": len(dead),
+                    "examples": [
+                        {
+                            "group_id": g.get("id"),
+                            "group_name": g.get("name", f"id={g.get('id')}"),
+                            "type": g.get("type"),
+                        }
+                        for g in dead[:_EXAMPLES_LIMIT]
+                    ],
+                },
+            ))
+        return make_rule_result(
+            rule_id=rid,
+            rule_name=name,
+            description=desc,
+            findings=findings,
+            sources=sources,
+            summary={"dead_groups_count": len(dead), "total_groups": len(groups)},
+            duration_ms=int((time.monotonic() - rule_start) * 1000),
         )
