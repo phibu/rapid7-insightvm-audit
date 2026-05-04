@@ -35,16 +35,17 @@ def test_fail_when_unauth_site_has_agent_assets(fake_snapshot):
                                                   "vulnerabilityChecks": {"enabled": True}})
     fake_snapshot.set_site_credentials(1, [])
     fake_snapshot.set_shared_credentials([])
-    fake_snapshot.set_asset_sample(1, [
+    fake_snapshot.set_site_asset_count(1, 3)
+    fake_snapshot.set_site_assets_iter(1, [
         {"id": 100, "history": [{"type": "AGENT-IMPORT", "date": "..."}]},
         {"id": 101, "history": [{"type": "AGENT-IMPORT", "date": "..."}]},
         {"id": 102, "history": [{"type": "SCAN", "date": "..."}]},
-    ], total=3)
+    ])
     r = AgentUnauthCollisionRule().run(fake_snapshot, "fail", False, 500, {})
     assert r.status == "fail"
     f = r.findings[0]
     assert "ProdLinux" in f.message
-    assert f.details["agent_count"] == 2
+    assert f.details["examined"] >= 1
 
 
 def test_pass_when_no_agent_assets(fake_snapshot):
@@ -53,7 +54,8 @@ def test_pass_when_no_agent_assets(fake_snapshot):
                                                   "vulnerabilityChecks": {"enabled": True}})
     fake_snapshot.set_site_credentials(1, [])
     fake_snapshot.set_shared_credentials([])
-    fake_snapshot.set_asset_sample(1, [{"id": 100, "history": [{"type": "SCAN"}]}], total=1)
+    fake_snapshot.set_site_asset_count(1, 1)
+    fake_snapshot.set_site_assets_iter(1, [{"id": 100, "history": [{"type": "SCAN"}]}])
     r = AgentUnauthCollisionRule().run(fake_snapshot, "fail", False, 500, {})
     assert r.status == "pass"
 
@@ -64,10 +66,11 @@ def test_sampling_recorded(fake_snapshot):
                                                   "vulnerabilityChecks": {"enabled": True}})
     fake_snapshot.set_site_credentials(1, [])
     fake_snapshot.set_shared_credentials([])
-    fake_snapshot.set_asset_sample(1, [{"id": 100, "history": [{"type": "AGENT-IMPORT"}]}], total=4200)
+    fake_snapshot.set_site_asset_count(1, 4200)
+    fake_snapshot.set_site_assets_iter(1, [{"id": 100, "history": [{"type": "AGENT-IMPORT"}]}])
     r = AgentUnauthCollisionRule().run(fake_snapshot, "fail", False, 500, {})
-    assert r.sampled
-    assert "of 4200" in (r.sample_info or "")
+    assert r.summary["per_site_cap"] == 500
+    assert r.findings[0].details["total_assets"] == 4200
 
 
 def test_uses_cheap_agent_signal_when_available(fake_snapshot):
@@ -77,17 +80,19 @@ def test_uses_cheap_agent_signal_when_available(fake_snapshot):
                                                   "vulnerabilityChecks": {"enabled": True}})
     fake_snapshot.set_site_credentials(1, [])
     fake_snapshot.set_shared_credentials([])
-    # asset 1: has cheap signal (agent.agentId present) — counted directly, no fallback
-    # asset 2: no cheap signal — fallback reads inline history from the asset record
-    fake_snapshot.set_asset_sample(1, [
+    # asset 1: has cheap signal (agent.agentId present) — rule short-circuits here, no fallback
+    # asset 2: never inspected because rule short-circuits on first agent hit
+    fake_snapshot.set_site_asset_count(1, 2)
+    fake_snapshot.set_site_assets_iter(1, [
         {"id": 1, "agent": {"agentId": "abc-123"}},
         {"id": 2, "history": [{"type": "AGENT-IMPORT"}]},
-    ], total=2)
+    ])
 
     r = AgentUnauthCollisionRule().run(fake_snapshot, "fail", False, 500, {})
 
     assert r.status == "fail"
-    assert r.findings[0].details["agent_count"] == 2
+    assert r.findings[0].details["examined"] == 1
+    assert r.findings[0].details["short_circuited"] is True
 
 
 def test_does_not_call_asset_history_endpoint(fake_snapshot):
@@ -101,10 +106,11 @@ def test_does_not_call_asset_history_endpoint(fake_snapshot):
     # Two assets, both WITHOUT cheap agent signal:
     #   asset 10: inline history with AGENT-IMPORT → should be counted
     #   asset 11: inline history with only SCAN    → should NOT be counted
-    fake_snapshot.set_asset_sample(1, [
+    fake_snapshot.set_site_asset_count(1, 2)
+    fake_snapshot.set_site_assets_iter(1, [
         {"id": 10, "history": [{"type": "AGENT-IMPORT", "date": "2024-01-01"}]},
         {"id": 11, "history": [{"type": "SCAN", "date": "2024-01-01"}]},
-    ], total=2)
+    ])
 
     # Replace asset_history with a bomb — any call is a regression.
     def _boom(asset_id: int):
@@ -117,4 +123,216 @@ def test_does_not_call_asset_history_endpoint(fake_snapshot):
     r = AgentUnauthCollisionRule().run(fake_snapshot, "fail", False, 500, {})
 
     assert r.status == "fail"
-    assert r.findings[0].details["agent_count"] == 1
+    assert r.findings[0].details["examined"] >= 1
+
+
+def test_short_circuits_on_first_agent_match(fake_snapshot):
+    """Site with 50 assets where only the 3rd is agent-managed. Rule must
+    consume exactly 3 items from the iterator and then break."""
+    fake_snapshot.set_sites([_site(1, "tpl-vuln", "ProdSite")])
+    fake_snapshot.set_scan_template("tpl-vuln", {
+        "id": "tpl-vuln", "name": "Vuln",
+        "vulnerabilityChecks": {"enabled": True},
+    })
+    fake_snapshot.set_site_credentials(1, [])
+    fake_snapshot.set_shared_credentials([])
+
+    # Build a list of 50 assets where only the 3rd has an agent.
+    assets = []
+    for i in range(50):
+        if i == 2:
+            assets.append({"id": 100 + i, "agent": {"agentId": "abc"}})
+        else:
+            assets.append({"id": 100 + i})
+    fake_snapshot.set_site_assets_iter(1, assets)
+    fake_snapshot.set_site_asset_count(1, 50)
+
+    # Wrap iter_site_assets to count how many items the RULE consumes.
+    consumed: list[int] = []
+    original_iter = fake_snapshot.iter_site_assets
+
+    def counting_iter(site_id):
+        for asset in original_iter(site_id):
+            consumed.append(asset["id"])
+            yield asset
+    fake_snapshot.iter_site_assets = counting_iter
+
+    r = AgentUnauthCollisionRule().run(fake_snapshot, "fail", False, 500, {})
+
+    assert r.status == "fail"
+    # Rule consumed assets 100, 101, 102 only (broke after finding agent on 102).
+    assert consumed == [100, 101, 102]
+    f = [f for f in r.findings if f.severity == "fail"][0]
+    assert f.details["examined"] == 3
+    assert f.details["short_circuited"] is True
+
+
+def test_per_site_cap_no_agent_truncates(fake_snapshot):
+    """Site with 1000 assets, none agent-managed, sample_size=100. Rule
+    consumes exactly 100, no per-site fail finding, site appears in the
+    aggregate info finding's truncated_sites list."""
+    fake_snapshot.set_sites([_site(1, "tpl-vuln", "BigSite")])
+    fake_snapshot.set_scan_template("tpl-vuln", {
+        "id": "tpl-vuln", "name": "Vuln",
+        "vulnerabilityChecks": {"enabled": True},
+    })
+    fake_snapshot.set_site_credentials(1, [])
+    fake_snapshot.set_shared_credentials([])
+    fake_snapshot.set_site_asset_count(1, 1000)
+    fake_snapshot.set_site_assets_iter(1, [{"id": i} for i in range(1000)])
+
+    consumed: list[int] = []
+    original_iter = fake_snapshot.iter_site_assets
+
+    def counting_iter(site_id):
+        for asset in original_iter(site_id):
+            consumed.append(asset["id"])
+            yield asset
+    fake_snapshot.iter_site_assets = counting_iter
+
+    r = AgentUnauthCollisionRule().run(fake_snapshot, "fail", False, 100, {})
+
+    assert len(consumed) == 100  # capped at sample_size
+    fail_findings = [f for f in r.findings if f.severity == "fail"]
+    assert fail_findings == []
+    info_findings = [f for f in r.findings if f.severity == "info"]
+    assert len(info_findings) == 1
+    assert info_findings[0].details["truncated_site_count"] == 1
+    assert info_findings[0].details["truncated_sites"][0]["site_id"] == 1
+    assert r.summary["sites_truncated"] == 1
+    assert r.summary["per_site_cap"] == 100
+
+
+def test_full_scan_disables_cap(fake_snapshot):
+    """full_scan=True → no cap, all 1000 assets consumed, no truncation."""
+    fake_snapshot.set_sites([_site(1, "tpl-vuln", "BigSite")])
+    fake_snapshot.set_scan_template("tpl-vuln", {
+        "id": "tpl-vuln", "name": "Vuln",
+        "vulnerabilityChecks": {"enabled": True},
+    })
+    fake_snapshot.set_site_credentials(1, [])
+    fake_snapshot.set_shared_credentials([])
+    fake_snapshot.set_site_asset_count(1, 1000)
+    fake_snapshot.set_site_assets_iter(1, [{"id": i} for i in range(1000)])
+
+    consumed: list[int] = []
+    original_iter = fake_snapshot.iter_site_assets
+
+    def counting_iter(site_id):
+        for asset in original_iter(site_id):
+            consumed.append(asset["id"])
+            yield asset
+    fake_snapshot.iter_site_assets = counting_iter
+
+    r = AgentUnauthCollisionRule().run(fake_snapshot, "fail", True, 100, {})
+
+    assert len(consumed) == 1000  # no cap in full_scan mode
+    info_findings = [f for f in r.findings if f.severity == "info"]
+    assert info_findings == []
+    assert r.summary["sites_truncated"] == 0
+    assert r.summary["per_site_cap"] is None
+
+
+def test_aggregate_info_finding_caps_at_20(fake_snapshot):
+    """25 truncated sites → info finding's truncated_sites list is capped at 20,
+    but the count in the message reflects the true total."""
+    sites = [_site(i, "tpl-vuln", f"Site{i}") for i in range(1, 26)]
+    fake_snapshot.set_sites(sites)
+    fake_snapshot.set_scan_template("tpl-vuln", {
+        "id": "tpl-vuln", "name": "Vuln",
+        "vulnerabilityChecks": {"enabled": True},
+    })
+    fake_snapshot.set_shared_credentials([])
+    for s in sites:
+        sid = s["id"]
+        fake_snapshot.set_site_credentials(sid, [])
+        fake_snapshot.set_site_asset_count(sid, 200)
+        fake_snapshot.set_site_assets_iter(sid, [{"id": i} for i in range(200)])
+
+    r = AgentUnauthCollisionRule().run(fake_snapshot, "fail", False, 100, {})
+
+    info_findings = [f for f in r.findings if f.severity == "info"]
+    assert len(info_findings) == 1
+    assert info_findings[0].details["truncated_site_count"] == 25
+    assert len(info_findings[0].details["truncated_sites"]) == 20
+    assert "25 sites" in info_findings[0].message
+
+
+def test_truncated_aggregate_does_not_lift_status(fake_snapshot):
+    """Only truncated sites, no fail findings → status is 'pass', not 'info'."""
+    fake_snapshot.set_sites([_site(1, "tpl-vuln", "BigSite")])
+    fake_snapshot.set_scan_template("tpl-vuln", {
+        "id": "tpl-vuln", "name": "Vuln",
+        "vulnerabilityChecks": {"enabled": True},
+    })
+    fake_snapshot.set_site_credentials(1, [])
+    fake_snapshot.set_shared_credentials([])
+    fake_snapshot.set_site_asset_count(1, 1000)
+    fake_snapshot.set_site_assets_iter(1, [{"id": i} for i in range(1000)])
+
+    r = AgentUnauthCollisionRule().run(fake_snapshot, "fail", False, 100, {})
+
+    assert r.status == "pass"
+
+
+def test_short_circuit_in_full_scan_mode(fake_snapshot):
+    """full_scan=True still short-circuits on first agent — pagination consumed
+    exactly 1 item even with 5000 total assets."""
+    fake_snapshot.set_sites([_site(1, "tpl-vuln", "Huge")])
+    fake_snapshot.set_scan_template("tpl-vuln", {
+        "id": "tpl-vuln", "name": "Vuln",
+        "vulnerabilityChecks": {"enabled": True},
+    })
+    fake_snapshot.set_site_credentials(1, [])
+    fake_snapshot.set_shared_credentials([])
+    fake_snapshot.set_site_asset_count(1, 5000)
+    fake_snapshot.set_site_assets_iter(1, [
+        {"id": 0, "agent": {"agentId": "yes"}},
+        *[{"id": i} for i in range(1, 5000)],
+    ])
+
+    consumed: list[int] = []
+    original_iter = fake_snapshot.iter_site_assets
+
+    def counting_iter(site_id):
+        for asset in original_iter(site_id):
+            consumed.append(asset["id"])
+            yield asset
+    fake_snapshot.iter_site_assets = counting_iter
+
+    r = AgentUnauthCollisionRule().run(fake_snapshot, "fail", True, 100, {})
+
+    assert consumed == [0]
+    assert r.status == "fail"
+
+
+def test_cap_and_short_circuit_interact_correctly(fake_snapshot):
+    """sample_size=100, agent on the 50th asset → consumed=50, site flagged
+    (short-circuit wins over cap)."""
+    fake_snapshot.set_sites([_site(1, "tpl-vuln", "Mid")])
+    fake_snapshot.set_scan_template("tpl-vuln", {
+        "id": "tpl-vuln", "name": "Vuln",
+        "vulnerabilityChecks": {"enabled": True},
+    })
+    fake_snapshot.set_site_credentials(1, [])
+    fake_snapshot.set_shared_credentials([])
+    fake_snapshot.set_site_asset_count(1, 500)
+    assets = [{"id": i} for i in range(500)]
+    assets[49] = {"id": 49, "agent": {"agentId": "found"}}
+    fake_snapshot.set_site_assets_iter(1, assets)
+
+    consumed: list[int] = []
+    original_iter = fake_snapshot.iter_site_assets
+
+    def counting_iter(site_id):
+        for asset in original_iter(site_id):
+            consumed.append(asset["id"])
+            yield asset
+    fake_snapshot.iter_site_assets = counting_iter
+
+    r = AgentUnauthCollisionRule().run(fake_snapshot, "fail", False, 100, {})
+
+    assert len(consumed) == 50  # short-circuited at agent hit, before reaching cap
+    assert r.status == "fail"
+    fail_findings = [f for f in r.findings if f.severity == "fail"]
+    assert fail_findings[0].details["examined"] == 50

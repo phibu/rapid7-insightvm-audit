@@ -27,7 +27,7 @@ class DisabledUserWithRoleBindingsRule:
         "concern: re-enabling the account silently restores all prior "
         "privileges. Cleanup signal — not a security risk in itself."
     )
-    default_severity = "info"
+    default_severity = "warn"
     expensive = False
     sources = [
         "https://docs.rapid7.com/insightvm/managing-users-and-authentication/#disabling-a-user-account",

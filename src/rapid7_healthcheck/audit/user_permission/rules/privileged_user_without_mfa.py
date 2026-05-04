@@ -11,20 +11,37 @@ def _is_privileged(user: dict) -> bool:
     return bool(role.get("superuser")) or role.get("id") == "global-admin"
 
 
+def _is_external_auth(user: dict) -> bool:
+    """True iff the user authenticates via an external IdP (SAML, LDAP, Kerberos).
+
+    Mirrors the `local_account_when_sso_configured` rule's contract: anything
+    other than `authentication.type == "normal"` is treated as external. A
+    missing `authentication` field (or empty `type`) is treated as local —
+    conservative; preserves prior behavior on malformed user objects.
+    """
+    auth = user.get("authentication") or {}
+    auth_type = auth.get("type")
+    if not isinstance(auth_type, str) or not auth_type:
+        return False
+    return auth_type != "normal"
+
+
 @register_user_rule
 class PrivilegedUserWithoutMfaRule:
     rule_id = "privileged_user_without_mfa"
     rule_name = "Privileged User Without MFA"
     description = (
-        "Flags Global Administrator or superuser accounts that do not have "
-        "two-factor authentication configured. Service accounts that need "
-        "to authenticate via HTTP Basic Auth necessarily can't use MFA "
-        "(the protocol bypasses it); list those in the rule's "
-        "mfa_exempt_logins knob to suppress findings on them. The rule is "
-        "scoped to privileged accounts only — non-privileged accounts "
-        "without MFA are a separate, lower-priority concern. Requires the "
-        "calling key to belong to a Global Administrator: per-user calls "
-        "to /api/3/users/{id}/2FA return 401 for non-GA keys."
+        "Flags Global Administrator or superuser accounts that authenticate "
+        "against InsightVM's local credential store and do not have two-factor "
+        "authentication configured. Accounts whose `authentication.type` is "
+        "`saml`, `ldap`, or `kerberos` are excluded — MFA enforcement for "
+        "those is the upstream IdP's responsibility, and a single aggregate "
+        "info finding lists them so they can be verified at the IdP. Service "
+        "accounts that need to authenticate via HTTP Basic Auth necessarily "
+        "can't use MFA (the protocol bypasses it); list those in the "
+        "`mfa_exempt_logins` knob to suppress findings on them. Requires the "
+        "calling key to belong to a Global Administrator: per-user calls to "
+        "/api/3/users/{id}/2FA return 401 for non-GA keys."
     )
     default_severity = "fail"
     expensive = True
@@ -56,11 +73,18 @@ class PrivilegedUserWithoutMfaRule:
         users_exempt = 0
         users_succeeded = 0       # at least one 2FA call returned a status
         users_auth_denied: list[dict] = []  # 401s — disambiguated post-pass
+        external_auth_users: list[dict] = []  # NEW: {login, auth_type} per external user
 
         for u in examined:
             login = (u.get("login") or "").strip()
             if login.lower() in exempt:
                 users_exempt += 1
+                continue
+            if _is_external_auth(u):
+                # External-auth users delegate MFA to the IdP — do NOT call
+                # the 2FA endpoint; collect for the aggregate info finding.
+                auth_type = (u.get("authentication") or {}).get("type") or ""
+                external_auth_users.append({"login": login, "auth_type": auth_type})
                 continue
             try:
                 mfa = snapshot.user_2fa_enabled(u["id"])
@@ -120,8 +144,14 @@ class PrivilegedUserWithoutMfaRule:
                 sources=list(self.sources),
             )
 
-        # 401 disambiguation: if no user succeeded, the calling key likely lacks GA.
-        if users_auth_denied and users_succeeded == 0:
+        # 401 disambiguation: if no user succeeded AND no external user was
+        # processed, the calling key likely lacks GA. (External users do NOT
+        # count toward "succeeded" because we never called the endpoint for
+        # them — but their presence proves we got past role/auth filtering,
+        # so a pure-401 outcome with external users present is ambiguous in
+        # a different way and falls through to the per-user 401-as-no-MFA
+        # branch below.)
+        if users_auth_denied and users_succeeded == 0 and not external_auth_users:
             return RuleResult(
                 rule_id=self.rule_id,
                 rule_name=self.rule_name,
@@ -143,6 +173,7 @@ class PrivilegedUserWithoutMfaRule:
                     "users_examined": len(examined),
                     "users_auth_denied": len(users_auth_denied),
                     "users_succeeded": 0,
+                    "users_external_auth": len(external_auth_users),
                     "endpoint_available": True,
                 },
                 sampled=sampled,
@@ -150,7 +181,8 @@ class PrivilegedUserWithoutMfaRule:
                 sources=list(self.sources),
             )
 
-        # At least one user succeeded — 401s on others mean "no MFA configured".
+        # At least one user succeeded (or at least one external user existed)
+        # — 401s on others mean "no MFA configured".
         for u in users_auth_denied:
             login = (u.get("login") or "").strip()
             users_without_mfa += 1
@@ -168,6 +200,23 @@ class PrivilegedUserWithoutMfaRule:
                     "role_name": role.get("name"),
                     "superuser": bool(role.get("superuser")),
                     "_2fa_status": "401",
+                },
+            ))
+
+        # Aggregate info finding for external-auth users (if any).
+        if external_auth_users:
+            findings.append(Finding(
+                severity="info",
+                message=(
+                    f"{len(external_auth_users)} privileged users authenticate via "
+                    f"external sources (SAML / LDAP / Kerberos). MFA enforcement for "
+                    f"these accounts is delegated to the upstream identity provider — "
+                    f"verify it is enforced there. Local InsightVM 2FA does not apply "
+                    f"to these accounts."
+                ),
+                details={
+                    "external_auth_user_count": len(external_auth_users),
+                    "external_auth_users": external_auth_users[:20],
                 },
             ))
 
@@ -190,6 +239,7 @@ class PrivilegedUserWithoutMfaRule:
                 "users_examined": len(examined),
                 "users_without_mfa": users_without_mfa,
                 "users_exempt": users_exempt,
+                "users_external_auth": len(external_auth_users),
             },
             sampled=sampled,
             sample_info=sample_info,

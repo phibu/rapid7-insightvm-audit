@@ -5,25 +5,36 @@ from rapid7_healthcheck.audit.rules.site_vuln_template_no_creds import _site_has
 from rapid7_healthcheck.checks import Finding
 
 
-def _has_agent_history(history: list[dict]) -> bool:
+def _has_agent_history(history) -> bool:
+    if not isinstance(history, list):
+        return False
     return any((h.get("type") or "").upper() == "AGENT-IMPORT" for h in history)
+
+
+def _asset_is_agent_managed(snapshot, asset: dict) -> bool:
+    """Combine the cheap signal with the inline-history fallback."""
+    cheap = snapshot.asset_has_agent(asset)
+    if cheap is True:
+        return True
+    if cheap is False:
+        return False
+    return _has_agent_history(asset.get("history"))
 
 
 @register
 class AgentUnauthCollisionRule:
-    # Performance note (0.2.2): originally this rule called snapshot.asset_history
-    # for every asset in the per-site sample. At fleet scale (>100k assets across
-    # many sites) that fans out to thousands of per-asset calls.
-    # 0.2.2: prefer the agent-presence signal that the assets endpoint already
-    # returns. 0.2.3: GET /api/3/assets/{id}/history does not exist per the
-    # Rapid7 v3 API spec; fallback now reads asset["history"] inline.
     rule_id = "agent_unauth_collision"
     rule_name = "Insight Agent Asset Scanned Without Authentication"
     description = (
-        "Sites running unauthenticated vulnerability scans against assets that already have "
-        "the Insight Agent installed. The agent produces strictly richer authenticated data; "
-        "redundant unauth scans add load, cause asset-correlation drift, and (prior to console "
-        "release 6.6.229) could degrade results."
+        "Sites running unauthenticated vulnerability scans against assets that "
+        "already have the Insight Agent installed. The agent produces strictly "
+        "richer authenticated data; redundant unauth scans add load, cause "
+        "asset-correlation drift, and (prior to console release 6.6.229) could "
+        "degrade results. In fast mode (`full_scan: false`), per-site asset "
+        "enumeration is bounded by `audit.sample_size` and short-circuits on "
+        "the first agent-managed asset found. Sites that exceed the per-site "
+        "cap without a match are listed in a single aggregate info finding so "
+        "the gap is visible. Run with `full_scan: true` to remove the cap."
     )
     default_severity = "fail"
     expensive = True
@@ -35,11 +46,12 @@ class AgentUnauthCollisionRule:
     ]
 
     def run(self, snapshot, severity, full_scan, sample_size, rule_config) -> RuleResult:
+        per_site_cap = None if full_scan else sample_size
+
         findings: list[Finding] = []
         sites_examined = 0
         sites_flagged = 0
-        any_sampled = False
-        site_samples: list[tuple[int, int]] = []
+        truncated_sites: list[dict] = []  # {site_id, name, total_assets}
 
         for site in snapshot.sites():
             sid = site["id"]
@@ -54,44 +66,60 @@ class AgentUnauthCollisionRule:
                 continue
 
             sites_examined += 1
-            assets, total = snapshot.asset_sample(sid)
-            if total > len(assets):
-                any_sampled = True
-            site_samples.append((len(assets), total))
+            total_assets = snapshot.site_asset_count(sid)
 
-            agent_count = 0
-            for asset in assets:
-                cheap = snapshot.asset_has_agent(asset)
-                if cheap is True:
-                    agent_count += 1
-                elif cheap is False:
-                    continue
-                else:
-                    # Fallback: read inline history from the asset record.
-                    # /api/3/assets/{id}/history does not exist; the history
-                    # array is a field on the asset object itself when the
-                    # bulk-listing endpoint includes it. Assets without
-                    # either the `agent` block OR inline `history` are
-                    # treated as "no agent signal" and skipped.
-                    history = asset.get("history")
-                    if isinstance(history, list) and _has_agent_history(history):
-                        agent_count += 1
+            examined = 0
+            agent_found = False
+            for asset in snapshot.iter_site_assets(sid):
+                examined += 1
+                if _asset_is_agent_managed(snapshot, asset):
+                    agent_found = True
+                    break
+                if per_site_cap is not None and examined >= per_site_cap:
+                    break
 
-            if agent_count > 0:
-                pct = (agent_count / max(len(assets), 1)) * 100
+            if agent_found:
+                sites_flagged += 1
                 findings.append(Finding(
                     severity=severity,
                     message=(
-                        f"Site '{name}' runs unauthenticated vuln scans, but {agent_count}/"
-                        f"{len(assets)} sampled assets are Insight Agent-managed ({pct:.0f}%)"
+                        f"Site '{name}' runs unauthenticated vuln scans, and at "
+                        f"least 1 of {examined} sampled assets is Insight "
+                        f"Agent-managed (total site assets: {total_assets}). "
+                        f"Stop unauth scanning where the agent already covers "
+                        f"the host."
                     ),
                     details={
-                        "site_id": sid, "scan_template_id": tpl_id,
-                        "agent_count": agent_count,
-                        "sample_size": len(assets), "total_assets": total,
+                        "site_id": sid,
+                        "scan_template_id": tpl_id,
+                        "examined": examined,
+                        "total_assets": total_assets,
+                        "sampled": per_site_cap is not None and examined >= 1 and total_assets > examined,
+                        "short_circuited": True,
                     },
                 ))
-                sites_flagged += 1
+            elif per_site_cap is not None and examined >= per_site_cap and total_assets > examined:
+                truncated_sites.append({
+                    "site_id": sid,
+                    "name": name,
+                    "total_assets": total_assets,
+                })
+
+        if truncated_sites:
+            findings.append(Finding(
+                severity="info",
+                message=(
+                    f"{len(truncated_sites)} sites exceeded the per-site sample "
+                    f"cap ({per_site_cap} assets) without finding an Insight "
+                    f"Agent — verify in the Security Console UI: "
+                    f"{', '.join(s['name'] for s in truncated_sites[:20])}."
+                ),
+                details={
+                    "truncated_site_count": len(truncated_sites),
+                    "cap": per_site_cap,
+                    "truncated_sites": truncated_sites[:20],
+                },
+            ))
 
         if any(f.severity == "fail" for f in findings):
             status = "fail"
@@ -100,15 +128,6 @@ class AgentUnauthCollisionRule:
         else:
             status = "pass"
 
-        sample_info = None
-        if any_sampled:
-            total_assets_examined = sum(s for s, _ in site_samples)
-            total_assets = sum(t for _, t in site_samples)
-            sample_info = (
-                f"checked {total_assets_examined} of {total_assets} assets "
-                f"across {sites_examined} sites"
-            )
-
         return RuleResult(
             rule_id=self.rule_id,
             rule_name=self.rule_name,
@@ -116,8 +135,11 @@ class AgentUnauthCollisionRule:
             severity=severity,
             status=status,
             findings=findings,
-            summary={"sites_examined": sites_examined, "sites_flagged": sites_flagged},
-            sampled=any_sampled,
-            sample_info=sample_info,
+            summary={
+                "sites_examined": sites_examined,
+                "sites_flagged": sites_flagged,
+                "sites_truncated": len(truncated_sites),
+                "per_site_cap": per_site_cap,
+            },
             sources=list(self.sources),
         )
