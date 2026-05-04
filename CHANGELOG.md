@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`agent_unauth_collision` audit rule** no longer times out at ~20 minutes
+  and no longer silently produces 0 findings. Detection previously relied on
+  `asset.agent.agentId` and `asset.history` AGENT-IMPORT entries inline on
+  the `/api/3/sites/{id}/assets` listing payload — but those fields are not
+  reliably populated on that endpoint, so the rule was both slow (heavy
+  per-site asset enumeration) and silently incorrect (clean pass even when
+  agent-managed assets existed). The rule now grounds detection in the
+  authoritative `/api/3/agents` inventory: it builds a set of agent-managed
+  asset IDs once and intersects each site's asset listing by `asset.id`,
+  which IS reliably populated. New `EnvSnapshot.agent_asset_ids()` accessor
+  always full-paginates the agents endpoint and caches the result
+  independently of `audit.sample_size` — sampling here would re-introduce
+  the same false-negative class the refactor eliminates. When
+  `/api/3/agents` returns 404 (older consoles, restricted keys), the rule
+  now returns `status="skipped"` with an explanatory info finding instead
+  of silently passing. Short-circuit-on-first-hit, per-site cap, full-scan
+  semantics, and the truncated-sites aggregate finding are unchanged.
+  Read-only contract unchanged (no new verbs).
+
 ## [0.2.6] - 2026-05-04
 
 ### Added
