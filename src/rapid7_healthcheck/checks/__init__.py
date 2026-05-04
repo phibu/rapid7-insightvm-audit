@@ -44,4 +44,10 @@ class Check(Protocol):
     name: str
     description: str
 
-    def run(self, client: Any, config: AppConfig) -> CheckResult: ...
+    def run(
+        self,
+        client: Any,
+        config: AppConfig,
+        *,
+        snapshot: Any = None,
+    ) -> CheckResult: ...
