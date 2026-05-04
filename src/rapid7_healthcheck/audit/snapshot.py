@@ -18,8 +18,6 @@ class EnvSnapshot:
         self._sites: list[dict] | None = None
         self._scan_engines: list[dict] | None = None
         self._shared_credentials: list[dict] | None = None
-        self._blackouts: list[dict] | None = None
-        self._blackouts_unavailable: bool = False
         self._site_credentials: dict[int, list[dict]] = {}
         self._site_schedules: dict[int, list[dict]] = {}
         self._site_included_targets: dict[int, list[dict]] = {}
@@ -65,34 +63,6 @@ class EnvSnapshot:
             body = self._client.get("/api/3/shared_credentials")
             self._shared_credentials = list(body.get("resources", []))
         return self._shared_credentials
-
-    def blackouts(self) -> list[dict]:
-        if self._blackouts is None:
-            try:
-                body = self._client.get("/api/3/blackouts")
-                self._blackouts = list(body.get("resources", []))
-            except Rapid7ClientError as e:
-                if e.status_code == 404:
-                    # Some Rapid7-hosted consoles do not implement
-                    # /api/3/blackouts. Distinguish "endpoint missing" from
-                    # "no blackouts configured" so dependent rules can skip
-                    # honestly rather than emit false negatives.
-                    logger.info("blackouts endpoint not available on this console")
-                    self._blackouts = []
-                    self._blackouts_unavailable = True
-                else:
-                    raise
-        return self._blackouts
-
-    def is_blackouts_unavailable(self) -> bool:
-        """True if /api/3/blackouts returned 404 — dependent rules should
-        skip rather than treat the empty list as 'no blackouts configured'.
-
-        Pure read of the cached flag; does NOT trigger a network call.
-        Callers should invoke `blackouts()` first to prime the flag, which
-        every in-tree caller already does because they need the data.
-        """
-        return self._blackouts_unavailable
 
     def site_credentials(self, site_id: int) -> list[dict]:
         if site_id not in self._site_credentials:

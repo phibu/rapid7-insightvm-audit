@@ -12,7 +12,6 @@ import rapid7_healthcheck.audit.rules.overlapping_scan_windows  # noqa: F401
 import rapid7_healthcheck.audit.rules.single_engine_overload  # noqa: F401
 import rapid7_healthcheck.audit.rules.discovery_template_on_prod_site  # noqa: F401
 import rapid7_healthcheck.audit.rules.policy_and_vuln_in_same_template  # noqa: F401
-import rapid7_healthcheck.audit.rules.store_invulnerable_results  # noqa: F401
 import rapid7_healthcheck.audit.rules.local_engine_production_scope  # noqa: F401
 import rapid7_healthcheck.audit.rules.dynamic_groups_and_nested_tags  # noqa: F401
 import rapid7_healthcheck.audit.rules.scan_report_schedule_overlap  # noqa: F401
@@ -26,7 +25,7 @@ def test_all_rules_registered():
         "agent_unauth_collision", "site_vuln_template_no_creds",
         "credential_failure_in_recent_scans", "overlapping_scan_windows",
         "single_engine_overload", "discovery_template_on_prod_site",
-        "policy_and_vuln_in_same_template", "store_invulnerable_results",
+        "policy_and_vuln_in_same_template",
         "local_engine_production_scope", "dynamic_groups_and_nested_tags",
         "scan_report_schedule_overlap", "engine_version_drift",
         "insight_agent_deployed", "insight_agent_version_currency",
@@ -72,7 +71,6 @@ def test_one_rule_raising_does_not_break_others(app_config, fake_client, monkeyp
     fake_client.set_paginate("/api/3/sites", [])
     fake_client.set_get("/api/3/scan_engines", {"resources": []})
     fake_client.set_get("/api/3/shared_credentials", {"resources": []})
-    fake_client.set_get("/api/3/blackouts", {"resources": []})
     fake_client.set_get("/api/3/agents", {"page": {"totalResources": 0}, "resources": []})
     fake_client.set_paginate("/api/3/agents", [])
     fake_client.set_paginate("/api/3/asset_groups", [])

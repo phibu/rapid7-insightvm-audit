@@ -5,6 +5,28 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Removed
+
+- **Blackout-conflict sub-check** removed from the `overlapping_scan_windows`
+  rule. Verification against the canonical v3 OpenAPI spec
+  (`docs/research/api-v3.json`, 207 paths) showed `/api/3/blackouts` does not
+  exist — the only mention of "blackout" in the entire spec is an
+  `overrideBlackout` query parameter on `POST /api/3/sites/{id}/scans`. The
+  prior 404 trap in `EnvSnapshot.blackouts()` was masking a non-existent
+  endpoint, not a console-version delta. Rule renamed to
+  **"Overlapping Scan Windows"**; `rule_id` unchanged
+  (`overlapping_scan_windows`) so delta-blob signatures continue to match
+  prior runs. Blackouts are now documented as a v3 API gap in the
+  README "Rules NOT implemented" section, with a pointer to the Security
+  Console UI for manual auditing.
+- `EnvSnapshot.blackouts()` and `EnvSnapshot.is_blackouts_unavailable()`
+  removed (no remaining callers).
+- `docs/research/Rapid7-API.md` removed — fully superseded by
+  `docs/research/api-v3.json` (the canonical OpenAPI spec). The
+  CLAUDE.md companion reference was dropped accordingly.
+
 ## [0.2.5] - 2026-05-04
 
 ### Changed

@@ -18,8 +18,6 @@ class FakeSnapshot:
         self._sites: list[dict] = []
         self._scan_engines: list[dict] = []
         self._shared_credentials: list[dict] = []
-        self._blackouts: list[dict] = []
-        self._blackouts_unavailable: bool = False
         # Agent fleet
         self._agents: list[dict] = []
         self._agents_total: int = 0
@@ -64,8 +62,6 @@ class FakeSnapshot:
     def set_sites(self, sites: list[dict]) -> None: self._sites = sites
     def set_scan_engines(self, engines: list[dict]) -> None: self._scan_engines = engines
     def set_shared_credentials(self, creds: list[dict]) -> None: self._shared_credentials = creds
-    def set_blackouts(self, blackouts: list[dict]) -> None: self._blackouts = blackouts
-    def set_blackouts_unavailable(self, unavailable: bool) -> None: self._blackouts_unavailable = unavailable
     def set_users(self, users: list[dict]) -> None: self._users = users
     def set_users_endpoints_unavailable(self, unavailable: bool) -> None: self._users_endpoints_unavailable = unavailable
     def set_authentication_sources(self, sources: list[dict]) -> None: self._authentication_sources = sources
@@ -102,8 +98,6 @@ class FakeSnapshot:
     def sites(self) -> list[dict]: return self._sites
     def scan_engines(self) -> list[dict]: return self._scan_engines
     def shared_credentials(self) -> list[dict]: return self._shared_credentials
-    def blackouts(self) -> list[dict]: return self._blackouts
-    def is_blackouts_unavailable(self) -> bool: return self._blackouts_unavailable
 
     def users(self) -> list[dict]: return self._users
     def is_users_endpoints_unavailable(self) -> bool: return self._users_endpoints_unavailable

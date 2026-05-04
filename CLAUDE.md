@@ -15,6 +15,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 If a feature genuinely cannot be implemented read-only, document it as a v3 API gap (in the README's "Rules NOT implemented" section) and direct users to audit it via the Security Console UI. **Never** introduce write/delete capability to "make a feature work."
 
+## API reference (cross-check before using)
+
+The canonical Rapid7 InsightVM v3 OpenAPI specification is committed at [docs/research/api-v3.json](docs/research/api-v3.json). **Always cross-check API usage against this file before adding or modifying calls** — endpoint paths, query/body parameters, response schemas, HTTP verbs, and pagination contracts must match the spec.
+
+When in doubt about an endpoint:
+
+1. Look it up in `docs/research/api-v3.json` (search by path, e.g. `/api/3/sites` or operationId).
+2. Confirm the verb is `GET` (or `POST` to `/api/3/assets/search`) — anything else violates the read-only contract regardless of what the spec allows.
+3. Confirm parameter names, types, and required-ness match what `client.py` / the snapshot accessor sends.
+4. Confirm the response shape matches what the rule/check parses (especially nested `resources` arrays and `page` metadata for paginated endpoints).
+
 ## Common commands
 
 ```bash
@@ -80,6 +91,23 @@ The project has two parallel verticals that share a single CLI, HTTP client, con
 2. **Configuration audit** (`src/rapid7_healthcheck/audit/`) — a single `Check` (`ConfigurationAuditCheck`) that internally runs many `Rule` objects, each producing a `RuleResult`. Toggled in `audit:` block of `config.yaml`. Each rule is grounded in a Rapid7 doc URL surfaced in the report.
 
 Pipeline: `__main__.py` loads config → builds `Rapid7Client` → iterates a `_REGISTRY` of checks → renders `list[CheckResult]` through Jinja2 (`templates/report.html.j2`) → writes one self-contained HTML file. Per-check exceptions are isolated; a failing check produces a `status="error"` `CheckResult` rather than aborting the run.
+
+### Unified rule-result rendering (since 0.2.6)
+
+Both verticals emit `CheckResult.rule_results: list[RuleResult]`, one entry per concept (e.g. "Sites never scanned", "Stuck scans", "Duplicate hostnames"). The report template has a single rendering path: per-rule `<details>` cards with status badge, description, findings table, and source links. The filter bar (severity / search / changed) operates on rule cards uniformly across both verticals.
+
+Operational-check rule IDs follow the convention `op.<check>.<concept>` (e.g. `op.data_quality.missing_os`, `op.scan_engines.last_contact`) — namespaced this way so they don't collide with audit `rule_id`s in the delta-blob signature index.
+
+Helpers for building op-check rule results live in `checks/_op_rule.py`:
+- `make_rule_result(...)` — wraps findings into a `RuleResult` with status derived from highest-severity finding.
+- `skipped_rule(...)` — used when a threshold flag disables a concept.
+- `rollup_check_status(rule_results)` / `flatten_findings(rule_results)` / `rule_summary(rule_results)` — mirror the audit helpers; produce the `CheckResult.status`, `findings`, and `summary` fields.
+
+Each operational rule should declare a `rule_id`, `rule_name`, `description`, and `sources` (Rapid7 doc URLs surfaced under each rule card). Op-check `RuleResult.summary` is per-rule (e.g. `{"missing_os_count": 12}`); the check-level `CheckResult.summary` is the rule rollup (`rules_total`, `rules_pass`, etc.) which the template's tile strip reads directly.
+
+The template still has a defensive fallback branch for `CheckResult`s without `rule_results` — kept so external `Check` implementations and legacy tests don't crash. Built-in checks always populate `rule_results` since 0.2.6.
+
+`report.py`'s state-blob projection and delta computation read findings from `rule_results` only; `r.findings` on op-checks is a flattened mirror that exists only for the in-memory rollup. Indexing both would double-count signatures.
 
 ### Layer rules (do not violate)
 

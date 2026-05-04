@@ -193,11 +193,10 @@ Rules:
 | Insight Agent asset scanned without authentication | fail | docs.rapid7.com Console Best Practices, 6.6.229 release notes. In fast mode, per-site enumeration is capped at `audit.sample_size` and short-circuits on first agent-managed asset; sites that hit the cap without a match are listed in a single aggregate info finding. Set `full_scan: true` to remove the cap. |
 | Vulnerability template without credentials | fail | Scan Template Best Practices, Configuring Scan Credentials |
 | Credential failure in recent scans | warn | Configuring Site-Specific Scan Credentials |
-| Overlapping scan windows or blackout conflicts | warn | Scan Blackouts, Console Best Practices |
+| Overlapping scan windows | warn | Console Best Practices |
 | Single scan engine overloaded | warn | Console Best Practices |
 | Discovery template on production site | warn (heuristic) | Scan Template Best Practices |
 | Policy and Vulnerability in same template | warn | Scan Template Best Practices |
-| Store invulnerable results enabled | info | Scan Template Best Practices |
 | Local Scan Engine carrying production-sized scope | warn (heuristic) | Console Best Practices |
 | Excessive dynamic asset groups or nested tag references | warn | Console Best Practices |
 | Scan and report schedules overlap on shared scope | warn | Console Best Practices |
@@ -216,6 +215,8 @@ See `docs/examples/config.yaml` for the full audit configuration block.
 **Rules NOT implemented (and why).** Some commonly-requested configuration-audit rules cannot be implemented because the Rapid7 v3 API does not expose the underlying data:
 
 - **Complementary Scanning** — the `/api/3/scan_templates` schema does not expose a `complementaryScanning` field or any equivalent flag (verified against the canonical `ScanTemplate` schema). This is a runtime characteristic of scans, not a documented template configuration. Audit it via the Security Console UI: Site → Scan Configuration → Complementary Scanning.
+- **Store invulnerable results** — the toggle exists in the Security Console UI under each scan template's Database settings, but it is not exposed anywhere in the v3 `ScanTemplate` schema (verified field-by-field; `ScanTemplateDatabase` only contains `db2`, `oracle`, `postgres` for credentialed-DB scanning). Audit it via the Security Console UI: Administration → Scan Templates → \[template\] → Database.
+- **Scan blackout conflicts** — the v3 API has no `/api/3/blackouts` endpoint (verified against the canonical OpenAPI spec — `overrideBlackout` exists as a query parameter on POST `/api/3/sites/{id}/scans` but blackouts are not listable or readable via v3). The `Overlapping Scan Windows` rule therefore detects scan-vs-scan window/scope overlaps only; blackout conflicts must be audited via the Security Console UI: Administration → Global and Console Settings → Scan Blackouts.
 
 ## User & Permission Audit
 
@@ -279,7 +280,7 @@ You can also disable an entire check by setting its toggle in `checks:` to `fals
 - **All checks return `SKIPPED`**: every toggle in `checks:` is `false` in `config.yaml`.
 - **Specific check shows `ERROR`**: the per-check exception message appears in the report. Run with `--verbose --log-file run.log` to capture the full traceback.
 - **`SSLError: CERTIFICATE_VERIFY_FAILED` / `unable to get local issuer certificate`** (Windows, especially on a corporate network): the host's cert is signed by a CA your Python install doesn't trust — typically because a corporate proxy (Zscaler, Palo Alto, Netskope, etc.) re-signs TLS traffic with an internal CA that Windows trusts but `requests` does not. Fix by making `requests` use the Windows trust store: `pip install pip-system-certs` in the same venv, then re-run. If your IT team can supply the proxy's root CA as a `.pem`, you can alternatively set `REQUESTS_CA_BUNDLE=path\to\ca.pem`. Setting `verify_tls: false` in `config.yaml` disables verification entirely — last resort, never for production.
-- **`info`-severity findings about "endpoint not available" or "operator unsupported"**: these mean the tool detected an API surface difference between what it expected and what your console actually exposes (typically Rapid7-hosted vs on-prem). The affected sub-check is skipped honestly rather than failing silently or aborting the rest of the run. They are NOT bugs in the tool. Common cases: `/api/3/blackouts` is not implemented on some hosted consoles (the `Overlapping Scan Windows` rule still detects scan-vs-scan overlaps), and `is-empty` on date fields is rejected on some hosted consoles (the `Asset Coverage` check still detects stale assets). Disable the affected sub-check via `config.yaml` if the info finding becomes noisy.
+- **`info`-severity findings about "endpoint not available" or "operator unsupported"**: these mean the tool detected an API surface difference between what it expected and what your console actually exposes (typically Rapid7-hosted vs on-prem). The affected sub-check is skipped honestly rather than failing silently or aborting the rest of the run. They are NOT bugs in the tool. Common case: `is-empty` on date fields is rejected on some hosted consoles (the `Asset Coverage` check still detects stale assets). Disable the affected sub-check via `config.yaml` if the info finding becomes noisy.
 - **A check or audit rule errors with `network error after N attempt(s) on GET /api/3/...: Read timed out`**: a single API call exhausted the configured timeout (`rapid7.request_timeout_seconds`, default 30) and the configured retries (`rapid7.max_retries`, default 3) — total ~2 minutes of waiting per call before the rule aborts. The error message names the method and path so you can identify the slow endpoint. Two knobs are available in `config.yaml`: increase `request_timeout_seconds` (e.g. to 60 or 120) for consoles that respond slowly under load, or reduce `max_retries` if you'd rather fail fast. Some Rapid7-hosted consoles can be sluggish on `/api/3/sites/{id}/scan_credentials` and `/api/3/sites/{id}/assets` during business hours; bumping the timeout is usually enough.
 
 ## Development

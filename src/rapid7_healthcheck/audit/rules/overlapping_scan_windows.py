@@ -59,15 +59,13 @@ def _scopes_intersect(a, b) -> bool:
 @register
 class OverlappingScanWindowsRule:
     rule_id = "overlapping_scan_windows"
-    rule_name = "Overlapping Scan Windows or Blackout Conflicts"
+    rule_name = "Overlapping Scan Windows"
     description = (
-        "Scheduled scans whose time windows overlap and target the same IP scope, "
-        "or scans scheduled inside an enabled blackout."
+        "Scheduled scans whose time windows overlap and target the same IP scope."
     )
     default_severity = "warn"
     expensive = True
     sources = [
-        "https://docs.rapid7.com/insightvm/scan-blackouts",
         "https://docs.rapid7.com/insightvm/security-console-best-practices/",
     ]
 
@@ -118,44 +116,6 @@ class OverlappingScanWindowsRule:
                 },
             ))
 
-        # Prime the blackouts cache + unavailable flag, then read the flag.
-        # The flag is False unless the snapshot already saw a 404 from
-        # /api/3/blackouts (some Rapid7-hosted consoles don't implement it).
-        all_blackouts = snapshot.blackouts()
-        blackouts_unavailable = snapshot.is_blackouts_unavailable()
-        if not blackouts_unavailable:
-            for blackout in all_blackouts:
-                if not blackout.get("enabled", False):
-                    continue
-                b_start = _parse_iso(blackout.get("start"))
-                if b_start is None:
-                    continue
-                b_end = b_start + _parse_duration(blackout.get("duration"))
-                for sid, name, sch, s, e, _scope in windows:
-                    if _windows_intersect(s, e, b_start, b_end):
-                        bo_name = blackout.get("name", f"id={blackout.get('id')}")
-                        findings.append(Finding(
-                            severity=severity,
-                            message=(
-                                f"Site '{name}' schedule overlaps blackout "
-                                f"'{bo_name}' on {s.date().isoformat()}"
-                            ),
-                            details={
-                                "site_id": sid, "schedule_id": sch.get("id"),
-                                "blackout_id": blackout.get("id"),
-                            },
-                        ))
-        else:
-            findings.append(Finding(
-                severity="info",
-                message=(
-                    "Blackout-conflict checks skipped: /api/3/blackouts is not "
-                    "available on this console. Scan-vs-scan overlaps are still "
-                    "checked normally."
-                ),
-                details={"reason": "blackouts endpoint returned 404"},
-            ))
-
         if any(f.severity == "fail" for f in findings):
             status = "fail"
         elif any(f.severity == "warn" for f in findings):
@@ -173,7 +133,6 @@ class OverlappingScanWindowsRule:
             summary={
                 "windows_examined": len(windows),
                 "findings_count": len(findings),
-                "blackouts_unavailable": blackouts_unavailable,
             },
             sampled=sampled,
             sample_info=sample_info,

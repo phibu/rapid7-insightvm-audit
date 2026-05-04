@@ -203,7 +203,7 @@ def test_client_error_carries_status_code_on_4xx(session):
     session.request.return_value = _resp(404, {"message": "not found"})
     c = make_client(session)
     with pytest.raises(Rapid7ClientError) as exc:
-        c.get("/api/3/blackouts")
+        c.get("/api/3/does_not_exist")
     assert exc.value.status_code == 404
 
 
