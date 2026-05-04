@@ -16,7 +16,7 @@ class UserWithRoleButNoAccessRule:
         "was never set up, or the user is stale and the role should be "
         "removed entirely."
     )
-    default_severity = "info"
+    default_severity = "warn"
     expensive = True
     sources = [
         "https://docs.rapid7.com/insightvm/managing-users-and-authentication/#assigning-roles-to-users",

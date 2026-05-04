@@ -48,7 +48,8 @@ def test_finding_when_user_has_role_but_no_bindings(fake_snapshot):
     fake_snapshot.set_users([_user(1, "alice")])
     fake_snapshot.set_user_sites(1, [])
     fake_snapshot.set_user_asset_groups(1, [])
-    r = UserWithRoleButNoAccessRule().run(fake_snapshot, "info", False, 500, {})
+    r = UserWithRoleButNoAccessRule().run(fake_snapshot, "warn", False, 500, {})
+    assert r.status == "warn"
     assert r.summary["users_flagged"] == 1
     assert "alice" in r.findings[0].message
 
