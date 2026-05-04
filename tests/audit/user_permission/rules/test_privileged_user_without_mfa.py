@@ -134,3 +134,35 @@ def test_findings_when_all_users_return_explicit_status(fake_snapshot):
     assert len(r.findings) == 2
     logins = {f.details["login"] for f in r.findings}
     assert logins == {"alice", "bob"}
+
+
+def _user_with_auth(uid: int, login: str, auth_type: str | None, role_id: str = "global-admin") -> dict:
+    """Helper: build a user dict with an explicit authentication.type."""
+    u = {
+        "id": uid,
+        "login": login,
+        "enabled": True,
+        "role": {"id": role_id, "name": role_id, "superuser": False},
+    }
+    if auth_type is not None:
+        u["authentication"] = {"type": auth_type}
+    return u
+
+
+def test_external_saml_user_skipped_no_2fa_call(fake_snapshot):
+    """SAML-authenticated privileged user must NOT trigger a 2FA endpoint call;
+    they appear in a single aggregate info finding instead."""
+    fake_snapshot.set_users([_user_with_auth(1, "saml-admin", "saml")])
+    # Deliberately do NOT set_user_2fa_enabled — if the rule calls it, the fake
+    # returns False (default) and we'd see a fail finding. We assert there is none.
+    r = PrivilegedUserWithoutMfaRule().run(fake_snapshot, "fail", False, 500, {})
+    assert r.status == "pass"
+    assert r.summary["users_external_auth"] == 1
+    assert r.summary["users_without_mfa"] == 0
+    info_findings = [f for f in r.findings if f.severity == "info"]
+    assert len(info_findings) == 1
+    assert "external sources" in info_findings[0].message.lower()
+    assert info_findings[0].details["external_auth_user_count"] == 1
+    assert info_findings[0].details["external_auth_users"] == [
+        {"login": "saml-admin", "auth_type": "saml"},
+    ]
