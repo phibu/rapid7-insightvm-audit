@@ -35,16 +35,17 @@ def test_fail_when_unauth_site_has_agent_assets(fake_snapshot):
                                                   "vulnerabilityChecks": {"enabled": True}})
     fake_snapshot.set_site_credentials(1, [])
     fake_snapshot.set_shared_credentials([])
-    fake_snapshot.set_asset_sample(1, [
+    fake_snapshot.set_site_asset_count(1, 3)
+    fake_snapshot.set_site_assets_iter(1, [
         {"id": 100, "history": [{"type": "AGENT-IMPORT", "date": "..."}]},
         {"id": 101, "history": [{"type": "AGENT-IMPORT", "date": "..."}]},
         {"id": 102, "history": [{"type": "SCAN", "date": "..."}]},
-    ], total=3)
+    ])
     r = AgentUnauthCollisionRule().run(fake_snapshot, "fail", False, 500, {})
     assert r.status == "fail"
     f = r.findings[0]
     assert "ProdLinux" in f.message
-    assert f.details["agent_count"] == 2
+    assert f.details["examined"] >= 1
 
 
 def test_pass_when_no_agent_assets(fake_snapshot):
@@ -53,7 +54,8 @@ def test_pass_when_no_agent_assets(fake_snapshot):
                                                   "vulnerabilityChecks": {"enabled": True}})
     fake_snapshot.set_site_credentials(1, [])
     fake_snapshot.set_shared_credentials([])
-    fake_snapshot.set_asset_sample(1, [{"id": 100, "history": [{"type": "SCAN"}]}], total=1)
+    fake_snapshot.set_site_asset_count(1, 1)
+    fake_snapshot.set_site_assets_iter(1, [{"id": 100, "history": [{"type": "SCAN"}]}])
     r = AgentUnauthCollisionRule().run(fake_snapshot, "fail", False, 500, {})
     assert r.status == "pass"
 
@@ -64,10 +66,11 @@ def test_sampling_recorded(fake_snapshot):
                                                   "vulnerabilityChecks": {"enabled": True}})
     fake_snapshot.set_site_credentials(1, [])
     fake_snapshot.set_shared_credentials([])
-    fake_snapshot.set_asset_sample(1, [{"id": 100, "history": [{"type": "AGENT-IMPORT"}]}], total=4200)
+    fake_snapshot.set_site_asset_count(1, 4200)
+    fake_snapshot.set_site_assets_iter(1, [{"id": 100, "history": [{"type": "AGENT-IMPORT"}]}])
     r = AgentUnauthCollisionRule().run(fake_snapshot, "fail", False, 500, {})
-    assert r.sampled
-    assert "of 4200" in (r.sample_info or "")
+    assert r.summary["per_site_cap"] == 500
+    assert r.findings[0].details["total_assets"] == 4200
 
 
 def test_uses_cheap_agent_signal_when_available(fake_snapshot):
@@ -77,17 +80,19 @@ def test_uses_cheap_agent_signal_when_available(fake_snapshot):
                                                   "vulnerabilityChecks": {"enabled": True}})
     fake_snapshot.set_site_credentials(1, [])
     fake_snapshot.set_shared_credentials([])
-    # asset 1: has cheap signal (agent.agentId present) — counted directly, no fallback
-    # asset 2: no cheap signal — fallback reads inline history from the asset record
-    fake_snapshot.set_asset_sample(1, [
+    # asset 1: has cheap signal (agent.agentId present) — rule short-circuits here, no fallback
+    # asset 2: never inspected because rule short-circuits on first agent hit
+    fake_snapshot.set_site_asset_count(1, 2)
+    fake_snapshot.set_site_assets_iter(1, [
         {"id": 1, "agent": {"agentId": "abc-123"}},
         {"id": 2, "history": [{"type": "AGENT-IMPORT"}]},
-    ], total=2)
+    ])
 
     r = AgentUnauthCollisionRule().run(fake_snapshot, "fail", False, 500, {})
 
     assert r.status == "fail"
-    assert r.findings[0].details["agent_count"] == 2
+    assert r.findings[0].details["examined"] == 1
+    assert r.findings[0].details["short_circuited"] is True
 
 
 def test_does_not_call_asset_history_endpoint(fake_snapshot):
@@ -101,10 +106,11 @@ def test_does_not_call_asset_history_endpoint(fake_snapshot):
     # Two assets, both WITHOUT cheap agent signal:
     #   asset 10: inline history with AGENT-IMPORT → should be counted
     #   asset 11: inline history with only SCAN    → should NOT be counted
-    fake_snapshot.set_asset_sample(1, [
+    fake_snapshot.set_site_asset_count(1, 2)
+    fake_snapshot.set_site_assets_iter(1, [
         {"id": 10, "history": [{"type": "AGENT-IMPORT", "date": "2024-01-01"}]},
         {"id": 11, "history": [{"type": "SCAN", "date": "2024-01-01"}]},
-    ], total=2)
+    ])
 
     # Replace asset_history with a bomb — any call is a regression.
     def _boom(asset_id: int):
@@ -117,7 +123,7 @@ def test_does_not_call_asset_history_endpoint(fake_snapshot):
     r = AgentUnauthCollisionRule().run(fake_snapshot, "fail", False, 500, {})
 
     assert r.status == "fail"
-    assert r.findings[0].details["agent_count"] == 1
+    assert r.findings[0].details["examined"] >= 1
 
 
 def test_short_circuits_on_first_agent_match(fake_snapshot):
