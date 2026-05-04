@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+from collections import defaultdict
+
 from rapid7_healthcheck.audit import RuleResult, register
 from rapid7_healthcheck.audit.rules._agent_version import (
     LATEST_KNOWN_INSIGHT_AGENT_VERSION,
     find_agent_version,
 )
 from rapid7_healthcheck.checks import Finding
+
+_ASSET_ID_SAMPLE_CAP = 50
 
 
 def _format_version(v: tuple[int, int, int, int]) -> str:
@@ -28,16 +32,7 @@ def _parse_version_string(s: str) -> tuple[int, int, int, int] | None:
 
 
 def _resolve_mode(rule_config: dict) -> tuple[str, tuple[int, int, int, int] | None, str | None]:
-    """Resolve the (mode, reference_tuple, raw_pinned_string) triple.
-
-    Returns:
-        (mode, reference, raw):
-            mode in {"pinned", "latest_known", "fleet_newest"}.
-            reference is the parsed version tuple, or None for fleet_newest
-                (computed later from the fleet) or pinned-with-bad-input.
-            raw is the original pinned_version string when mode is "pinned"
-                with unparseable input — used in the skip message.
-    """
+    """Resolve the (mode, reference_tuple, raw_pinned_string) triple."""
     pinned_raw = rule_config.get("pinned_version")
     if pinned_raw is not None:
         parsed = _parse_version_string(pinned_raw)
@@ -47,21 +42,41 @@ def _resolve_mode(rule_config: dict) -> tuple[str, tuple[int, int, int, int] | N
     return ("fleet_newest", None, None)
 
 
+def _agent_asset_id(agent: dict) -> int | None:
+    aid = agent.get("id")
+    if isinstance(aid, int) and not isinstance(aid, bool):
+        return aid
+    return None
+
+
+def _capped_asset_ids(agents: list[dict]) -> tuple[list[int], bool]:
+    """Return up to _ASSET_ID_SAMPLE_CAP asset IDs from `agents` plus a
+    `truncated` flag. Drops agents without a numeric asset id."""
+    ids: list[int] = []
+    for a in agents:
+        aid = _agent_asset_id(a)
+        if aid is not None:
+            ids.append(aid)
+    truncated = len(ids) > _ASSET_ID_SAMPLE_CAP
+    return (ids[:_ASSET_ID_SAMPLE_CAP], truncated)
+
+
 @register
 class InsightAgentVersionCurrencyRule:
     rule_id = "insight_agent_version_currency"
     rule_name = "Insight Agent Version Currency"
     description = (
-        "Flags Insight Agents whose version is out of step with a reference. "
-        "Three modes, in precedence order: (1) pinned — `pinned_version: "
-        "\"4.1.0.2\"` requires every agent to match exactly; both behind-pin "
-        "and ahead-of-pin agents are flagged (the latter is a change-control "
-        "gap). (2) latest-known — `use_latest_known: true` compares against "
-        "a tool-maintained 'current latest' version, with `version_drift_minor` "
-        "tolerance. (3) fleet-newest (default) — self-bootstrapping comparison "
-        "against the newest version observed in the fleet, with "
-        "`version_drift_minor` tolerance. Does NOT detect uniform fleet "
-        "staleness in fleet-newest mode (different rule territory)."
+        "Reports Insight Agent version drift across the fleet, aggregated "
+        "per version (one finding = one observed version, with the count of "
+        "assets on it). Three modes, in precedence order: (1) pinned — "
+        "`pinned_version: \"4.1.0.2\"` requires every agent to match exactly; "
+        "both behind-pin and ahead-of-pin versions are flagged (the latter "
+        "is a change-control gap). (2) latest-known — `use_latest_known: "
+        "true` compares against a tool-maintained 'current latest' version, "
+        "with `version_drift_minor` tolerance. (3) fleet-newest (default) — "
+        "self-bootstrapping comparison against the newest version observed "
+        "in the fleet, with `version_drift_minor` tolerance. Also reports "
+        "the count of assets without any Insight Agent installed."
     )
     default_severity = "warn"
     expensive = False
@@ -150,20 +165,23 @@ class InsightAgentVersionCurrencyRule:
                 sources=list(self.sources),
             )
 
-        # Parse versions from each agent.
-        parsed: list[tuple[dict, tuple[int, int, int, int]]] = []
-        unparseable = 0
+        # Bucket agents by parsed version. Unparseable agents go into
+        # their own bucket, surfaced as a single info finding.
+        version_buckets: dict[tuple[int, int, int, int], list[dict]] = defaultdict(list)
+        unparseable_agents: list[dict] = []
         for agent in agents:
             v = find_agent_version(agent)
             if v is None:
-                unparseable += 1
-                continue
-            parsed.append((agent, v))
+                unparseable_agents.append(agent)
+            else:
+                version_buckets[v].append(agent)
+
+        agents_examined = sum(len(v) for v in version_buckets.values())
 
         # Fleet-newest needs >=2 parseable agents to compute drift; pinned and
         # latest-known only need >=1 (they have an external reference).
         min_required = 2 if mode == "fleet_newest" else 1
-        if len(parsed) < min_required:
+        if agents_examined < min_required:
             return RuleResult(
                 rule_id=self.rule_id,
                 rule_name=self.rule_name,
@@ -173,7 +191,7 @@ class InsightAgentVersionCurrencyRule:
                 findings=[Finding(
                     severity="info",
                     message=(
-                        f"Only {len(parsed)} agent(s) had parseable Insight Agent "
+                        f"Only {agents_examined} agent(s) had parseable Insight Agent "
                         f"version strings; need at least {min_required} for "
                         f"{mode} mode."
                     ),
@@ -181,83 +199,134 @@ class InsightAgentVersionCurrencyRule:
                 )],
                 summary={
                     "agents_total": total,
-                    "agents_examined": len(parsed),
-                    "agents_unparseable": unparseable,
+                    "agents_examined": agents_examined,
+                    "agents_unparseable": len(unparseable_agents),
                     "reference_mode": mode,
                 },
                 sources=list(self.sources),
             )
 
-        # Resolve the reference for fleet-newest mode now that we have parsed agents.
+        # Resolve fleet-newest reference now that buckets are known.
         if mode == "fleet_newest":
-            reference = max(v for _, v in parsed)
+            reference = max(version_buckets.keys())
 
         findings: list[Finding] = []
-        drifted = 0
-        ahead_of_pin = 0
+        drifted_assets = 0
+        ahead_of_pin_assets = 0
+        versions_drifted = 0
 
-        for agent, version in parsed:
-            host = agent.get("hostName") or agent.get("id") or "?"
+        for version in sorted(version_buckets.keys()):
+            bucket = version_buckets[version]
+            count = len(bucket)
+            asset_ids, truncated = _capped_asset_ids(bucket)
+
             if mode == "pinned":
                 if version == reference:
-                    continue
-                drifted += 1
+                    continue  # exact match — not a finding
+                versions_drifted += 1
+                drifted_assets += count
                 if version > reference:
-                    ahead_of_pin += 1
+                    ahead_of_pin_assets += count
                     direction = "ahead"
                     msg = (
-                        f"Insight Agent on '{host}' is running "
-                        f"{_format_version(version)} — ahead of pinned version "
-                        f"{_format_version(reference)} (change-control gap)."
+                        f"{count} asset(s) on Insight Agent {_format_version(version)} — "
+                        f"ahead of pinned version {_format_version(reference)} "
+                        f"(change-control gap)."
                     )
                 else:
                     direction = "behind"
                     msg = (
-                        f"Insight Agent on '{host}' is running "
-                        f"{_format_version(version)} — behind pinned version "
-                        f"{_format_version(reference)}."
+                        f"{count} asset(s) on Insight Agent {_format_version(version)} — "
+                        f"behind pinned version {_format_version(reference)}."
                     )
                 findings.append(Finding(
                     severity=severity,
                     message=msg,
                     details={
-                        "agentId": agent.get("agentId"),
-                        "hostName": agent.get("hostName"),
                         "observed_version": _format_version(version),
                         "pinned_version": _format_version(reference),
                         "drift_direction": direction,
+                        "asset_count": count,
+                        "asset_ids_sample": asset_ids,
+                        "asset_ids_truncated": truncated,
                     },
                 ))
             else:
                 # fleet_newest or latest_known — minor-drift logic.
                 minor_drift = (reference[0] - version[0]) * 1000 + (reference[1] - version[1])
                 if minor_drift > drift_threshold:
-                    drifted += 1
+                    versions_drifted += 1
+                    drifted_assets += count
                     if mode == "latest_known":
                         msg = (
-                            f"Insight Agent on '{host}' is running "
-                            f"{_format_version(version)} — behind known-current "
-                            f"{_format_version(reference)} by {minor_drift} minor "
-                            f"version(s)."
+                            f"{count} asset(s) on Insight Agent {_format_version(version)} — "
+                            f"behind known-current {_format_version(reference)} by "
+                            f"{minor_drift} minor version(s)."
                         )
                     else:  # fleet_newest
                         msg = (
-                            f"Insight Agent on '{host}' is running "
-                            f"{_format_version(version)} — {minor_drift} minor "
-                            f"version(s) behind newest "
+                            f"{count} asset(s) on Insight Agent {_format_version(version)} — "
+                            f"{minor_drift} minor version(s) behind newest "
                             f"({_format_version(reference)})."
                         )
                     findings.append(Finding(
                         severity=severity,
                         message=msg,
                         details={
-                            "agentId": agent.get("agentId"),
-                            "hostName": agent.get("hostName"),
                             "observed_version": _format_version(version),
                             "reference_version": _format_version(reference),
                             "minor_drift": minor_drift,
+                            "asset_count": count,
+                            "asset_ids_sample": asset_ids,
+                            "asset_ids_truncated": truncated,
                         },
                     ))
+
+        # Unparseable bucket — single info finding.
+        if unparseable_agents:
+            sample_hosts = [
+                a.get("hostName") for a in unparseable_agents[:10]
+                if isinstance(a.get("hostName"), str)
+            ]
+            findings.append(Finding(
+                severity="info",
+                message=(
+                    f"{len(unparseable_agents)} agent(s) reported an unparseable "
+                    f"Insight Agent version string."
+                ),
+                details={
+                    "agent_count": len(unparseable_agents),
+                    "sample_host_names": sample_hosts,
+                },
+            ))
+
+        # "No Agent" bucket — assets with no Insight Agent correlated.
+        # Derived as total_asset_count - len(agent_asset_ids). Counts every
+        # asset including scan-only assets that may never have been intended
+        # for agent install — labelled accordingly so the meaning is clear.
+        try:
+            total_assets = snapshot.total_asset_count()
+        except Exception:
+            total_assets = 0
+        try:
+            with_agent_ids = snapshot.agent_asset_ids()
+        except Exception:
+            with_agent_ids = set()
+        with_agent = len(with_agent_ids)
+        without_agent = max(0, total_assets - with_agent)
+        if without_agent > 0:
+            findings.append(Finding(
+                severity="info",
+                message=(
+                    f"{without_agent} asset(s) have no Insight Agent installed "
+                    f"(of {total_assets} total assets)."
+                ),
+                details={
+                    "asset_count": without_agent,
+                    "total_assets": total_assets,
+                    "assets_with_agent": with_agent,
+                },
+            ))
 
         if any(f.severity == "fail" for f in findings):
             status = "fail"
@@ -268,14 +337,19 @@ class InsightAgentVersionCurrencyRule:
 
         summary: dict = {
             "agents_total": total,
-            "agents_examined": len(parsed),
-            "agents_unparseable": unparseable,
-            "agents_drifted": drifted,
+            "agents_examined": agents_examined,
+            "agents_unparseable": len(unparseable_agents),
+            "agents_drifted": drifted_assets,
+            "versions_observed": len(version_buckets),
+            "versions_drifted": versions_drifted,
             "reference_version": _format_version(reference),
             "reference_mode": mode,
+            "assets_total": total_assets,
+            "assets_with_agent": with_agent,
+            "assets_without_agent": without_agent,
         }
         if mode == "pinned":
-            summary["agents_ahead_of_pin"] = ahead_of_pin
+            summary["agents_ahead_of_pin"] = ahead_of_pin_assets
         else:
             summary["drift_threshold"] = drift_threshold
 
