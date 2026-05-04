@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.4] - unreleased
+
+### Changed
+
+- **`privileged_user_without_mfa`**: SSO-aware. Privileged accounts whose
+  `authentication.type` is `saml`, `ldap`, or `kerberos` no longer trigger
+  per-user `fail` findings; they are listed in a single aggregate `info`
+  finding noting that MFA enforcement is delegated to the upstream IdP. New
+  `summary.users_external_auth` count.
+- **`disabled_user_with_role_bindings`**: default severity bumped from `info`
+  to `warn`. **Behavior change**: when this rule fires, the run's exit code
+  now becomes `1` (warn) instead of `0` (info).
+- **`user_with_role_but_no_access`**: default severity bumped from `info` to
+  `warn`. Same exit-code impact.
+- **`insight_agent_version_currency`**: now supports three reference-version
+  modes via new optional knobs.
+  - `pinned_version: "4.1.0.2"` — exact-match mode; flags both behind-pin
+    and ahead-of-pin agents (the latter is a change-control gap).
+  - `use_latest_known: true` — compares against a tool-maintained constant
+    (currently `4.1.0.2`); honors `version_drift_minor` tolerance.
+  - Otherwise: existing fleet-newest behavior, unchanged.
+  - **Summary key rename**: `newest_version` → `reference_version`. New keys
+    `reference_mode` (always present) and `agents_ahead_of_pin` (pinned mode
+    only). Downstream consumers of the JSON state blob need to update.
+- **`agent_unauth_collision`**: bounded per-site asset enumeration to fix the
+  ~21-minute timeout observed in production. Per-site enumeration now
+  short-circuits on first agent-managed asset and is capped at
+  `audit.sample_size` in fast mode. Sites that exceed the cap without a
+  match are listed in a single aggregate `info` finding. `full_scan: true`
+  removes the cap.
+  - **Finding-detail change**: `details.agent_count` and `details.sample_size`
+    are removed; replaced by `details.examined` and `details.short_circuited`.
+    Downstream parsers need to update.
+  - New summary keys: `sites_truncated`, `per_site_cap`.
+
 ## [0.2.3] - 2026-04-30
 
 ### Fixed
