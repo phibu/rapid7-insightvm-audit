@@ -95,6 +95,22 @@ class FakeSnapshot:
     def is_agents_unavailable(self) -> bool:
         return self._agents_unavailable
 
+    def agent_asset_ids(self) -> set[int]:
+        ids: set[int] = set()
+        for a in self._agents:
+            asset_id = a.get("id")
+            if isinstance(asset_id, int) and not isinstance(asset_id, bool):
+                ids.add(asset_id)
+                continue
+            for link in a.get("links") or []:
+                if (link.get("rel") or "").lower() == "asset":
+                    href = link.get("href") or ""
+                    tail = href.rstrip("/").rsplit("/", 1)[-1]
+                    if tail.isdigit():
+                        ids.add(int(tail))
+                        break
+        return ids
+
     def sites(self) -> list[dict]: return self._sites
     def scan_engines(self) -> list[dict]: return self._scan_engines
     def shared_credentials(self) -> list[dict]: return self._shared_credentials

@@ -5,22 +5,6 @@ from rapid7_healthcheck.audit.rules.site_vuln_template_no_creds import _site_has
 from rapid7_healthcheck.checks import Finding
 
 
-def _has_agent_history(history) -> bool:
-    if not isinstance(history, list):
-        return False
-    return any((h.get("type") or "").upper() == "AGENT-IMPORT" for h in history)
-
-
-def _asset_is_agent_managed(snapshot, asset: dict) -> bool:
-    """Combine the cheap signal with the inline-history fallback."""
-    cheap = snapshot.asset_has_agent(asset)
-    if cheap is True:
-        return True
-    if cheap is False:
-        return False
-    return _has_agent_history(asset.get("history"))
-
-
 @register
 class AgentUnauthCollisionRule:
     rule_id = "agent_unauth_collision"
@@ -30,11 +14,14 @@ class AgentUnauthCollisionRule:
         "already have the Insight Agent installed. The agent produces strictly "
         "richer authenticated data; redundant unauth scans add load, cause "
         "asset-correlation drift, and (prior to console release 6.6.229) could "
-        "degrade results. In fast mode (`full_scan: false`), per-site asset "
-        "enumeration is bounded by `audit.sample_size` and short-circuits on "
-        "the first agent-managed asset found. Sites that exceed the per-site "
-        "cap without a match are listed in a single aggregate info finding so "
-        "the gap is visible. Run with `full_scan: true` to remove the cap."
+        "degrade results. Detection is grounded in the authoritative agent "
+        "inventory at /api/3/agents (one fetch, cached) — site-asset listings "
+        "are intersected by asset id, which is reliably populated. In fast "
+        "mode (`full_scan: false`), per-site enumeration is bounded by "
+        "`audit.sample_size` and short-circuits on the first agent-managed "
+        "asset; sites that exceed the cap without a match are listed in a "
+        "single aggregate info finding so the gap is visible. Run with "
+        "`full_scan: true` to remove the cap."
     )
     default_severity = "fail"
     expensive = True
@@ -46,6 +33,35 @@ class AgentUnauthCollisionRule:
     ]
 
     def run(self, snapshot, severity, full_scan, sample_size, rule_config) -> RuleResult:
+        agent_ids = snapshot.agent_asset_ids()
+
+        if snapshot.is_agents_unavailable():
+            return RuleResult(
+                rule_id=self.rule_id,
+                rule_name=self.rule_name,
+                description=self.description,
+                severity=severity,
+                status="skipped",
+                findings=[Finding(
+                    severity="info",
+                    message=(
+                        "Skipped: /api/3/agents is unavailable on this console "
+                        "(404). Cannot determine agent-managed assets without "
+                        "the agent inventory endpoint. Verify agent/unauth "
+                        "scan overlap manually in the Security Console."
+                    ),
+                    details={"agents_endpoint_unavailable": True},
+                )],
+                summary={
+                    "sites_examined": 0,
+                    "sites_flagged": 0,
+                    "sites_truncated": 0,
+                    "per_site_cap": None,
+                    "agent_asset_ids": 0,
+                },
+                sources=list(self.sources),
+            )
+
         per_site_cap = None if full_scan else sample_size
 
         findings: list[Finding] = []
@@ -72,7 +88,12 @@ class AgentUnauthCollisionRule:
             agent_found = False
             for asset in snapshot.iter_site_assets(sid):
                 examined += 1
-                if _asset_is_agent_managed(snapshot, asset):
+                asset_id = asset.get("id")
+                if (
+                    isinstance(asset_id, int)
+                    and not isinstance(asset_id, bool)
+                    and asset_id in agent_ids
+                ):
                     agent_found = True
                     break
                 if per_site_cap is not None and examined >= per_site_cap:
@@ -140,6 +161,7 @@ class AgentUnauthCollisionRule:
                 "sites_flagged": sites_flagged,
                 "sites_truncated": len(truncated_sites),
                 "per_site_cap": per_site_cap,
+                "agent_asset_ids": len(agent_ids),
             },
             sources=list(self.sources),
         )

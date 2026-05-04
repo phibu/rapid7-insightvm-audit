@@ -32,6 +32,7 @@ class EnvSnapshot:
         self._total_asset_count: int | None = None
         self._agents_cache: tuple[list[dict], int] | None = None
         self._agents_unavailable: bool = False
+        self._agent_asset_ids_cache: set[int] | None = None
         self._users: list[dict] | None = None
         self._users_endpoints_unavailable: bool = False
         self._authentication_sources: list[dict] | None = None
@@ -328,6 +329,47 @@ class EnvSnapshot:
         Callers should invoke `agents()` first to prime the flag.
         """
         return self._agents_unavailable
+
+    def agent_asset_ids(self) -> set[int]:
+        """Set of asset IDs that are correlated with an Insight Agent.
+
+        Always full-paginates /api/3/agents and caches the result, independent
+        of `sample_size` / `full_scan`. The agents endpoint returns a light
+        payload per agent and is the authoritative inventory used by rules
+        like `agent_unauth_collision` to do membership checks against
+        site-asset listings — sampling here would silently re-introduce the
+        false-negative class of bug those rules are designed to detect.
+
+        The Agent payload exposes the asset id under either `id` (top-level)
+        or nested under `links` (`rel: Asset`); we read whatever shape the
+        console returns. Returns an empty set cleanly when the agents endpoint
+        is unavailable — callers should check `is_agents_unavailable()` to
+        distinguish "no agents" from "no signal".
+        """
+        if self._agent_asset_ids_cache is not None:
+            return self._agent_asset_ids_cache
+
+        # Prime the unavailable flag via the existing agents() head-check.
+        self.agents()
+        if self._agents_unavailable:
+            self._agent_asset_ids_cache = set()
+            return self._agent_asset_ids_cache
+
+        ids: set[int] = set()
+        for a in self._client.paginate("/api/3/agents"):
+            asset_id = a.get("id")
+            if isinstance(asset_id, int) and not isinstance(asset_id, bool):
+                ids.add(asset_id)
+                continue
+            for link in a.get("links") or []:
+                if (link.get("rel") or "").lower() == "asset":
+                    href = link.get("href") or ""
+                    tail = href.rstrip("/").rsplit("/", 1)[-1]
+                    if tail.isdigit():
+                        ids.add(int(tail))
+                        break
+        self._agent_asset_ids_cache = ids
+        return ids
 
     # --- User & Permission audit accessors -------------------------------
 
