@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Asset Coverage check expanded from 2 to 6 rules.** The check now detects blind spots across four dimensions: temporal (stale/never scanned), structural (dead asset groups), depth (unauthenticated-only assets, no services detected), and scope (Insight Agent assets outside site scan ranges). New rules:
+  - `op.asset_coverage.dead_asset_groups` (warn) — asset groups with zero members.
+  - `op.asset_coverage.unauth_only_assets` (fail) — assets discovered but never authenticated.
+  - `op.asset_coverage.no_services_detected` (warn) — recently scanned assets with zero services.
+  - `op.asset_coverage.agent_only_assets` (warn, default off) — Insight Agent assets outside scheduled scan scope. Requires `audit.full_scan: true`.
+- New `AssetCoverageThresholds` config toggles: `flag_dead_asset_groups`, `flag_unauth_only_assets`, `flag_no_services_detected`, `flag_agent_only_assets`. All default to `true` except the last (default `false`).
+- `EnvSnapshot.all_included_targets()` accessor — normalizes every site's included scan targets into CIDR networks + literal IPs with a `contains(ip_str)` helper. Used by the new `agent_only_assets` rule to detect coverage gaps in Insight Agent fleet scope.
+
+### Changed
+
+- `Check` Protocol gains an optional `snapshot=None` kwarg. Existing checks continue to satisfy the protocol unchanged. `__main__._run_checks` now builds a single `EnvSnapshot` and passes it to op-checks that accept it, eliminating repeated lazy-loading and caching.
+
 ### Removed
 
 - **`credential_failure_in_recent_scans` audit rule** removed. The rule
