@@ -55,6 +55,35 @@ _ALLOWED_VERBS = frozenset({"GET", "POST"})
 # requires a deliberate code edit and review.
 _ALLOWED_POST_PATHS = frozenset({"/api/3/assets/search"})
 
+_SENSITIVE_PARAM_SUBSTRINGS = ("key", "token", "secret", "password", "auth")
+_PARAM_SUMMARY_MAX_LEN = 200
+
+
+def _summarize_params(params: dict | None) -> str:
+    """Format a params dict as `?k1=v1&k2=v2` for log lines.
+
+    Sanitizer: any key whose lowercased name contains one of
+    {"key", "token", "secret", "password", "auth"} has its value replaced
+    with "***" — defense-in-depth against a future endpoint accidentally
+    accepting a credential as a query param.
+
+    Output is capped at 200 chars to keep log lines scannable; if the cap
+    is hit, the trailing portion is replaced with "...".
+    """
+    if not params:
+        return ""
+    parts: list[str] = []
+    for k, v in params.items():
+        key_lower = str(k).lower()
+        if any(s in key_lower for s in _SENSITIVE_PARAM_SUBSTRINGS):
+            parts.append(f"{k}=***")
+        else:
+            parts.append(f"{k}={v}")
+    body = "&".join(parts)
+    if len(body) > _PARAM_SUMMARY_MAX_LEN - 1:  # -1 for the leading "?"
+        body = body[:_PARAM_SUMMARY_MAX_LEN - 4] + "..."
+    return "?" + body
+
 
 class Rapid7Client:
     def __init__(
@@ -182,6 +211,7 @@ class Rapid7Client:
         attempt = 0
         last_error: Exception | None = None
         while attempt <= self._max_retries:
+            logger.debug("→ %s %s%s", method, path, _summarize_params(params))
             try:
                 start = time.monotonic()
                 resp = self._session.request(
@@ -195,10 +225,10 @@ class Rapid7Client:
                     verify=self._verify,
                 )
                 elapsed_ms = int((time.monotonic() - start) * 1000)
-                logger.debug("%s %s -> %s (%d ms)", method, path, resp.status_code, elapsed_ms)
+                logger.debug("← %s %s %d in %dms", method, path, resp.status_code, elapsed_ms)
             except requests.RequestException as e:
                 last_error = e
-                logger.debug("%s %s network error: %s", method, path, e)
+                logger.debug("✗ %s %s network error: %s", method, path, e)
                 if attempt >= self._max_retries:
                     raise Rapid7ClientError(
                         f"network error after {attempt + 1} attempt(s) "
@@ -209,6 +239,9 @@ class Rapid7Client:
                 continue
 
             if resp.status_code in (401, 403):
+                logger.warning(
+                    "✗ %s %s %d: auth failed", method, path, resp.status_code,
+                )
                 raise Rapid7AuthError(
                     f"auth failed ({resp.status_code}); check R7_API_KEY and base_url",
                     status_code=resp.status_code,
@@ -220,10 +253,18 @@ class Rapid7Client:
                         status_code=resp.status_code,
                     )
                 delay = self._retry_delay(resp, attempt)
+                logger.debug(
+                    "retry %d/%d for %s %s after %.1fs (status %d)",
+                    attempt + 1, self._max_retries, method, path, delay, resp.status_code,
+                )
                 time.sleep(delay)
                 attempt += 1
                 continue
             if resp.status_code >= 400:
+                logger.warning(
+                    "✗ %s %s %d: %s", method, path, resp.status_code,
+                    resp.text[:200] if resp.text else "<empty body>",
+                )
                 raise Rapid7ClientError(
                     f"HTTP {resp.status_code} from {method} {path}: {resp.text[:1500]}",
                     status_code=resp.status_code,

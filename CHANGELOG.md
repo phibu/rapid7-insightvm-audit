@@ -5,6 +5,18 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **Logging**: when `--log-file` is set, every log line is flushed to
+  disk immediately so the file can be tailed live during long-running
+  audits. Combined with `--verbose`, every HTTP request is logged
+  (`→ GET /api/3/sites/47/assets?page=12` ... `← GET ... 200 in 340ms`)
+  with retry visibility and a WARNING line on non-retried 4xx/5xx
+  responses. Querystring values for sensitive-looking parameter names
+  (`*key*`, `*token*`, `*secret*`, `*password*`, `*auth*`) are redacted.
+
 ## [0.2.4] - 2026-05-04
 
 ### Changed

@@ -10,6 +10,7 @@ from rapid7_healthcheck.client import (
     Rapid7AuthError,
     Rapid7Client,
     Rapid7ClientError,
+    _summarize_params,
 )
 
 
@@ -290,3 +291,121 @@ def test_network_error_message_includes_method_path_and_attempt_count(session):
     assert "3 attempt(s)" in msg
     # Underlying error is preserved.
     assert "Read timed out" in msg
+
+
+def test_summarize_params_none_returns_empty_string():
+    assert _summarize_params(None) == ""
+
+
+def test_summarize_params_empty_dict_returns_empty_string():
+    assert _summarize_params({}) == ""
+
+
+def test_summarize_params_basic_kv_pairs():
+    out = _summarize_params({"page": 0, "size": 100})
+    # Order may vary (dict iteration is insertion-order in 3.7+, but be
+    # tolerant). Both keys + values appear, prefixed with "?".
+    assert out.startswith("?")
+    assert "page=0" in out
+    assert "size=100" in out
+
+
+def test_summarize_params_redacts_sensitive_keys():
+    """Defense-in-depth: any key whose lowercased name contains
+    'key', 'token', 'secret', 'password', or 'auth' must be redacted."""
+    out = _summarize_params({
+        "q": "x",
+        "api_key": "MUST-NOT-LEAK-1",
+        "auth_token": "MUST-NOT-LEAK-2",
+        "user_password": "MUST-NOT-LEAK-3",
+        "session_secret": "MUST-NOT-LEAK-4",
+        "X-Api-Key": "MUST-NOT-LEAK-5",
+    })
+    assert "MUST-NOT-LEAK-1" not in out
+    assert "MUST-NOT-LEAK-2" not in out
+    assert "MUST-NOT-LEAK-3" not in out
+    assert "MUST-NOT-LEAK-4" not in out
+    assert "MUST-NOT-LEAK-5" not in out
+    assert "***" in out
+    assert "q=x" in out  # non-sensitive keys still appear
+
+
+def test_summarize_params_caps_output_at_200_chars():
+    """Long params dicts get truncated with an ellipsis marker so log
+    lines stay scannable."""
+    big = {f"k{i}": f"v{i}" for i in range(100)}
+    out = _summarize_params(big)
+    assert len(out) <= 200
+
+
+import logging
+
+
+def test_successful_get_emits_arrow_debug_lines(caplog, session):
+    """A successful GET produces both a `→` (request) and `←` (response)
+    DEBUG line, each containing method and path."""
+    caplog.set_level(logging.DEBUG, logger="rapid7_healthcheck.client")
+    session.request.return_value = _resp(200, {"ok": True})
+    c = make_client(session)
+    c.get("/api/3/test")
+
+    request_lines = [r for r in caplog.records if "→" in r.getMessage()]
+    response_lines = [r for r in caplog.records if "←" in r.getMessage()]
+    assert len(request_lines) >= 1
+    assert len(response_lines) >= 1
+    assert "GET" in request_lines[0].getMessage()
+    assert "/api/3/test" in request_lines[0].getMessage()
+    assert "GET" in response_lines[0].getMessage()
+    assert "200" in response_lines[0].getMessage()
+
+
+def test_get_with_params_includes_sanitized_querystring(caplog, session):
+    """Querystring appears in the `→` line; sensitive keys are redacted."""
+    caplog.set_level(logging.DEBUG, logger="rapid7_healthcheck.client")
+    session.request.return_value = _resp(200, {"ok": True})
+    c = make_client(session)
+    c.get("/api/3/test", params={"page": 0, "api_key": "SECRET"})
+
+    request_lines = [r for r in caplog.records if "→" in r.getMessage()]
+    assert any("page=0" in r.getMessage() for r in request_lines)
+    assert all("SECRET" not in r.getMessage() for r in request_lines)
+    assert any("***" in r.getMessage() for r in request_lines)
+
+
+def test_404_response_emits_x_warning_line(caplog, session):
+    """Non-retried error (404) emits a WARNING with `✗`, status, and body snippet."""
+    caplog.set_level(logging.DEBUG, logger="rapid7_healthcheck.client")
+    session.request.return_value = _resp(404, None)
+    # Manually set text for the body snippet assertion
+    session.request.return_value.text = "not found here"
+    c = make_client(session)
+
+    with pytest.raises(Rapid7ClientError):
+        c.get("/api/3/missing")
+
+    warning_lines = [
+        r for r in caplog.records
+        if r.levelno == logging.WARNING and "✗" in r.getMessage()
+    ]
+    assert len(warning_lines) == 1
+    msg = warning_lines[0].getMessage()
+    assert "404" in msg
+    assert "/api/3/missing" in msg
+    assert "not found here" in msg
+
+
+def test_retry_path_emits_debug_line(caplog, session, monkeypatch):
+    """A retry-status response (e.g. 429) followed by 200 emits a
+    `retry N/M` DEBUG line."""
+    caplog.set_level(logging.DEBUG, logger="rapid7_healthcheck.client")
+    monkeypatch.setattr("rapid7_healthcheck.client.time.sleep", lambda s: None)
+    session.request.side_effect = [
+        _resp(429, headers={"Retry-After": "0"}),
+        _resp(200, {"ok": True}),
+    ]
+    c = make_client(session, max_retries=2)
+    c.get("/api/3/flaky")
+
+    retry_lines = [r for r in caplog.records if "retry " in r.getMessage()]
+    assert len(retry_lines) >= 1
+    assert "/api/3/flaky" in retry_lines[0].getMessage()

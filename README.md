@@ -162,7 +162,13 @@ Optional flags:
 - `--config <path>` — config file (default `./config.yaml`)
 - `--output <path>` — write the report to a specific path (overrides the configured filename pattern)
 - `--verbose` — DEBUG logging
-- `--log-file <path>` — also write logs to a file
+- `--log-file <path>` — also write logs to a file. When set, every log
+  line is flushed to disk immediately so the file can be tailed live
+  (`tail -f /path/to/log`) during long-running audits. Combined with
+  `--verbose`, every HTTP request to the Security Console is logged at
+  DEBUG level — showing the exact API call in flight, the HTTP status
+  and elapsed time on the way back, and a WARNING line for any
+  non-retried 4xx/5xx response.
 
 The CLI prints the absolute path of the written report on success.
 
