@@ -60,7 +60,7 @@ def test_drifted_agents_flagged():
     assert drifted_hosts == ["h3", "h4"]
     for f in result.findings:
         assert "observed_version" in f.details
-        assert "newest_version" in f.details
+        assert "reference_version" in f.details
 
 
 def test_unparseable_version_counted_separately():
@@ -136,3 +136,23 @@ def test_single_parseable_agent_self_skips():
     )
 
     assert result.status == "skipped"
+
+
+def test_pinned_mode_exact_match_passes():
+    """Single agent on the pinned version should pass with no findings,
+    summary.reference_mode == 'pinned', no behind/ahead counts."""
+    from rapid7_healthcheck.audit.rules.insight_agent_version_currency import InsightAgentVersionCurrencyRule
+    from tests.audit.conftest import FakeSnapshot
+
+    fake_snapshot = FakeSnapshot()
+    fake_snapshot.set_agents([
+        _agent_with_version("h1", "4.1.0.2", agent_id="a"),
+    ], total=1)
+    r = InsightAgentVersionCurrencyRule().run(
+        fake_snapshot, "warn", False, 500, {"pinned_version": "4.1.0.2"},
+    )
+    assert r.status == "pass"
+    assert r.summary["reference_mode"] == "pinned"
+    assert r.summary["reference_version"] == "4.1.0.2"
+    assert r.summary["agents_drifted"] == 0
+    assert r.summary["agents_ahead_of_pin"] == 0
