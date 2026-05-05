@@ -400,3 +400,35 @@ class TestAgentAssetIdsSampled:
         sample_ids, total = snap.agent_asset_ids_sampled()
         assert sample_ids == [0, 1, 2]
         assert total == 3
+
+    def test_independent_from_agent_asset_ids_reverse_order(self):
+        agents = [{"id": i} for i in range(10)]
+        c = _FakeAgentsClient(total=10, agents=agents)
+        snap = EnvSnapshot(c, full_scan=False, sample_size=5)
+
+        full = snap.agent_asset_ids()
+        assert full == set(range(10))
+
+        sample_ids, total = snap.agent_asset_ids_sampled()
+        assert sample_ids == [0, 1, 2, 3, 4]
+        assert total == 10
+
+    def test_short_circuits_when_agents_already_unavailable(self):
+        # Prime the unavailable flag via agents()'s 404 path, then
+        # verify agent_asset_ids_sampled() returns ([], 0) without
+        # issuing a second HEAD probe.
+        from rapid7_healthcheck.client import Rapid7ClientError
+        c = _FakeAgentsClient(head_raises=Rapid7ClientError("404 at /api/3/agents", status_code=404))
+        snap = EnvSnapshot(c, full_scan=False, sample_size=100)
+
+        # First call: agents() flips the flag.
+        snap.agents()
+        assert snap.is_agents_unavailable() is True
+        head_calls_before = len(c.get_calls)
+
+        # Second call: agent_asset_ids_sampled() should short-circuit.
+        sample_ids, total = snap.agent_asset_ids_sampled()
+
+        assert (sample_ids, total) == ([], 0)
+        # No additional HTTP calls.
+        assert len(c.get_calls) == head_calls_before

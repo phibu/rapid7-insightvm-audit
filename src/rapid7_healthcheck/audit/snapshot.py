@@ -500,8 +500,11 @@ class EnvSnapshot:
             - ``sample_ids``: up to ``self._sample_size`` IDs taken in API
               default order (typically newest first)
 
-        Cheap by design: paginates ``/api/3/agents`` only until ``sample_size``
-        IDs are collected (≈ ``ceil(sample_size / 100)`` page fetches).
+        Consumes at most ``sample_size`` agent records from ``/api/3/agents``
+        via ``itertools.islice``; the returned list may be shorter than
+        ``sample_size`` when some records carry neither a top-level ``id`` nor
+        a valid ``links[rel=Asset]`` href. Page fetches: at most
+        ``ceil(sample_size / 100)``.
         Independent of ``full_scan`` — always samples.
 
         Returns ``([], 0)`` cleanly when ``/api/3/agents`` is unavailable
@@ -514,6 +517,10 @@ class EnvSnapshot:
         distinct shapes, distinct consumers.
         """
         if self._agent_asset_ids_sampled_cache is not None:
+            return self._agent_asset_ids_sampled_cache
+
+        if self._agents_unavailable:
+            self._agent_asset_ids_sampled_cache = ([], 0)
             return self._agent_asset_ids_sampled_cache
 
         try:
