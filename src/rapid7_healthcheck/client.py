@@ -126,9 +126,6 @@ class Rapid7Client:
         if api_key is not None:
             self._headers["X-Api-Key"] = api_key
 
-        # Note: this constructor does NOT extend the read-only HTTP invariant.
-        # _ALLOWED_VERBS and _ALLOWED_POST_PATHS are unchanged.
-
     def connect(self) -> None:
         """Validate base URL and credentials by hitting /api/3."""
         self.get("/api/3")

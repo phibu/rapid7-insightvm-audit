@@ -489,3 +489,25 @@ def test_client_rejects_default_page_size_501(session):
             default_page_size=501,
             session=session,
         )
+
+
+def test_client_accepts_parallel_pages_sixteen(session):
+    """Inclusive upper bound — 16 must be accepted."""
+    c = Rapid7Client(
+        base_url="https://example.test",
+        api_key="k",
+        parallel_pages=16,
+        session=session,
+    )
+    assert c._parallel_pages == 16
+
+
+def test_client_accepts_default_page_size_500(session):
+    """Inclusive upper bound — 500 must be accepted."""
+    c = Rapid7Client(
+        base_url="https://example.test",
+        api_key="k",
+        default_page_size=500,
+        session=session,
+    )
+    assert c._default_page_size == 500
