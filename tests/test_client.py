@@ -409,3 +409,83 @@ def test_retry_path_emits_debug_line(caplog, session, monkeypatch):
     retry_lines = [r for r in caplog.records if "retry " in r.getMessage()]
     assert len(retry_lines) >= 1
     assert "/api/3/flaky" in retry_lines[0].getMessage()
+
+
+def test_client_default_timeout_is_60_seconds(session):
+    """Default request timeout is 60s (was 30s in v0.2.7)."""
+    c = Rapid7Client(
+        base_url="https://example.test",
+        api_key="k",
+        session=session,
+    )
+    assert c._timeout == 60
+
+
+def test_client_default_parallel_pages_is_one(session):
+    """Default parallel_pages is 1 (sequential — preserves today's behavior)."""
+    c = Rapid7Client(
+        base_url="https://example.test",
+        api_key="k",
+        session=session,
+    )
+    assert c._parallel_pages == 1
+
+
+def test_client_default_page_size_is_250(session):
+    """Default paginated page size is 250 (was 500 in v0.2.7)."""
+    c = Rapid7Client(
+        base_url="https://example.test",
+        api_key="k",
+        session=session,
+    )
+    assert c._default_page_size == 250
+
+
+def test_client_accepts_parallel_pages_kwarg(session):
+    c = Rapid7Client(
+        base_url="https://example.test",
+        api_key="k",
+        parallel_pages=6,
+        session=session,
+    )
+    assert c._parallel_pages == 6
+
+
+def test_client_rejects_parallel_pages_zero(session):
+    with pytest.raises(ValueError, match="parallel_pages"):
+        Rapid7Client(
+            base_url="https://example.test",
+            api_key="k",
+            parallel_pages=0,
+            session=session,
+        )
+
+
+def test_client_rejects_parallel_pages_seventeen(session):
+    with pytest.raises(ValueError, match="parallel_pages"):
+        Rapid7Client(
+            base_url="https://example.test",
+            api_key="k",
+            parallel_pages=17,
+            session=session,
+        )
+
+
+def test_client_rejects_default_page_size_zero(session):
+    with pytest.raises(ValueError, match="default_page_size"):
+        Rapid7Client(
+            base_url="https://example.test",
+            api_key="k",
+            default_page_size=0,
+            session=session,
+        )
+
+
+def test_client_rejects_default_page_size_501(session):
+    with pytest.raises(ValueError, match="default_page_size"):
+        Rapid7Client(
+            base_url="https://example.test",
+            api_key="k",
+            default_page_size=501,
+            session=session,
+        )

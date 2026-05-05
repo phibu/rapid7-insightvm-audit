@@ -93,19 +93,31 @@ class Rapid7Client:
         api_key: str | None = None,
         basic_auth: tuple[str, str] | None = None,
         verify_tls: bool = True,
-        timeout_seconds: int = 30,
+        timeout_seconds: int = 60,
         max_retries: int = 3,
+        parallel_pages: int = 1,
+        default_page_size: int = 250,
         session: requests.Session | None = None,
     ) -> None:
         if (api_key is None) == (basic_auth is None):
             raise ValueError(
                 "Rapid7Client requires exactly one of api_key or basic_auth"
             )
+        if not (1 <= parallel_pages <= 16):
+            raise ValueError(
+                f"parallel_pages must be in range [1, 16]; got {parallel_pages}"
+            )
+        if not (1 <= default_page_size <= 500):
+            raise ValueError(
+                f"default_page_size must be in range [1, 500]; got {default_page_size}"
+            )
         self._base_url = base_url.rstrip("/")
         self._basic_auth = basic_auth
         self._verify = verify_tls
         self._timeout = timeout_seconds
         self._max_retries = max_retries
+        self._parallel_pages = parallel_pages
+        self._default_page_size = default_page_size
         self._session = session or requests.Session()
         self._headers: dict[str, str] = {
             "Accept": "application/json",
@@ -113,6 +125,9 @@ class Rapid7Client:
         }
         if api_key is not None:
             self._headers["X-Api-Key"] = api_key
+
+        # Note: this constructor does NOT extend the read-only HTTP invariant.
+        # _ALLOWED_VERBS and _ALLOWED_POST_PATHS are unchanged.
 
     def connect(self) -> None:
         """Validate base URL and credentials by hitting /api/3."""
