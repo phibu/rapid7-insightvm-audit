@@ -17,6 +17,7 @@ from rapid7_healthcheck.checks._op_rule import (
     make_rule_result,
     rollup_check_status,
     rule_summary,
+    safe_run,
     skipped_rule,
 )
 from rapid7_healthcheck.config import AppConfig
@@ -88,10 +89,49 @@ class AssetCoverageCheck:
         start = time.monotonic()
         t = config.thresholds.asset_coverage
         rule_results: list[RuleResult] = [
-            self._stale_assets(client, t),
-            self._never_scanned_assets(client, t),
-            self._dead_asset_groups(snapshot, t),
-            self._agent_only_assets(snapshot, client, t, config.audit),
+            safe_run(
+                lambda: self._stale_assets(client, t),
+                rule_id="op.asset_coverage.stale_assets",
+                rule_name="Stale assets",
+                description=(
+                    "Assets whose last scan is older than the stale threshold "
+                    "(coverage gap, but not yet expired)."
+                ),
+                sources=[_SRC_FILTERED_SEARCH],
+            ),
+            safe_run(
+                lambda: self._never_scanned_assets(client, t),
+                rule_id="op.asset_coverage.never_scanned_assets",
+                rule_name="Never-scanned assets",
+                description=(
+                    "Assets whose last scan exceeds the never-scanned threshold — "
+                    "treated as effectively unscanned."
+                ),
+                sources=[_SRC_FILTERED_SEARCH],
+                default_severity="fail",
+            ),
+            safe_run(
+                lambda: self._dead_asset_groups(snapshot, t),
+                rule_id="op.asset_coverage.dead_asset_groups",
+                rule_name="Dead asset groups",
+                description=(
+                    "Asset groups whose membership criteria match zero assets. "
+                    "Orphaned RBAC/report scopes."
+                ),
+                sources=[_SRC_ASSET_GROUPS],
+            ),
+            safe_run(
+                lambda: self._agent_only_assets(snapshot, client, t, config.audit),
+                rule_id="op.asset_coverage.agent_only_assets",
+                rule_name="Insight Agent assets outside scheduled scan scope",
+                description=(
+                    "Assets reporting via Insight Agent whose IP falls outside "
+                    "every site's configured included_targets. These assets only "
+                    "get opportunistic agent data; they're never reached by "
+                    "scheduled scans."
+                ),
+                sources=[_SRC_INSIGHT_AGENT],
+            ),
         ]
 
         return CheckResult(
