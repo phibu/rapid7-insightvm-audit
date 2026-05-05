@@ -443,3 +443,21 @@ def test_asset_group_member_count_happy_path():
     })
     s = EnvSnapshot(c, full_scan=False, sample_size=500)
     assert s.asset_group_member_count(1) == 3
+
+
+def test_asset_group_member_count_returns_none_on_malformed_body():
+    """Dict body without a list `resources` key → None (treated like an
+    error, not as zero members). Prevents false-positive dead-group flag."""
+    c = _FakeClient()
+    # Well-formed dict, but `resources` absent.
+    c.set_get("/api/3/asset_groups/1/assets", {"links": []})
+    s = EnvSnapshot(c, full_scan=False, sample_size=500)
+    assert s.asset_group_member_count(1) is None
+
+    # `resources` present but wrong type.
+    c.set_get("/api/3/asset_groups/2/assets", {"resources": "not-a-list"})
+    assert s.asset_group_member_count(2) is None
+
+    # Body itself is not a dict.
+    c.set_get("/api/3/asset_groups/3/assets", "string-body")  # type: ignore[arg-type]
+    assert s.asset_group_member_count(3) is None

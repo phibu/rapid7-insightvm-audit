@@ -331,7 +331,10 @@ class EnvSnapshot:
             self._asset_group_member_counts[group_id] = None
             return None
         resources = body.get("resources") if isinstance(body, dict) else None
-        count = len(resources) if isinstance(resources, list) else 0
+        if not isinstance(resources, list):
+            self._asset_group_member_counts[group_id] = None
+            return None
+        count = len(resources)
         self._asset_group_member_counts[group_id] = count
         return count
 
