@@ -333,6 +333,14 @@ class AssetCoverageCheck:
                 sources=sources,
             )
 
+        rule_start = time.monotonic()
+
+        # Prime _agents_unavailable via the sampled accessor — its head probe
+        # is the only thing that flips the flag for this rule's code path.
+        # Calling is_agents_unavailable() before this would always see the
+        # initial False and miss the genuine 404 → empty-fleet ambiguity.
+        sample_ids, total_agents = snapshot.agent_asset_ids_sampled()
+
         if snapshot.is_agents_unavailable():
             return skipped_rule(
                 rule_id=rid,
@@ -341,7 +349,6 @@ class AssetCoverageCheck:
                 sources=sources,
             )
 
-        rule_start = time.monotonic()
         targets = snapshot.all_included_targets()
 
         if targets is None:
@@ -357,7 +364,6 @@ class AssetCoverageCheck:
                 sources=sources,
             )
 
-        sample_ids, total_agents = snapshot.agent_asset_ids_sampled()
         logger.info(
             "agent_only_assets: sampling %d of %d agents (sample_size=%d)",
             len(sample_ids),

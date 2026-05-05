@@ -31,6 +31,7 @@ class _FakeSnapshot:
         asset_groups: list[dict] | None = None,
         agent_asset_ids: set[int] | None = None,
         agents_unavailable: bool = False,
+        flip_unavailable_on_sample_call: bool = False,
         included_targets=None,
         full_scan: bool = False,
         sample_size: int = 500,
@@ -41,6 +42,7 @@ class _FakeSnapshot:
         self._asset_groups = asset_groups or []
         self._agent_asset_ids = agent_asset_ids or set()
         self._agents_unavailable = agents_unavailable
+        self._flip_unavailable_on_sample_call = flip_unavailable_on_sample_call
         self._included_targets = included_targets
         self.full_scan = full_scan
         self.sample_size = sample_size
@@ -54,6 +56,9 @@ class _FakeSnapshot:
     def all_included_targets(self): return self._included_targets
 
     def agent_asset_ids_sampled(self) -> tuple[list[int], int]:
+        if self._flip_unavailable_on_sample_call and not self._agents_unavailable:
+            self._agents_unavailable = True
+            return [], 0
         if self._agents_unavailable:
             return [], 0
         return list(self._sample_ids), self._total_agents
@@ -497,6 +502,30 @@ def test_r4_skipped_when_agents_unavailable(fake_client, app_config):
 
     assert rule.status == "skipped"
     assert "agents endpoint unavailable" in rule.rule_name
+
+
+def test_r4_unavailable_endpoint_detected_via_sample_call(fake_client, app_config):
+    """Regression: ensure is_agents_unavailable() guard fires AFTER the
+    sampled accessor primes the flag. Previously the guard ran before
+    priming, so a 404 console would silently report "No Insight Agents
+    deployed" instead of the correct skip."""
+    snap = _FakeSnapshot(
+        asset_groups=[],
+        sample_ids=[],
+        total_agents=0,
+        agents_unavailable=False,            # initial state — like a real fresh snapshot
+        flip_unavailable_on_sample_call=True,  # accessor flips it (simulates 404)
+        included_targets=_r4_targets("10.0.0.0/24"),
+    )
+    fake_client.set_paginate_post("/api/3/assets/search", [])
+
+    result = AssetCoverageCheck().run(fake_client, _r4_app_config(app_config), snapshot=snap)
+    rule = _rule(result, "op.asset_coverage.agent_only_assets")
+
+    assert rule.status == "skipped"
+    assert "agents endpoint unavailable" in rule.rule_name
+    # NOT the empty-fleet pass path:
+    assert not any("No Insight Agents" in f.message for f in rule.findings)
 
 
 def test_r4_empty_fleet_pass(fake_client, app_config):
