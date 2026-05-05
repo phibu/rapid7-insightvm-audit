@@ -358,6 +358,12 @@ class AssetCoverageCheck:
             )
 
         sample_ids, total_agents = snapshot.agent_asset_ids_sampled()
+        logger.info(
+            "agent_only_assets: sampling %d of %d agents (sample_size=%d)",
+            len(sample_ids),
+            total_agents,
+            audit_settings.sample_size,
+        )
 
         # Empty fleet: short-circuit with an informational pass.
         if total_agents == 0:
@@ -413,11 +419,12 @@ class AssetCoverageCheck:
 
         # Summary finding (always present): describes the sample + extrapolation.
         summary_severity = "warn" if outsiders else "info"
+        sample_share_pct = round(fetched_count / total_agents * 100, 1) if total_agents else 0.0
         summary_finding = Finding(
             severity=summary_severity,
             message=(
                 f"Sampled {fetched_count} of {total_agents} agents "
-                f"({round(fetched_count / total_agents * 100, 1)}%): "
+                f"({sample_share_pct}%): "
                 f"{len(outsiders)} of sample ({pct}%) are outside every site's "
                 f"scan scope. Extrapolated estimate: ≈{estimate} of {total_agents} "
                 f"agents fleet-wide. Sample is first-N by API default order; "
