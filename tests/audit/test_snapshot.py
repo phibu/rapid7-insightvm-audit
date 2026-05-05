@@ -269,3 +269,11 @@ class TestExtractAgentAssetId:
     def test_links_without_asset_rel_returns_none(self):
         agent = {"links": [{"rel": "self", "href": "/api/3/agents/x"}]}
         assert _extract_agent_asset_id(agent) is None
+
+    def test_links_href_trailing_slash(self):
+        agent = {"links": [{"rel": "asset", "href": "/api/3/assets/42/"}]}
+        assert _extract_agent_asset_id(agent) == 42
+
+    def test_links_non_dict_element_skipped(self):
+        agent = {"links": [None, "garbage", 42, {"rel": "asset", "href": "/api/3/assets/9"}]}
+        assert _extract_agent_asset_id(agent) == 9

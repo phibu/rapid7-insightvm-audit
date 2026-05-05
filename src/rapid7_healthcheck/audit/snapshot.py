@@ -103,6 +103,8 @@ def _extract_agent_asset_id(agent: dict) -> int | None:
     if isinstance(asset_id, int) and not isinstance(asset_id, bool):
         return asset_id
     for link in agent.get("links") or []:
+        if not isinstance(link, dict):
+            continue
         if (link.get("rel") or "").lower() == "asset":
             href = link.get("href") or ""
             tail = href.rstrip("/").rsplit("/", 1)[-1]
