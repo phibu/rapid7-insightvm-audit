@@ -113,10 +113,11 @@ class AssetCoverageCheck:
             safe_run(
                 lambda: self._dead_asset_groups(snapshot, t),
                 rule_id="op.asset_coverage.dead_asset_groups",
-                rule_name="Dead asset groups",
+                rule_name="Asset groups with zero members",
                 description=(
-                    "Asset groups whose membership criteria match zero assets. "
-                    "Orphaned RBAC/report scopes."
+                    "Asset groups whose membership criteria match no assets — orphaned "
+                    "RBAC/report scopes that were probably created for a project that "
+                    "ended or for assets that have since been removed."
                 ),
                 sources=[_SRC_ASSET_GROUPS],
             ),
