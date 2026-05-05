@@ -10,10 +10,14 @@ from audit `rule_id`s in the delta blob's signature index.
 """
 from __future__ import annotations
 
-from typing import Iterable
+import logging
+import time
+from typing import Callable, Iterable
 
 from rapid7_healthcheck.audit import RuleResult
 from rapid7_healthcheck.checks import Finding, Severity, Status
+
+logger = logging.getLogger(__name__)
 
 
 def make_rule_result(
@@ -109,6 +113,43 @@ def error_rule(
         error_path=error_path,
         error_status_code=error_status_code,
     )
+
+
+def safe_run(
+    fn: Callable[[], RuleResult],
+    *,
+    rule_id: str,
+    rule_name: str,
+    description: str,
+    sources: Iterable[str] = (),
+    default_severity: Severity = "warn",
+) -> RuleResult:
+    """Run a rule producer; on any Exception, return an error_rule.
+
+    Identity (rule_id/name/description/sources) is supplied by the caller
+    because the rule method may raise before returning, so we cannot read
+    its internal constants reflectively. Drift between the wrapper's
+    identity and the rule method's own constants is caught by per-check
+    unit tests that assert rule_id stability.
+
+    `default_severity` is the rule's own severity tag — used by the
+    state-blob/delta logic; surfaces in the synthesized error_rule when
+    the producer raises.
+    """
+    rule_start = time.monotonic()
+    try:
+        return fn()
+    except Exception as e:
+        logger.exception("op-check rule %s raised", rule_id)
+        return error_rule(
+            rule_id=rule_id,
+            rule_name=rule_name,
+            description=description,
+            sources=sources,
+            error=e,
+            duration_ms=int((time.monotonic() - rule_start) * 1000),
+            default_severity=default_severity,
+        )
 
 
 def rollup_check_status(rule_results: list[RuleResult]) -> Status:
