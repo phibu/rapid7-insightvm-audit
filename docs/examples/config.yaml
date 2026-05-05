@@ -50,6 +50,13 @@ thresholds:
     # Flag asset groups whose membership criteria match zero assets
     # (orphaned RBAC/report scopes).
     flag_dead_asset_groups: true
+    # Maximum number of asset groups for which to issue a per-group
+    # GET /api/3/asset_groups/{id}/assets fallback when the listing
+    # endpoint does not populate the inline `assets` count for dynamic
+    # groups. Bounds the worst-case extra HTTP calls per run. Set to 0
+    # to disable the fallback (groups with missing inline counts will
+    # not be flagged and not resolved).
+    dead_groups_fallback_cap: 200
     # Flag Insight Agent-managed assets that fall outside every site's
     # configured scan target ranges — they only get opportunistic agent
     # data, never scheduled scans. REQUIRES audit.full_scan: true to

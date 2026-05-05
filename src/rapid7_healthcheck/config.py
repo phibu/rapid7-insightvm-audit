@@ -57,6 +57,7 @@ class AssetCoverageThresholds:
     never_scanned_days: int
     flag_dead_asset_groups: bool = True
     flag_agent_only_assets: bool = False
+    dead_groups_fallback_cap: int = 200
 
 
 @dataclass(frozen=True)
