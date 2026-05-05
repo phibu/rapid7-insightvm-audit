@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from rapid7_healthcheck.audit.snapshot import EnvSnapshot
+from rapid7_healthcheck.audit.snapshot import EnvSnapshot, _extract_agent_asset_id
 
 
 class _FakeClient:
@@ -233,3 +233,39 @@ def test_asset_has_agent_handles_top_level_agentid():
     """Some asset shapes use top-level agentId instead of nested agent.agentId."""
     s = _snapshot()
     assert s.asset_has_agent({"id": 1, "agentId": "abc-123"}) is True
+
+
+# --- _extract_agent_asset_id -------------------------------------------
+
+
+class TestExtractAgentAssetId:
+    def test_top_level_id_int(self):
+        assert _extract_agent_asset_id({"id": 42}) == 42
+
+    def test_top_level_id_bool_rejected(self):
+        # bool is an int subclass in Python; we want True/False ignored
+        assert _extract_agent_asset_id({"id": True}) is None
+
+    def test_top_level_id_missing_falls_back_to_links(self):
+        agent = {
+            "links": [
+                {"rel": "self", "href": "/api/3/agents/abc"},
+                {"rel": "Asset", "href": "/api/3/assets/777"},
+            ]
+        }
+        assert _extract_agent_asset_id(agent) == 777
+
+    def test_links_rel_case_insensitive(self):
+        agent = {"links": [{"rel": "asset", "href": "/api/3/assets/123"}]}
+        assert _extract_agent_asset_id(agent) == 123
+
+    def test_links_href_non_numeric_returns_none(self):
+        agent = {"links": [{"rel": "asset", "href": "/api/3/assets/foo"}]}
+        assert _extract_agent_asset_id(agent) is None
+
+    def test_no_id_no_links_returns_none(self):
+        assert _extract_agent_asset_id({}) is None
+
+    def test_links_without_asset_rel_returns_none(self):
+        agent = {"links": [{"rel": "self", "href": "/api/3/agents/x"}]}
+        assert _extract_agent_asset_id(agent) is None

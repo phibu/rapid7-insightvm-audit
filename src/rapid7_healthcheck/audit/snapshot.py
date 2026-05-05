@@ -91,6 +91,26 @@ def _expand_target(entry: str, *, range_cap: int = 1024) -> tuple[list[IPv4Netwo
     return networks, literals
 
 
+def _extract_agent_asset_id(agent: dict) -> int | None:
+    """Extract the correlated asset ID from an Insight Agent record.
+
+    The /api/3/agents payload exposes the asset id either at top level as
+    ``id`` (newer consoles) or only via ``links`` (older shapes), where
+    one entry has ``rel == "Asset"`` and ``href == "/api/3/assets/{id}"``.
+    Returns None when neither shape yields a numeric id.
+    """
+    asset_id = agent.get("id")
+    if isinstance(asset_id, int) and not isinstance(asset_id, bool):
+        return asset_id
+    for link in agent.get("links") or []:
+        if (link.get("rel") or "").lower() == "asset":
+            href = link.get("href") or ""
+            tail = href.rstrip("/").rsplit("/", 1)[-1]
+            if tail.isdigit():
+                return int(tail)
+    return None
+
+
 class EnvSnapshot:
     def __init__(self, client: Any, *, full_scan: bool, sample_size: int) -> None:
         self._client = client
@@ -462,17 +482,9 @@ class EnvSnapshot:
 
         ids: set[int] = set()
         for a in self._client.paginate("/api/3/agents"):
-            asset_id = a.get("id")
-            if isinstance(asset_id, int) and not isinstance(asset_id, bool):
-                ids.add(asset_id)
-                continue
-            for link in a.get("links") or []:
-                if (link.get("rel") or "").lower() == "asset":
-                    href = link.get("href") or ""
-                    tail = href.rstrip("/").rsplit("/", 1)[-1]
-                    if tail.isdigit():
-                        ids.add(int(tail))
-                        break
+            aid = _extract_agent_asset_id(a)
+            if aid is not None:
+                ids.add(aid)
         self._agent_asset_ids_cache = ids
         return ids
 
