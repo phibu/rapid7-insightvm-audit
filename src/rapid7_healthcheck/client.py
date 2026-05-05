@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Iterator
 from urllib.parse import urljoin
 
@@ -245,10 +245,18 @@ class Rapid7Client:
                         )
                         futures[page_num] = fut
 
-                    # Collect results, then yield in page-index order.
+                    # Drain results as they complete (not in submission order)
+                    # so a slow page does not block the loop on faster ones.
+                    # The in-order yield contract is preserved by the per-page
+                    # dict + the batch-order yield below.
                     results: dict[int, dict] = {}
-                    for page_num, fut in futures.items():
-                        results[page_num] = fut.result()  # raises if the future failed
+                    fut_to_page = {fut: pn for pn, fut in futures.items()}
+                    for fut in as_completed(futures.values()):
+                        # First exception wins; remaining in-flight futures are
+                        # cancelled by the except-BaseException block below.
+                        # Simultaneous failures lose their second exception by
+                        # design — one 5xx is enough to abort an audit.
+                        results[fut_to_page[fut]] = fut.result()
 
                     for page_num in batch:
                         for resource in results[page_num].get("resources", []):

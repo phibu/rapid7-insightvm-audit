@@ -518,19 +518,25 @@ import time as _time_mod
 
 
 def test_parallel_paginate_yields_in_page_order(session):
-    """Pages 0, 1, 2 — page 1's response sleeps longest, page 2's shortest.
+    """Force page 2 to complete before page 1 via a threading barrier.
     Iterator must still yield resources in page-0, page-1, page-2 order."""
     page0 = {"resources": [{"id": "p0a"}, {"id": "p0b"}], "page": {"number": 0, "totalPages": 3}}
     page1 = {"resources": [{"id": "p1a"}], "page": {"number": 1, "totalPages": 3}}
     page2 = {"resources": [{"id": "p2a"}, {"id": "p2b"}], "page": {"number": 2, "totalPages": 3}}
 
     pages_by_number = {0: page0, 1: page1, 2: page2}
-    sleep_by_number = {0: 0.0, 1: 0.05, 2: 0.0}
+    page2_done = threading.Event()
 
     def fake_request(*args, **kwargs):
         page_num = kwargs["params"]["page"]
-        _time_mod.sleep(sleep_by_number[page_num])
-        return _resp(200, pages_by_number[page_num])
+        if page_num == 1:
+            # Block until page 2 has finished — guarantees out-of-order
+            # completion so the test exercises the as_completed path.
+            page2_done.wait(timeout=2.0)
+        resp = _resp(200, pages_by_number[page_num])
+        if page_num == 2:
+            page2_done.set()
+        return resp
 
     session.request.side_effect = fake_request
     c = make_client(session, parallel_pages=3)
