@@ -34,6 +34,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `rapid7.page_size` or the per-call `page_size=` kwarg. Pre-existing config
   files without an explicit `page_size` will see the new default automatically.
 
+### Removed
+
+- **`op.asset_coverage.unauth_only_assets` rule** retired as a v3 API gap.
+  The rule used filter `{"field": "vulnerability-assessed", "operator": "is",
+  "value": False}`, but per the canonical Rapid7 SearchCriteria reference
+  the `vulnerability-assessed` field accepts only date operators
+  (`is-on-or-before`, `is-on-or-after`, `is-between`, `is-earlier-than`,
+  `is-within-the-last`). It does not accept boolean operators. There is no
+  `/api/3/assets/search` filter that means "asset has never been
+  authenticated." Documented in README "Rules NOT implemented" with a
+  pointer to the Security Console UI's Asset → Authentication tab.
+  `flag_unauth_only_assets` config toggle removed; configs that still set
+  it will fail at startup with a clear "unknown key" error.
+- **`op.asset_coverage.no_services_detected` rule** retired as a v3 API
+  gap. The rule used filter `{"field": "service-count", ...}` but
+  `service-count` does not exist in the v3 SearchCriteria reference
+  catalog. Asset listings expose a `services[]` array per-asset record,
+  but no asset-search filter for "service count = 0." Documented in
+  README "Rules NOT implemented" with a pointer to the Security Console
+  UI's Site → Discovery Settings. `flag_no_services_detected` config
+  toggle removed.
+- Both rules were introduced in 0.2.7 (R2 and R3 of the asset-coverage
+  expansion); they failed with HTTP 400 against every real console and
+  produced status="error" findings on every run. Surviving 0.2.7
+  asset-coverage additions: `dead_asset_groups` (R1) and
+  `agent_only_assets` (R4).
+
+### Fixed
+
+- **`DataQualityCheck` no longer black-holes the entire check when one
+  rule's API call fails.** Production 0.2.7 traces showed the
+  `missing_os` POST to `/api/3/assets/search` timing out and propagating
+  out of the check entirely — the orchestrator marked the whole Data
+  Quality check as `status="error"` with zero `rule_results`, hiding
+  output from the four other rules that would have run cleanly.
+  `DataQualityCheck.run()` now wraps each rule call in a `_safe()` helper
+  that synthesizes an `error_rule` RuleResult on `Exception`, mirroring
+  the audit orchestrator's per-rule isolation pattern. The shared
+  `/api/3/assets` paginate that drives both duplicate-detection rules is
+  also wrapped — a paginate failure emits one `error_rule` per concept
+  so the report still renders both rule cards. New helper
+  `checks/_op_rule.py:error_rule()` populates `error`, `error_path`, and
+  `error_status_code` from a `Rapid7ClientError` (reuses
+  `audit._extract_diagnostics`). The same isolation pattern is queued
+  for the other op-checks (`scan_engines`, `scan_activity`,
+  `asset_coverage`) in 0.2.9 — see backlog.
+
 ## [0.2.7] - 2026-05-04
 
 ### Added
