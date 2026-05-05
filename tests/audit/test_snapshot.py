@@ -508,6 +508,7 @@ def test_asset_group_member_count_500_also_returns_none():
     class _Client500(_FakeClient):
         def get(self, path, params=None):
             if path == "/api/3/asset_groups/11/assets":
+                self.get_calls.append((path, params))
                 raise Rapid7ClientError(
                     "HTTP 500 from GET /api/3/asset_groups/11/assets: oops",
                     status_code=500,
@@ -517,3 +518,6 @@ def test_asset_group_member_count_500_also_returns_none():
     c = _Client500()
     s = EnvSnapshot(c, full_scan=False, sample_size=500)
     assert s.asset_group_member_count(11) is None
+    # Cached: subsequent call does not retry — symmetric with the 404 path.
+    assert s.asset_group_member_count(11) is None
+    assert sum(1 for path, _ in c.get_calls if path == "/api/3/asset_groups/11/assets") == 1
