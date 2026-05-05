@@ -36,6 +36,9 @@ class FakeRapid7Client:
     def set_get(self, path: str, body: dict) -> None:
         self._get[path] = body
 
+    def set_get_raises(self, path: str, exc: Exception) -> None:
+        self._get[path] = exc
+
     def set_post(self, path: str, body: dict) -> None:
         self._post[path] = body
 
@@ -59,7 +62,10 @@ class FakeRapid7Client:
         self.calls.append(("get", path, params, None))
         if path not in self._get:
             raise AssertionError(f"unexpected GET {path}")
-        return self._get[path]
+        val = self._get[path]
+        if isinstance(val, BaseException):
+            raise val
+        return val
 
     def post(self, path: str, json_body: dict, params: dict | None = None) -> dict:
         self.calls.append(("post", path, params, json_body))
