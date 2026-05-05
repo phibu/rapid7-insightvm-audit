@@ -111,7 +111,7 @@ The template still has a defensive fallback branch for `CheckResult`s without `r
 
 ### Layer rules (do not violate)
 
-- `client.py` is the **only** module that issues HTTP. It owns auth (`X-Api-Key` header or HTTP Basic), retries, exponential backoff, `Retry-After` parsing, and response validation. Never call `requests` from a check or rule.
+- `client.py` is the **only** module that issues HTTP. It owns auth (`X-Api-Key` header or HTTP Basic), retries, exponential backoff, `Retry-After` parsing, and response validation. Never call `requests` from a check or rule. Since 0.2.8, `_paginate` may execute concurrent page fetches inside one call when `parallel_pages > 1`; `requests.Session` is documented thread-safe for read operations, so we share one session across worker threads without explicit locks. The read-only verb/path check in `_request` is stateless and runs per-call, so concurrency does not weaken the invariant.
 - `Rapid7ClientError.status_code` is the canonical way to branch on HTTP status when trapping per-endpoint compatibility issues (e.g. an endpoint returning 404 on a hosted console but 200 on on-prem). **Never substring-match the error message** — the message includes the request path and up to 1500 chars of response body, so substrings like `"404"` or `"400"` can appear in a 500's body and silently swallow real errors. Branch on `e.status_code == 404`, not on `"404" in str(e)`.
 - `checks/*.py` and `audit/rules/*.py` interpret API responses; they know nothing about HTML.
 - `report.py` renders HTML; it knows nothing about the API.

@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Parallel page fetching for paginated calls (opt-in).** `Rapid7Client.paginate`
+  and `paginate_post` gain a `parallel_pages` kwarg. When set above 1 (instance
+  default driven by `rapid7.parallel_pages` in `config.yaml`), pages 1..N-1 are
+  fetched concurrently in batches via a `ThreadPoolExecutor` scoped to the call.
+  Page 0 is fetched sequentially to probe `totalPages`. In-order yield contract
+  preserved: callers see resources in strict page-0 → page-N order regardless
+  of completion timing. Fail-fast on first error — no silent partial results.
+  Read-only contract unchanged. Default is 1 (sequential, today's behavior);
+  operators tune via `config.yaml`. The InsightVM API documents 8 parallel
+  requests as the supported limit; the validator caps at 16 and warns above 8.
+- New `rapid7.parallel_pages` config field (int, range 1..16, default 1).
+- New `rapid7.page_size` config field (int, range 1..500, default 250) —
+  configurable default page size for paginated calls.
+
+### Changed
+
+- **`rapid7.request_timeout_seconds` default raised from 30s to 60s.** Matches
+  the README troubleshooting guidance for hosted consoles where 30s was
+  consistently too tight under load. Operators with explicit values in
+  `config.yaml` are unaffected.
+- **Default paginated page size lowered from 500 to 250.** Reduces server-side
+  timeout pressure on `/api/3/assets/search` filtered walks. Override via
+  `rapid7.page_size` or the per-call `page_size=` kwarg. Pre-existing config
+  files without an explicit `page_size` will see the new default automatically.
+
 ## [0.2.7] - 2026-05-04
 
 ### Added
