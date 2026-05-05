@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`AssetCoverageCheck` now isolates per-rule failures.** Extends the 0.2.8
+  `DataQualityCheck` isolation to asset-coverage: when one rule's API call
+  fails (timeout, 400, 500), that rule's `RuleResult` is `status="error"`
+  but the other three rules still produce their normal output. The 0.2.8
+  helper `_safe()` is hoisted out of `DataQualityCheck` into
+  `checks/_op_rule.py` as a free function `safe_run()` — both checks (and
+  any future op-checks restructured for per-rule isolation) share one
+  implementation. No `rule_id` changes, no config schema changes;
+  delta-blob signatures continue to match prior runs.
+
 ## [0.2.8] - 2026-05-04
 
 ### Added
