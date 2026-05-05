@@ -50,12 +50,6 @@ thresholds:
     # Flag asset groups whose membership criteria match zero assets
     # (orphaned RBAC/report scopes).
     flag_dead_asset_groups: true
-    # Flag assets where the most recent scan was unauthenticated
-    # (vulnerability-assessed=false) — surface-level visibility only.
-    flag_unauth_only_assets: true
-    # Flag assets recently scanned but with zero detected services —
-    # usually a firewall blocking the scan engine or a scope misconfig.
-    flag_no_services_detected: true
     # Flag Insight Agent-managed assets that fall outside every site's
     # configured scan target ranges — they only get opportunistic agent
     # data, never scheduled scans. REQUIRES audit.full_scan: true to

@@ -91,8 +91,6 @@ class AssetCoverageCheck:
             self._stale_assets(client, t),
             self._never_scanned_assets(client, t),
             self._dead_asset_groups(snapshot, t),
-            self._unauth_only_assets(client, t),
-            self._no_services_detected(client, t),
             self._agent_only_assets(snapshot, client, t, config.audit),
         ]
 
@@ -244,124 +242,6 @@ class AssetCoverageCheck:
             findings=findings,
             sources=sources,
             summary={"dead_groups_count": len(dead), "total_groups": len(groups)},
-            duration_ms=int((time.monotonic() - rule_start) * 1000),
-        )
-
-    def _unauth_only_assets(self, client: Any, t) -> RuleResult:
-        rid = "op.asset_coverage.unauth_only_assets"
-        name = "Assets scanned but not authenticated"
-        desc = (
-            "Assets where vulnerability-assessed=false — they were discovered "
-            "and possibly port-scanned but never assessed for vulnerabilities. "
-            "Surface-level visibility only; masks real risk."
-        )
-        sources = [_SRC_FILTERED_SEARCH]
-
-        if not t.flag_unauth_only_assets:
-            return skipped_rule(rule_id=rid, rule_name=name, description=desc, sources=sources)
-
-        rule_start = time.monotonic()
-        body = {
-            "filters": [
-                {"field": "vulnerability-assessed", "operator": "is", "value": False},
-            ],
-            "match": "all",
-        }
-        try:
-            unauth = list(client.paginate_post("/api/3/assets/search", json_body=body))
-        except Rapid7ClientError as e:
-            msg = (
-                "filter not supported by this console version"
-                if getattr(e, "status_code", None) == 400
-                else str(e)[:200]
-            )
-            # make_rule_result derives status from finding severity (no "error" mapping); construct directly.
-            return RuleResult(
-                rule_id=rid,
-                rule_name=name,
-                description=desc,
-                severity="fail",
-                status="error",
-                findings=[Finding(severity="warn", message=msg)],
-                summary={"unauth_only_count": 0, "error": msg},
-                sources=sources,
-                duration_ms=int((time.monotonic() - rule_start) * 1000),
-            )
-
-        findings = _per_asset_findings(
-            unauth,
-            severity="fail",
-            message_for=lambda a: f"Unauthenticated-only asset {_asset_label(a)}: scanned but never assessed",
-        )
-        return make_rule_result(
-            rule_id=rid,
-            rule_name=name,
-            description=desc,
-            findings=findings,
-            sources=sources,
-            summary={"unauth_only_count": len(unauth)},
-            duration_ms=int((time.monotonic() - rule_start) * 1000),
-            default_severity="fail",
-        )
-
-    def _no_services_detected(self, client: Any, t) -> RuleResult:
-        rid = "op.asset_coverage.no_services_detected"
-        name = "Recently scanned assets with zero services detected"
-        desc = (
-            "Assets scanned within the stale-asset window but where the scan "
-            "found zero services. Usually a firewall blocking the scan engine "
-            "or a misconfigured site scope. Excludes already-stale assets to "
-            "avoid double-counting with the stale_assets rule."
-        )
-        sources = [_SRC_FILTERED_SEARCH]
-
-        if not t.flag_no_services_detected:
-            return skipped_rule(rule_id=rid, rule_name=name, description=desc, sources=sources)
-
-        rule_start = time.monotonic()
-        body = {
-            "filters": [
-                {"field": "service-count", "operator": "is", "value": 0},
-                {"field": "last-scan-date", "operator": "is-within-the-last", "value": t.stale_asset_days},
-            ],
-            "match": "all",
-        }
-        try:
-            silent = list(client.paginate_post("/api/3/assets/search", json_body=body))
-        except Rapid7ClientError as e:
-            msg = (
-                "filter not supported by this console version"
-                if getattr(e, "status_code", None) == 400
-                else str(e)[:200]
-            )
-            # make_rule_result derives status from finding severity (no "error" mapping); construct directly.
-            return RuleResult(
-                rule_id=rid,
-                rule_name=name,
-                description=desc,
-                severity="warn",
-                status="error",
-                findings=[Finding(severity="warn", message=msg)],
-                summary={"no_services_count": 0, "error": msg},
-                sources=sources,
-                duration_ms=int((time.monotonic() - rule_start) * 1000),
-            )
-
-        findings = _per_asset_findings(
-            silent,
-            severity="warn",
-            message_for=lambda a: (
-                f"No services detected on recently-scanned asset {_asset_label(a)}"
-            ),
-            extra_details={"stale_asset_days": t.stale_asset_days},
-        )
-        return make_rule_result(
-            rule_id=rid,
-            rule_name=name,
-            description=desc,
-            findings=findings,
-            sources=sources,
-            summary={"no_services_count": len(silent), "stale_asset_days": t.stale_asset_days},
             duration_ms=int((time.monotonic() - rule_start) * 1000),
         )
 

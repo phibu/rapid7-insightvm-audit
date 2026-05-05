@@ -217,18 +217,18 @@ See `docs/examples/config.yaml` for the full audit configuration block.
 - **Store invulnerable results** — the toggle exists in the Security Console UI under each scan template's Database settings, but it is not exposed anywhere in the v3 `ScanTemplate` schema (verified field-by-field; `ScanTemplateDatabase` only contains `db2`, `oracle`, `postgres` for credentialed-DB scanning). Audit it via the Security Console UI: Administration → Scan Templates → \[template\] → Database.
 - **Scan blackout conflicts** — the v3 API has no `/api/3/blackouts` endpoint (verified against the canonical OpenAPI spec — `overrideBlackout` exists as a query parameter on POST `/api/3/sites/{id}/scans` but blackouts are not listable or readable via v3). The `Overlapping Scan Windows` rule therefore detects scan-vs-scan window/scope overlaps only; blackout conflicts must be audited via the Security Console UI: Administration → Global and Console Settings → Scan Blackouts.
 - **Credential failure in recent scans** — the v3 `Scan` schema exposes only a singular `message` status string, not the per-scan diagnostic list ("Credential Failure", "Partial Credential Success", "No Credentials Used") that surfaces in console reports when Scanning Diagnostics is enabled. There is no asset-search filter or `/credential_status` endpoint either. Audit it via the Security Console UI (Site dashboard → Credential Success tile, or each scan's Authentication tab) or via SQL Query Export reports against `fact_asset_scan_engine.credential_status_id`.
+- **Unauthenticated-only assets** (retired in 0.2.8) — the `vulnerability-assessed` search field accepts only date operators per the canonical v3 SearchCriteria reference (`is-on-or-before`, `is-on-or-after`, `is-between`, `is-earlier-than`, `is-within-the-last`). It does not accept boolean operators like `is`, so there is no `/api/3/assets/search` filter that means "asset has never been authenticated." Audit via the Security Console UI's Asset → Authentication tab.
+- **No services detected** (retired in 0.2.8) — the `service-count` field does not exist in the v3 SearchCriteria reference. Asset listings expose a `services[]` array on each asset record, but no `/api/3/assets/search` filter for "service count = 0." Audit via the Security Console UI's Site → Discovery Settings or by sorting the asset list by Services column.
 
 ## Asset Coverage
 
-An operational health check that detects blind spots in scanning coverage: stale assets, never-scanned assets, dead asset-groups, unauthenticated-only assets, assets with no services detected, and Insight Agent assets outside scheduled scan scope.
+An operational health check that detects blind spots in scanning coverage: stale assets, never-scanned assets, dead asset-groups, and Insight Agent assets outside scheduled scan scope.
 
 | Rule ID | Description | Default severity | Source |
 |---------|-------------|-------------------|--------|
 | `op.asset_coverage.stale_assets` | Assets not scanned within the stale threshold (coverage gap, not yet expired). | warn | https://docs.rapid7.com/insightvm/filtered-asset-search |
 | `op.asset_coverage.never_scanned_assets` | Assets never scanned or not scanned within the never-scanned threshold (effectively expired). | fail | https://docs.rapid7.com/insightvm/filtered-asset-search |
 | `op.asset_coverage.dead_asset_groups` | Asset groups whose membership criteria match zero assets. Orphaned RBAC/report scopes. | warn | https://docs.rapid7.com/insightvm/asset-groups/ |
-| `op.asset_coverage.unauth_only_assets` | Assets where vulnerability-assessed=false — discovered but never authenticated. Surface-level visibility only. | fail | https://docs.rapid7.com/insightvm/filtered-asset-search |
-| `op.asset_coverage.no_services_detected` | Assets recently scanned but with zero services detected. Usually firewall/scope misconfiguration. | warn | https://docs.rapid7.com/insightvm/filtered-asset-search |
 | `op.asset_coverage.agent_only_assets` | Insight Agent-managed assets whose IP falls outside every site's scan scope. Default off; requires `audit.full_scan: true`. | warn | https://docs.rapid7.com/insightvm/insight-agent-overview/ |
 
 Per-rule severity and enable/disable live in the `checks.asset_coverage` block of `config.yaml`.

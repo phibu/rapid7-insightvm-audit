@@ -56,8 +56,6 @@ class AssetCoverageThresholds:
     flag_unscanned_assets: bool
     never_scanned_days: int
     flag_dead_asset_groups: bool = True
-    flag_unauth_only_assets: bool = True
-    flag_no_services_detected: bool = True
     flag_agent_only_assets: bool = False
 
 
