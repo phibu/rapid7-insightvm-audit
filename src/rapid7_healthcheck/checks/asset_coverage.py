@@ -129,7 +129,14 @@ class AssetCoverageCheck:
                     "Assets reporting via Insight Agent whose IP falls outside "
                     "every site's configured included_targets. These assets only "
                     "get opportunistic agent data; they're never reached by "
-                    "scheduled scans."
+                    "scheduled scans.\n\n"
+                    "Sampled. Inspects up to audit.sample_size agents (default "
+                    "100) drawn in API default order from /api/3/agents. Result "
+                    "is a directional estimate, not a complete inventory — for "
+                    "environments with hundreds of thousands of agents, full "
+                    "enumeration is intentionally avoided. Increase "
+                    "audit.sample_size for a tighter estimate at the cost of "
+                    "more API calls."
                 ),
                 sources=[_SRC_INSIGHT_AGENT],
             ),
@@ -286,13 +293,27 @@ class AssetCoverageCheck:
             duration_ms=int((time.monotonic() - rule_start) * 1000),
         )
 
-    def _agent_only_assets(self, snapshot: "EnvSnapshot | None", client: Any, t, audit_cfg) -> RuleResult:
+    def _agent_only_assets(
+        self,
+        snapshot: "EnvSnapshot | None",
+        client: Any,
+        t,
+        audit_settings,
+    ) -> RuleResult:
         rid = "op.asset_coverage.agent_only_assets"
         name = "Insight Agent assets outside scheduled scan scope"
         desc = (
-            "Assets reporting via Insight Agent whose IP falls outside every "
-            "site's configured included_targets. These assets only get "
-            "opportunistic agent data; they're never reached by scheduled scans."
+            "Assets reporting via Insight Agent whose IP falls outside "
+            "every site's configured included_targets. These assets only "
+            "get opportunistic agent data; they're never reached by "
+            "scheduled scans.\n\n"
+            "Sampled. Inspects up to audit.sample_size agents (default "
+            "100) drawn in API default order from /api/3/agents. Result "
+            "is a directional estimate, not a complete inventory — for "
+            "environments with hundreds of thousands of agents, full "
+            "enumeration is intentionally avoided. Increase "
+            "audit.sample_size for a tighter estimate at the cost of "
+            "more API calls."
         )
         sources = [_SRC_INSIGHT_AGENT]
 
@@ -308,17 +329,17 @@ class AssetCoverageCheck:
                 severity="warn",
                 status="error",
                 findings=[Finding(severity="warn", message="snapshot required but not provided to check")],
-                summary={"agent_only_count": 0, "error": "snapshot required"},
+                summary={"agent_only_count_sampled": 0, "error": "snapshot required"},
                 sources=sources,
             )
 
-        if not audit_cfg.full_scan:
-            return skipped_rule(
-                rule_id=rid,
-                rule_name=name,
-                description=desc + " (Requires audit.full_scan=true to run.)",
-                sources=sources,
-            )
+        rule_start = time.monotonic()
+
+        # Prime _agents_unavailable via the sampled accessor — its head probe
+        # is the only thing that flips the flag for this rule's code path.
+        # Calling is_agents_unavailable() before this would always see the
+        # initial False and miss the genuine 404 → empty-fleet ambiguity.
+        sample_ids, total_agents = snapshot.agent_asset_ids_sampled()
 
         if snapshot.is_agents_unavailable():
             return skipped_rule(
@@ -328,8 +349,6 @@ class AssetCoverageCheck:
                 sources=sources,
             )
 
-        rule_start = time.monotonic()
-        agent_ids = snapshot.agent_asset_ids()
         targets = snapshot.all_included_targets()
 
         if targets is None:
@@ -341,13 +360,49 @@ class AssetCoverageCheck:
                 severity="warn",
                 status="error",
                 findings=[Finding(severity="warn", message="all_included_targets() returned None")],
-                summary={"agent_only_count": 0, "error": "no targets"},
+                summary={"agent_only_count_sampled": 0, "error": "no targets"},
                 sources=sources,
+            )
+
+        logger.info(
+            "agent_only_assets: sampling %d of %d agents (sample_size=%d)",
+            len(sample_ids),
+            total_agents,
+            audit_settings.sample_size,
+        )
+
+        # Empty fleet: short-circuit with an informational pass.
+        if total_agents == 0:
+            sample_info = (
+                f"strategy=first-n; sampled=0; configured_sample_size="
+                f"{audit_settings.sample_size}; population=0"
+            )
+            return make_rule_result(
+                rule_id=rid,
+                rule_name=name,
+                description=desc,
+                findings=[Finding(
+                    severity="info",
+                    message="No Insight Agents deployed in this environment.",
+                )],
+                sources=sources,
+                summary={
+                    "agent_only_count_sampled": 0,
+                    "sample_size": 0,
+                    "sample_size_configured": audit_settings.sample_size,
+                    "sampled_fetched": 0,
+                    "total_agents": 0,
+                    "sampled_outside_scope_pct": 0.0,
+                    "estimated_outsiders_fleetwide": 0,
+                },
+                sampled=True,
+                sample_info=sample_info,
+                duration_ms=int((time.monotonic() - rule_start) * 1000),
             )
 
         outsiders: list[dict] = []
         fetched_count = 0
-        for aid in agent_ids:
+        for aid in sample_ids:
             try:
                 asset = client.get(f"/api/3/assets/{aid}")
             except Rapid7ClientError as e:
@@ -364,7 +419,36 @@ class AssetCoverageCheck:
                     "hostname": asset.get("hostName"),
                 })
 
-        findings: list[Finding] = []
+        denom = fetched_count if fetched_count > 0 else 1
+        pct = round(len(outsiders) / denom * 100, 1)
+        estimate = round(len(outsiders) / denom * total_agents) if total_agents else 0
+
+        # Summary finding (always present): describes the sample + extrapolation.
+        summary_severity = "warn" if outsiders else "info"
+        sample_share_pct = round(fetched_count / total_agents * 100, 1) if total_agents else 0.0
+        summary_finding = Finding(
+            severity=summary_severity,
+            message=(
+                f"Sampled {fetched_count} of {total_agents} agents "
+                f"({sample_share_pct}%): "
+                f"{len(outsiders)} of sample ({pct}%) are outside every site's "
+                f"scan scope. Extrapolated estimate: ≈{estimate} of {total_agents} "
+                f"agents fleet-wide. Sample is first-N by API default order; "
+                f"result is directional."
+            ),
+            details={
+                "sample_size": len(sample_ids),
+                "sample_size_configured": audit_settings.sample_size,
+                "sampled_fetched": fetched_count,
+                "total_agents": total_agents,
+                "outsiders_in_sample": len(outsiders),
+                "sampled_outside_scope_pct": pct,
+                "estimated_outsiders_fleetwide": estimate,
+            },
+        )
+
+        findings: list[Finding] = [summary_finding]
+
         head = outsiders[:_PER_ITEM_FINDING_CAP]
         for o in head:
             label = o.get("hostname") or o.get("ip") or f"id={o.get('asset_id')}"
@@ -380,6 +464,15 @@ class AssetCoverageCheck:
                 message=f"+ {remainder} more asset(s) (truncated; showing first {_PER_ITEM_FINDING_CAP})",
                 details={"remainder": remainder, "total": len(outsiders), "cap": _PER_ITEM_FINDING_CAP},
             ))
+
+        sample_info = (
+            f"strategy=first-n; sampled={len(sample_ids)}; "
+            f"configured_sample_size={audit_settings.sample_size}; "
+            f"population={total_agents}; "
+            f"note=Sample is first-N by API default order, not uniform random. "
+            f"Result is directional."
+        )
+
         return make_rule_result(
             rule_id=rid,
             rule_name=name,
@@ -387,9 +480,15 @@ class AssetCoverageCheck:
             findings=findings,
             sources=sources,
             summary={
-                "agent_only_count": len(outsiders),
-                "total_agents_checked": fetched_count,
-                "total_agents": len(agent_ids),
+                "agent_only_count_sampled": len(outsiders),
+                "sample_size": len(sample_ids),
+                "sample_size_configured": audit_settings.sample_size,
+                "sampled_fetched": fetched_count,
+                "total_agents": total_agents,
+                "sampled_outside_scope_pct": pct,
+                "estimated_outsiders_fleetwide": estimate,
             },
+            sampled=True,
+            sample_info=sample_info,
             duration_ms=int((time.monotonic() - rule_start) * 1000),
         )

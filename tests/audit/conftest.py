@@ -22,6 +22,10 @@ class FakeSnapshot:
         self._agents: list[dict] = []
         self._agents_total: int = 0
         self._agents_unavailable: bool = False
+        # Agent fleet — sampled accessor (independent of full set above)
+        self._agents_sampled: list[dict] = []
+        self._agents_sampled_total: int = 0
+        self._agents_sampled_unavailable: bool = False
         # User & permission audit
         self._users: list[dict] = []
         self._users_endpoints_unavailable: bool = False
@@ -57,6 +61,25 @@ class FakeSnapshot:
         self._agents = agents_list
         self._agents_total = total if total is not None else len(agents_list)
         self._agents_unavailable = unavailable
+
+    def set_agents_sampled(
+        self,
+        sample: list[dict],
+        total: int | None = None,
+        *,
+        unavailable: bool = False,
+    ) -> None:
+        """Configure what agent_asset_ids_sampled() returns.
+
+        Independent of set_agents() so tests can express scenarios where
+        the sampled accessor is the only one called by the rule under
+        test (the new R4) without also having to register the full set.
+        """
+        self._agents_sampled = sample
+        self._agents_sampled_total = total if total is not None else len(sample)
+        self._agents_sampled_unavailable = unavailable
+        if unavailable:
+            self._agents_unavailable = True
 
     def set_sites(self, sites: list[dict]) -> None: self._sites = sites
     def set_scan_engines(self, engines: list[dict]) -> None: self._scan_engines = engines
@@ -108,6 +131,26 @@ class FakeSnapshot:
                         ids.add(int(tail))
                         break
         return ids
+
+    def agent_asset_ids_sampled(self) -> tuple[list[int], int]:
+        if self._agents_sampled_unavailable:
+            return [], 0
+        ids: list[int] = []
+        for a in self._agents_sampled:
+            asset_id = a.get("id")
+            if isinstance(asset_id, int) and not isinstance(asset_id, bool):
+                ids.append(asset_id)
+                continue
+            for link in a.get("links") or []:
+                if not isinstance(link, dict):
+                    continue
+                if (link.get("rel") or "").lower() == "asset":
+                    href = link.get("href") or ""
+                    tail = href.rstrip("/").rsplit("/", 1)[-1]
+                    if tail.isdigit():
+                        ids.append(int(tail))
+                        break
+        return ids, self._agents_sampled_total
 
     def sites(self) -> list[dict]: return self._sites
     def scan_engines(self) -> list[dict]: return self._scan_engines

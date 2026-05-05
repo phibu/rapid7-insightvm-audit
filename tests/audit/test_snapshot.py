@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from rapid7_healthcheck.audit.snapshot import EnvSnapshot
+from rapid7_healthcheck.audit.snapshot import EnvSnapshot, _extract_agent_asset_id
 
 
 class _FakeClient:
@@ -233,3 +233,202 @@ def test_asset_has_agent_handles_top_level_agentid():
     """Some asset shapes use top-level agentId instead of nested agent.agentId."""
     s = _snapshot()
     assert s.asset_has_agent({"id": 1, "agentId": "abc-123"}) is True
+
+
+# --- _extract_agent_asset_id -------------------------------------------
+
+
+class TestExtractAgentAssetId:
+    def test_top_level_id_int(self):
+        assert _extract_agent_asset_id({"id": 42}) == 42
+
+    def test_top_level_id_bool_rejected(self):
+        # bool is an int subclass in Python; we want True/False ignored
+        assert _extract_agent_asset_id({"id": True}) is None
+
+    def test_top_level_id_missing_falls_back_to_links(self):
+        agent = {
+            "links": [
+                {"rel": "self", "href": "/api/3/agents/abc"},
+                {"rel": "Asset", "href": "/api/3/assets/777"},
+            ]
+        }
+        assert _extract_agent_asset_id(agent) == 777
+
+    def test_links_rel_case_insensitive(self):
+        agent = {"links": [{"rel": "asset", "href": "/api/3/assets/123"}]}
+        assert _extract_agent_asset_id(agent) == 123
+
+    def test_links_href_non_numeric_returns_none(self):
+        agent = {"links": [{"rel": "asset", "href": "/api/3/assets/foo"}]}
+        assert _extract_agent_asset_id(agent) is None
+
+    def test_no_id_no_links_returns_none(self):
+        assert _extract_agent_asset_id({}) is None
+
+    def test_links_without_asset_rel_returns_none(self):
+        agent = {"links": [{"rel": "self", "href": "/api/3/agents/x"}]}
+        assert _extract_agent_asset_id(agent) is None
+
+    def test_links_href_trailing_slash(self):
+        agent = {"links": [{"rel": "asset", "href": "/api/3/assets/42/"}]}
+        assert _extract_agent_asset_id(agent) == 42
+
+    def test_links_non_dict_element_skipped(self):
+        agent = {"links": [None, "garbage", 42, {"rel": "asset", "href": "/api/3/assets/9"}]}
+        assert _extract_agent_asset_id(agent) == 9
+
+
+class _FakeAgentsClient:
+    """Minimal client that records get() calls and serves /api/3/agents head + paginate."""
+
+    def __init__(
+        self,
+        *,
+        total: int = 0,
+        agents: list[dict] | None = None,
+        head_raises: Exception | None = None,
+    ) -> None:
+        self.total = total
+        self._agents = list(agents or [])
+        self.head_raises = head_raises
+        self.get_calls: list[tuple[str, dict | None]] = []
+        self.paginate_calls: list[str] = []
+        self.paginate_yields = 0
+
+    def get(self, path: str, params: dict | None = None) -> dict:
+        self.get_calls.append((path, params))
+        if path == "/api/3/agents" and self.head_raises is not None:
+            raise self.head_raises
+        if path == "/api/3/agents":
+            return {"page": {"totalResources": self.total}, "resources": []}
+        raise AssertionError(f"unexpected get({path!r})")
+
+    def paginate(self, path: str):
+        self.paginate_calls.append(path)
+        for a in self._agents:
+            self.paginate_yields += 1
+            yield a
+
+
+class TestAgentAssetIdsSampled:
+    def test_returns_first_n_and_total(self):
+        agents = [{"id": i} for i in range(250)]
+        c = _FakeAgentsClient(total=250, agents=agents)
+        snap = EnvSnapshot(c, full_scan=False, sample_size=100)
+
+        sample_ids, total = snap.agent_asset_ids_sampled()
+
+        assert total == 250
+        assert sample_ids == list(range(100))
+        assert ("/api/3/agents", {"size": 1}) in c.get_calls
+        assert c.paginate_calls == ["/api/3/agents"]
+        assert c.paginate_yields == 100  # islice stopped early
+
+    def test_population_smaller_than_sample(self):
+        agents = [{"id": i} for i in range(50)]
+        c = _FakeAgentsClient(total=50, agents=agents)
+        snap = EnvSnapshot(c, full_scan=False, sample_size=100)
+
+        sample_ids, total = snap.agent_asset_ids_sampled()
+
+        assert total == 50
+        assert sample_ids == list(range(50))
+
+    def test_empty_population_skips_paginate(self):
+        c = _FakeAgentsClient(total=0, agents=[])
+        snap = EnvSnapshot(c, full_scan=False, sample_size=100)
+
+        sample_ids, total = snap.agent_asset_ids_sampled()
+
+        assert (sample_ids, total) == ([], 0)
+        assert c.paginate_calls == []
+
+    def test_endpoint_404_marks_unavailable(self):
+        from rapid7_healthcheck.client import Rapid7ClientError
+        c = _FakeAgentsClient(head_raises=Rapid7ClientError("404 at /api/3/agents", status_code=404))
+        snap = EnvSnapshot(c, full_scan=False, sample_size=100)
+
+        sample_ids, total = snap.agent_asset_ids_sampled()
+
+        assert (sample_ids, total) == ([], 0)
+        assert snap.is_agents_unavailable() is True
+
+    def test_endpoint_non_404_raises(self):
+        from rapid7_healthcheck.client import Rapid7ClientError
+        c = _FakeAgentsClient(head_raises=Rapid7ClientError("500 from GET /api/3/agents", status_code=500))
+        snap = EnvSnapshot(c, full_scan=False, sample_size=100)
+
+        with pytest.raises(Rapid7ClientError):
+            snap.agent_asset_ids_sampled()
+
+    def test_caches_second_call(self):
+        agents = [{"id": i} for i in range(10)]
+        c = _FakeAgentsClient(total=10, agents=agents)
+        snap = EnvSnapshot(c, full_scan=False, sample_size=100)
+
+        first = snap.agent_asset_ids_sampled()
+        get_calls_before = len(c.get_calls)
+        paginate_calls_before = len(c.paginate_calls)
+
+        second = snap.agent_asset_ids_sampled()
+
+        assert first == second
+        assert len(c.get_calls) == get_calls_before
+        assert len(c.paginate_calls) == paginate_calls_before
+
+    def test_independent_from_agent_asset_ids(self):
+        agents = [{"id": i} for i in range(10)]
+        c = _FakeAgentsClient(total=10, agents=agents)
+        snap = EnvSnapshot(c, full_scan=False, sample_size=5)
+
+        sample_ids, total = snap.agent_asset_ids_sampled()
+        assert sample_ids == [0, 1, 2, 3, 4]
+        assert total == 10
+
+        full = snap.agent_asset_ids()
+        assert full == set(range(10))
+
+    def test_links_shape_yields_ids(self):
+        agents = [
+            {"links": [{"rel": "Asset", "href": f"/api/3/assets/{i}"}]}
+            for i in range(3)
+        ]
+        c = _FakeAgentsClient(total=3, agents=agents)
+        snap = EnvSnapshot(c, full_scan=False, sample_size=10)
+
+        sample_ids, total = snap.agent_asset_ids_sampled()
+        assert sample_ids == [0, 1, 2]
+        assert total == 3
+
+    def test_independent_from_agent_asset_ids_reverse_order(self):
+        agents = [{"id": i} for i in range(10)]
+        c = _FakeAgentsClient(total=10, agents=agents)
+        snap = EnvSnapshot(c, full_scan=False, sample_size=5)
+
+        full = snap.agent_asset_ids()
+        assert full == set(range(10))
+
+        sample_ids, total = snap.agent_asset_ids_sampled()
+        assert sample_ids == [0, 1, 2, 3, 4]
+        assert total == 10
+
+    def test_short_circuits_when_agents_already_unavailable(self):
+        # Prime the unavailable flag via agents()'s 404 path, then
+        # verify agent_asset_ids_sampled() returns ([], 0) without
+        # issuing a second HEAD probe.
+        from rapid7_healthcheck.client import Rapid7ClientError
+        c = _FakeAgentsClient(head_raises=Rapid7ClientError("404 at /api/3/agents", status_code=404))
+        snap = EnvSnapshot(c, full_scan=False, sample_size=100)
+
+        # First call: agents() flips the flag.
+        snap.agents()
+        assert snap.is_agents_unavailable() is True
+        head_calls_before = len(c.get_calls)
+
+        # Second call: agent_asset_ids_sampled() should short-circuit.
+        sample_ids, total = snap.agent_asset_ids_sampled()
+
+        assert (sample_ids, total) == ([], 0)
+        # No additional HTTP calls.
+        assert len(c.get_calls) == head_calls_before

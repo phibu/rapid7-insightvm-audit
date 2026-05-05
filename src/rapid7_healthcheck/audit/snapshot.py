@@ -91,6 +91,28 @@ def _expand_target(entry: str, *, range_cap: int = 1024) -> tuple[list[IPv4Netwo
     return networks, literals
 
 
+def _extract_agent_asset_id(agent: dict) -> int | None:
+    """Extract the correlated asset ID from an Insight Agent record.
+
+    The /api/3/agents payload exposes the asset id either at top level as
+    ``id`` (newer consoles) or only via ``links`` (older shapes), where
+    one entry has ``rel == "Asset"`` and ``href == "/api/3/assets/{id}"``.
+    Returns None when neither shape yields a numeric id.
+    """
+    asset_id = agent.get("id")
+    if isinstance(asset_id, int) and not isinstance(asset_id, bool):
+        return asset_id
+    for link in agent.get("links") or []:
+        if not isinstance(link, dict):
+            continue
+        if (link.get("rel") or "").lower() == "asset":
+            href = link.get("href") or ""
+            tail = href.rstrip("/").rsplit("/", 1)[-1]
+            if tail.isdigit():
+                return int(tail)
+    return None
+
+
 class EnvSnapshot:
     def __init__(self, client: Any, *, full_scan: bool, sample_size: int) -> None:
         self._client = client
@@ -114,6 +136,7 @@ class EnvSnapshot:
         self._agents_cache: tuple[list[dict], int] | None = None
         self._agents_unavailable: bool = False
         self._agent_asset_ids_cache: set[int] | None = None
+        self._agent_asset_ids_sampled_cache: tuple[list[int], int] | None = None
         self._users: list[dict] | None = None
         self._users_endpoints_unavailable: bool = False
         self._authentication_sources: list[dict] | None = None
@@ -462,19 +485,67 @@ class EnvSnapshot:
 
         ids: set[int] = set()
         for a in self._client.paginate("/api/3/agents"):
-            asset_id = a.get("id")
-            if isinstance(asset_id, int) and not isinstance(asset_id, bool):
-                ids.add(asset_id)
-                continue
-            for link in a.get("links") or []:
-                if (link.get("rel") or "").lower() == "asset":
-                    href = link.get("href") or ""
-                    tail = href.rstrip("/").rsplit("/", 1)[-1]
-                    if tail.isdigit():
-                        ids.add(int(tail))
-                        break
+            aid = _extract_agent_asset_id(a)
+            if aid is not None:
+                ids.add(aid)
         self._agent_asset_ids_cache = ids
         return ids
+
+    def agent_asset_ids_sampled(self) -> tuple[list[int], int]:
+        """First-N sample of agent asset IDs paired with the population total.
+
+        Returns ``(sample_ids, total_count)``:
+            - ``total_count``: ``page.totalResources`` from the first page of
+              ``/api/3/agents``
+            - ``sample_ids``: up to ``self._sample_size`` IDs taken in API
+              default order (typically newest first)
+
+        Consumes at most ``sample_size`` agent records from ``/api/3/agents``
+        via ``itertools.islice``; the returned list may be shorter than
+        ``sample_size`` when some records carry neither a top-level ``id`` nor
+        a valid ``links[rel=Asset]`` href. Page fetches: at most
+        ``ceil(sample_size / 100)``.
+        Independent of ``full_scan`` — always samples.
+
+        Returns ``([], 0)`` cleanly when ``/api/3/agents`` is unavailable
+        (404), and sets the same ``_agents_unavailable`` flag that
+        ``agents()`` and ``agent_asset_ids()`` use, so
+        ``is_agents_unavailable()`` reflects the state regardless of which
+        accessor was called first.
+
+        Cached separately from ``agents()`` and ``agent_asset_ids()``;
+        distinct shapes, distinct consumers.
+        """
+        if self._agent_asset_ids_sampled_cache is not None:
+            return self._agent_asset_ids_sampled_cache
+
+        if self._agents_unavailable:
+            self._agent_asset_ids_sampled_cache = ([], 0)
+            return self._agent_asset_ids_sampled_cache
+
+        try:
+            head = self._client.get("/api/3/agents", params={"size": 1})
+        except Rapid7ClientError as e:
+            if e.status_code == 404:
+                logger.info("agents endpoint not available on this console")
+                self._agents_unavailable = True
+                self._agent_asset_ids_sampled_cache = ([], 0)
+                return self._agent_asset_ids_sampled_cache
+            raise
+
+        total = int(head.get("page", {}).get("totalResources", 0))
+
+        sample_ids: list[int] = []
+        if total > 0:
+            for a in itertools.islice(
+                self._client.paginate("/api/3/agents"), self._sample_size
+            ):
+                aid = _extract_agent_asset_id(a)
+                if aid is not None:
+                    sample_ids.append(aid)
+
+        self._agent_asset_ids_sampled_cache = (sample_ids, total)
+        return self._agent_asset_ids_sampled_cache
 
     # --- User & Permission audit accessors -------------------------------
 

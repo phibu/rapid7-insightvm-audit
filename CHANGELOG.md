@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `op.asset_coverage.agent_only_assets` (R4) is now **sampled and runs unconditionally**. Previously it required `audit.full_scan=true` and enumerated every Insight-Agent asset, issuing one `GET /api/3/assets/{id}` per agent — unfeasible on large fleets (500k+ agents would never complete). The rule now samples up to `audit.sample_size` agents (default 100) drawn in API default order from `/api/3/agents`, bounding API cost to ~`1 + ceil(N/100) + N` GETs (~102 calls at default sample size).
+- R4 summary key `agent_only_count` renamed to `agent_only_count_sampled`. New summary keys: `sample_size`, `sample_size_configured`, `sampled_fetched`, `total_agents`, `sampled_outside_scope_pct`, `estimated_outsiders_fleetwide`. `RuleResult.sampled` is now `True` for this rule, with `sample_info` carrying strategy/population details.
+- R4's first finding is now a directional summary line ("Sampled N of M agents (P%): X of sample (Q%) are outside scope. Extrapolated estimate ≈Z fleet-wide."), followed by per-outsider findings as before. Per-asset 404s during sampling are excluded from the percentage and extrapolation denominators.
+
+### Added
+
+- `EnvSnapshot.agent_asset_ids_sampled()` — sample-aware accessor returning `(sample_ids, total_count)` from `/api/3/agents`. Mirrors `agents()`'s 404-handling pattern; cached independently of `agent_asset_ids()` and `agents()`.
+- `make_rule_result()` (op-check helper) accepts optional `sampled` and `sample_info` keyword arguments.
+
+### Notes
+
+- **First report run after upgrade:** existing reports that ran with `audit.full_scan=false` had R4 in `skipped` state. After upgrade, R4 always runs; on first run, the report's "Changed" filter will mark this rule as changed.
+
 ## [0.2.9] - 2026-05-05
 
 ### Fixed
