@@ -37,6 +37,7 @@ class _FakeSnapshot:
         sample_size: int = 500,
         sample_ids: list[int] | None = None,
         total_agents: int | None = None,
+        member_counts: dict[int, int | None] | None = None,
     ):
         self._sites = sites or []
         self._asset_groups = asset_groups or []
@@ -48,6 +49,7 @@ class _FakeSnapshot:
         self.sample_size = sample_size
         self._sample_ids = sample_ids or []
         self._total_agents = total_agents if total_agents is not None else len(self._sample_ids)
+        self._member_counts = member_counts or {}
 
     def sites(self): return self._sites
     def asset_groups(self): return self._asset_groups
@@ -62,6 +64,15 @@ class _FakeSnapshot:
         if self._agents_unavailable:
             return [], 0
         return list(self._sample_ids), self._total_agents
+
+    def asset_group_member_count(self, group_id: int) -> int | None:
+        """Test stub. Return the registered count, or raise so test
+        authors notice they forgot to register a fallback."""
+        if group_id not in self._member_counts:
+            raise AssertionError(
+                f"_FakeSnapshot.asset_group_member_count({group_id}) not registered"
+            )
+        return self._member_counts[group_id]
 
 
 def test_all_assets_fresh(fake_client, app_config):
