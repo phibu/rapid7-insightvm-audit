@@ -136,6 +136,7 @@ class EnvSnapshot:
         self._agents_cache: tuple[list[dict], int] | None = None
         self._agents_unavailable: bool = False
         self._agent_asset_ids_cache: set[int] | None = None
+        self._agent_asset_ids_sampled_cache: tuple[list[int], int] | None = None
         self._users: list[dict] | None = None
         self._users_endpoints_unavailable: bool = False
         self._authentication_sources: list[dict] | None = None
@@ -489,6 +490,55 @@ class EnvSnapshot:
                 ids.add(aid)
         self._agent_asset_ids_cache = ids
         return ids
+
+    def agent_asset_ids_sampled(self) -> tuple[list[int], int]:
+        """First-N sample of agent asset IDs paired with the population total.
+
+        Returns ``(sample_ids, total_count)``:
+            - ``total_count``: ``page.totalResources`` from the first page of
+              ``/api/3/agents``
+            - ``sample_ids``: up to ``self._sample_size`` IDs taken in API
+              default order (typically newest first)
+
+        Cheap by design: paginates ``/api/3/agents`` only until ``sample_size``
+        IDs are collected (≈ ``ceil(sample_size / 100)`` page fetches).
+        Independent of ``full_scan`` — always samples.
+
+        Returns ``([], 0)`` cleanly when ``/api/3/agents`` is unavailable
+        (404), and sets the same ``_agents_unavailable`` flag that
+        ``agents()`` and ``agent_asset_ids()`` use, so
+        ``is_agents_unavailable()`` reflects the state regardless of which
+        accessor was called first.
+
+        Cached separately from ``agents()`` and ``agent_asset_ids()``;
+        distinct shapes, distinct consumers.
+        """
+        if self._agent_asset_ids_sampled_cache is not None:
+            return self._agent_asset_ids_sampled_cache
+
+        try:
+            head = self._client.get("/api/3/agents", params={"size": 1})
+        except Rapid7ClientError as e:
+            if e.status_code == 404:
+                logger.info("agents endpoint not available on this console")
+                self._agents_unavailable = True
+                self._agent_asset_ids_sampled_cache = ([], 0)
+                return self._agent_asset_ids_sampled_cache
+            raise
+
+        total = int(head.get("page", {}).get("totalResources", 0))
+
+        sample_ids: list[int] = []
+        if total > 0:
+            for a in itertools.islice(
+                self._client.paginate("/api/3/agents"), self._sample_size
+            ):
+                aid = _extract_agent_asset_id(a)
+                if aid is not None:
+                    sample_ids.append(aid)
+
+        self._agent_asset_ids_sampled_cache = (sample_ids, total)
+        return self._agent_asset_ids_sampled_cache
 
     # --- User & Permission audit accessors -------------------------------
 
