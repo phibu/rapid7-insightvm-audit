@@ -221,3 +221,69 @@ def test_duplicates_disabled_skips_paginate(fake_client, app_config):
     assert not any(
         c[0] == "paginate" and c[1] == "/api/3/assets" for c in fake_client.calls
     )
+
+
+def test_per_rule_failure_isolated_other_rules_still_run(fake_client, app_config):
+    """If one rule's API call raises, the rest of the check still produces output.
+
+    Regression guard for the production trace where missing_os timed out and
+    blackholed the entire Data Quality check (no rule_results emitted).
+    """
+    from rapid7_healthcheck.client import Rapid7ClientError
+
+    # missing_os will fail (post_one raises); empty_sites + stale_assets +
+    # duplicates must all still produce RuleResults.
+    def post_one_raise(path, json_body, params=None):
+        raise Rapid7ClientError("Read timed out on POST /api/3/assets/search", status_code=None)
+
+    fake_client.post_one = post_one_raise  # type: ignore[assignment]
+    fake_client.set_paginate("/api/3/sites", [{"id": 1, "name": "Prod"}])
+    fake_client.set_get("/api/3/sites/1/assets", {"resources": [], "page": {"totalResources": 5}})
+    fake_client.set_paginate("/api/3/assets", [
+        {"id": 1, "hostName": "host-a", "ip": "10.0.0.1"},
+        {"id": 2, "hostName": "host-b", "ip": "10.0.0.2"},
+    ])
+
+    result = DataQualityCheck().run(fake_client, app_config)
+
+    # 5 rules total: missing_os, empty_sites, stale_assets, dup_hostnames, dup_ips
+    assert len(result.rule_results) == 5
+    # missing_os errored
+    missing = _rule(result, "op.data_quality.missing_os")
+    assert missing.status == "error"
+    assert "Read timed out" in (missing.error or "")
+    # The other rules still ran successfully (empty_sites and stale_assets use
+    # different code paths — paginate / post_one for stale, but stale's
+    # post_one is also affected; only empty_sites uses pure GET so it always
+    # passes here).
+    empty = _rule(result, "op.data_quality.empty_sites")
+    assert empty.status == "pass"
+
+
+def test_duplicates_paginate_failure_emits_two_error_rules(fake_client, app_config):
+    """If the shared /api/3/assets paginate raises, both duplicate-detection
+    rules surface as errors (one per concept) so the report still shows them."""
+    from rapid7_healthcheck.client import Rapid7ClientError
+
+    fake_client.set_post_one(
+        "/api/3/assets/search",
+        {"resources": [], "page": {"totalResources": 0, "size": 10}},
+    )
+    fake_client.set_paginate("/api/3/sites", [])
+
+    def paginate_assets(path, params=None, page_size=500):
+        if path == "/api/3/assets":
+            raise Rapid7ClientError(
+                "HTTP 500 from GET /api/3/assets: server error", status_code=500
+            )
+        yield from []
+
+    fake_client.paginate = paginate_assets  # type: ignore[assignment]
+
+    result = DataQualityCheck().run(fake_client, app_config)
+    dup_host = _rule(result, "op.data_quality.duplicate_hostnames")
+    dup_ip = _rule(result, "op.data_quality.duplicate_ips")
+    assert dup_host.status == "error"
+    assert dup_ip.status == "error"
+    assert dup_host.error_status_code == 500
+    assert dup_ip.error_status_code == 500

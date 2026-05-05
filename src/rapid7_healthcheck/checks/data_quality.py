@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import logging
 import time
 from collections import defaultdict
-from typing import Any
+from typing import Any, Callable
 
 from rapid7_healthcheck.audit import RuleResult
 from rapid7_healthcheck.checks import CheckResult, Finding
 from rapid7_healthcheck.checks._op_rule import (
+    error_rule,
     flatten_findings,
     make_rule_result,
     rollup_check_status,
@@ -14,6 +16,8 @@ from rapid7_healthcheck.checks._op_rule import (
     skipped_rule,
 )
 from rapid7_healthcheck.config import AppConfig
+
+logger = logging.getLogger(__name__)
 
 _EXAMPLES_LIMIT = 10
 
@@ -39,13 +43,59 @@ class DataQualityCheck:
         t = config.thresholds.data_quality
         rule_results: list[RuleResult] = []
 
-        rule_results.append(self._missing_os(client, t))
-        rule_results.append(self._empty_sites(client, t))
-        rule_results.append(self._stale_assets(client, t))
+        # Per-rule isolation: a single rule's API call timing out or 400-ing
+        # must not blackhole the rest of the check. Mirrors the audit
+        # orchestrator's pattern. Each rule's identity is duplicated here
+        # because the helper synthesizes a RuleResult shell when the rule
+        # method itself raises before returning.
+        rule_results.append(self._safe(
+            lambda: self._missing_os(client, t),
+            rid="op.data_quality.missing_os",
+            name="Assets without OS fingerprint",
+            desc="Assets where the operating-system field is empty (fingerprinting failed or never ran).",
+            sources=[_SRC_FILTERED_SEARCH, _SRC_ASSET_SEARCH],
+        ))
+        rule_results.append(self._safe(
+            lambda: self._empty_sites(client, t),
+            rid="op.data_quality.empty_sites",
+            name="Sites with zero assets",
+            desc="Sites whose include/exclude scope currently matches no assets.",
+            sources=[_SRC_SITES],
+        ))
+        rule_results.append(self._safe(
+            lambda: self._stale_assets(client, t),
+            rid="op.data_quality.stale_assets",
+            name="Long-stale assets",
+            desc=(
+                "Assets whose last scan is older than the data-quality threshold. "
+                "Distinct from Asset Coverage's never-scanned signal — this flags "
+                "asset records whose data is so old it's likely unreliable."
+            ),
+            sources=[_SRC_FILTERED_SEARCH],
+        ))
 
-        # Duplicate detection — single paginate, two rules.
-        dup_rules = self._duplicates(client, t)
-        rule_results.extend(dup_rules)
+        # Duplicate detection — single paginate, two rules. If the paginate
+        # itself fails, both rules surface as errors (the helper synthesizes
+        # one error_rule per concept so the report still shows both rule cards).
+        try:
+            dup_rules = self._duplicates(client, t)
+            rule_results.extend(dup_rules)
+        except Exception as e:
+            logger.exception("data_quality._duplicates raised")
+            rule_results.append(error_rule(
+                rule_id="op.data_quality.duplicate_hostnames",
+                rule_name="Duplicate hostnames",
+                description="Assets with the same hostName (case-insensitive) — likely duplicate records.",
+                sources=[_SRC_DUPLICATE_ASSETS],
+                error=e,
+            ))
+            rule_results.append(error_rule(
+                rule_id="op.data_quality.duplicate_ips",
+                rule_name="Duplicate IPs",
+                description="Assets sharing an IP — usually two records for one host (re-imaged, agent + scan).",
+                sources=[_SRC_DUPLICATE_ASSETS],
+                error=e,
+            ))
 
         return CheckResult(
             name=self.name,
@@ -56,6 +106,36 @@ class DataQualityCheck:
             duration_ms=int((time.monotonic() - start) * 1000),
             rule_results=rule_results,
         )
+
+    def _safe(
+        self,
+        fn: Callable[[], RuleResult],
+        *,
+        rid: str,
+        name: str,
+        desc: str,
+        sources: list[str],
+    ) -> RuleResult:
+        """Run a rule producer; on any exception, return an error RuleResult.
+
+        Identity (rid/name/desc/sources) is supplied here because the rule
+        method may raise before returning, so we cannot read its internal
+        constants reflectively. Stays in sync with each rule method's
+        own constants — drift is caught by the data_quality unit tests.
+        """
+        rule_start = time.monotonic()
+        try:
+            return fn()
+        except Exception as e:
+            logger.exception("data_quality rule %s raised", rid)
+            return error_rule(
+                rule_id=rid,
+                rule_name=name,
+                description=desc,
+                sources=sources,
+                error=e,
+                duration_ms=int((time.monotonic() - rule_start) * 1000),
+            )
 
     # ----- per-concept rules -----
 

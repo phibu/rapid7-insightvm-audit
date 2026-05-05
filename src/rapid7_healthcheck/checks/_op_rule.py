@@ -72,6 +72,45 @@ def skipped_rule(
     )
 
 
+def error_rule(
+    *,
+    rule_id: str,
+    rule_name: str,
+    description: str,
+    error: Exception,
+    sources: Iterable[str] = (),
+    duration_ms: int = 0,
+    default_severity: Severity = "warn",
+) -> RuleResult:
+    """Build an error RuleResult for an op-check concept whose execution raised.
+
+    Mirrors the audit orchestrator's per-rule isolation pattern: when a single
+    rule's API call raises, the surrounding check still produces a CheckResult
+    with the remaining rules' output, and the failing rule shows as error in
+    the report rather than blacking out the entire check.
+
+    `error_path` and `error_status_code` are populated from a Rapid7ClientError;
+    other exception types leave them None.
+    """
+    # Defer import to avoid a circular dependency at module load time.
+    from rapid7_healthcheck.audit import _extract_diagnostics
+    error_path, error_status_code = _extract_diagnostics(error)
+    return RuleResult(
+        rule_id=rule_id,
+        rule_name=rule_name,
+        description=description,
+        severity=default_severity,
+        status="error",
+        findings=[],
+        summary={"error": str(error)[:300]},
+        sources=list(sources),
+        duration_ms=duration_ms,
+        error=str(error),
+        error_path=error_path,
+        error_status_code=error_status_code,
+    )
+
+
 def rollup_check_status(rule_results: list[RuleResult]) -> Status:
     """Aggregate rule statuses into a check-level status.
 
