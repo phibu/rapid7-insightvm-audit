@@ -1,10 +1,11 @@
 rapid7:
   base_url: https://us.api.insight.rapid7.com
   verify_tls: true
-  # Per-request read timeout. Bump to 60 or 120 if you see
-  # "network error after N attempt(s) on GET /api/3/...: Read timed out"
-  # in the report — Rapid7-hosted consoles can be sluggish under load.
-  request_timeout_seconds: 30
+  # Per-request read timeout. Default raised from 30s to 60s in 0.2.8 —
+  # hosted consoles regularly need >30s under load. Bump to 120 if you
+  # still see "network error after N attempt(s) on GET /api/3/...:
+  # Read timed out" in the report.
+  request_timeout_seconds: 60
   # Number of retries on transient errors (incl. read timeouts). Total
   # worst-case wait per call ≈ (max_retries + 1) * request_timeout_seconds.
   max_retries: 3
@@ -12,6 +13,18 @@ rapid7:
   # auth_mode: basic    # use HTTP Basic Auth; reads R7_BASIC_USER + R7_BASIC_PASSWORD
                         # required for Rapid7-hosted consoles where SAML/MFA users
                         # cannot mint a console-local API key in the UI
+
+  # How many pages to fetch concurrently inside one paginated call against
+  # /api/3/assets/search and similar endpoints. The InsightVM API documents
+  # 8 parallel requests as its supported limit; values up to 16 are accepted
+  # but emit a startup warning. Default 1 (sequential — today's behavior).
+  # Bump to 6 to speed up large asset-search walks.
+  parallel_pages: 1
+
+  # Default page size for paginated calls. Range 1..500. Lowered from 500
+  # to 250 in 0.2.8 because /api/3/assets/search regularly times out at
+  # 500 against large filtered queries.
+  page_size: 250
 
 report:
   output_dir: ./reports
