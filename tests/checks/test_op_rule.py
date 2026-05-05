@@ -4,7 +4,7 @@ import pytest
 
 from rapid7_healthcheck.audit import RuleResult
 from rapid7_healthcheck.checks import Finding
-from rapid7_healthcheck.checks._op_rule import safe_run
+from rapid7_healthcheck.checks._op_rule import make_rule_result, safe_run
 from rapid7_healthcheck.client import Rapid7ClientError
 
 
@@ -93,3 +93,25 @@ def test_safe_run_handles_arbitrary_exception_types():
     assert "not a Rapid7ClientError" in (result.error or "")
     assert result.sources == []
     assert result.duration_ms >= 0
+
+
+def test_make_rule_result_default_sampled_false():
+    """make_rule_result defaults sampled=False and sample_info=None."""
+    r = make_rule_result(
+        rule_id="op.x.y", rule_name="X", description="d",
+        findings=[],
+    )
+    assert r.sampled is False
+    assert r.sample_info is None
+
+
+def test_make_rule_result_passes_sampled_and_sample_info():
+    """make_rule_result accepts and passes through sampled and sample_info kwargs."""
+    r = make_rule_result(
+        rule_id="op.x.y", rule_name="X", description="d",
+        findings=[],
+        sampled=True,
+        sample_info="strategy=first-n; sampled=100; population=500000",
+    )
+    assert r.sampled is True
+    assert r.sample_info == "strategy=first-n; sampled=100; population=500000"

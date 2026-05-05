@@ -30,6 +30,8 @@ def make_rule_result(
     summary: dict | None = None,
     duration_ms: int = 0,
     default_severity: Severity = "warn",
+    sampled: bool = False,
+    sample_info: str | None = None,
 ) -> RuleResult:
     """Build a RuleResult for an operational check concept.
 
@@ -55,6 +57,8 @@ def make_rule_result(
         summary=summary or {},
         sources=list(sources),
         duration_ms=duration_ms,
+        sampled=sampled,
+        sample_info=sample_info,
     )
 
 
