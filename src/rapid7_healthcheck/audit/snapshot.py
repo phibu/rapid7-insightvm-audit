@@ -143,6 +143,7 @@ class EnvSnapshot:
         self._user_2fa: dict[int, bool | None] = {}
         self._user_sites: dict[int, list[dict]] = {}
         self._user_asset_groups: dict[int, list[dict]] = {}
+        self._asset_group_member_counts: dict[int, int | None] = {}
         self._all_included_targets_cache: IncludedTargets | None = None
 
     @property
@@ -300,6 +301,39 @@ class EnvSnapshot:
         body = self._client.get(f"/api/3/asset_groups/{group_id}/search_criteria")
         # /search_criteria returns the SearchCriteria object directly per API v3.
         return body if isinstance(body, dict) else {}
+
+    def asset_group_member_count(self, group_id: int) -> int | None:
+        """Per-id fallback for the inline `assets` count on /api/3/asset_groups.
+
+        The listing endpoint omits inline `assets` counts for dynamic groups
+        on some console versions. This accessor calls
+        GET /api/3/asset_groups/{id}/assets and returns the length of the
+        `resources` array (the endpoint is unpaginated per v3 spec).
+
+        Returns None when the underlying call raises Rapid7ClientError —
+        callers surface a per-group info finding rather than aborting the
+        rule. We branch on `e.status_code` only; never substring-match the
+        error message (CLAUDE.md guidance).
+
+        Cached per `group_id` within the snapshot lifetime. Cached `None`
+        results short-circuit on subsequent calls (no retry).
+        """
+        if group_id in self._asset_group_member_counts:
+            return self._asset_group_member_counts[group_id]
+        try:
+            body = self._client.get(f"/api/3/asset_groups/{group_id}/assets")
+        except Rapid7ClientError as e:
+            logger.debug(
+                "asset_group_member_count(%s) failed: status=%s",
+                group_id,
+                e.status_code,
+            )
+            self._asset_group_member_counts[group_id] = None
+            return None
+        resources = body.get("resources") if isinstance(body, dict) else None
+        count = len(resources) if isinstance(resources, list) else 0
+        self._asset_group_member_counts[group_id] = count
+        return count
 
     def asset_group_sites(self, group_id: int) -> set[int]:
         """Site IDs referenced by an asset group's searchCriteria.

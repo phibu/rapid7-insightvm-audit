@@ -432,3 +432,14 @@ class TestAgentAssetIdsSampled:
         assert (sample_ids, total) == ([], 0)
         # No additional HTTP calls.
         assert len(c.get_calls) == head_calls_before
+
+
+def test_asset_group_member_count_happy_path():
+    """Returns len(response['resources']) and caches per id."""
+    c = _FakeClient()
+    c.set_get("/api/3/asset_groups/1/assets", {
+        "resources": [101, 102, 103],
+        "links": [],
+    })
+    s = EnvSnapshot(c, full_scan=False, sample_size=500)
+    assert s.asset_group_member_count(1) == 3
