@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from ipaddress import ip_network
 
+from rapid7_healthcheck.audit.snapshot import IncludedTargets
 from rapid7_healthcheck.checks.asset_coverage import AssetCoverageCheck
 from rapid7_healthcheck.client import Rapid7ClientError
 
@@ -307,12 +309,9 @@ def test_r1_dead_asset_groups_errors_when_snapshot_missing(fake_client, app_conf
 # regardless of audit.full_scan, samples up to audit.sample_size agents
 # in API default order, and reports a directional estimate.
 
-from rapid7_healthcheck.audit.snapshot import IncludedTargets
-
 
 def _r4_targets(*cidrs: str) -> IncludedTargets:
     """Build an IncludedTargets covering the given CIDR blocks."""
-    from ipaddress import ip_network
     return IncludedTargets(networks=[ip_network(c, strict=False) for c in cidrs], literals=set())
 
 
@@ -533,6 +532,64 @@ def test_r4_rule_id_preserved(fake_client, app_config):
     rule = _rule(result, "op.asset_coverage.agent_only_assets")
 
     assert rule.rule_id == "op.asset_coverage.agent_only_assets"
+
+
+def test_r4_error_when_snapshot_none(fake_client, app_config):
+    """flag on + snapshot=None → error status with a clear summary message."""
+    cfg = _r4_app_config(app_config)
+    # Wire the always-runs prerequisites so the call doesn't blow up earlier.
+    fake_client.set_paginate_post("/api/3/assets/search", [])
+    result = AssetCoverageCheck().run(fake_client, cfg, snapshot=None)
+    rule = _rule(result, "op.asset_coverage.agent_only_assets")
+
+    assert rule.status == "error"
+    assert rule.summary["agent_only_count_sampled"] == 0
+    assert rule.summary.get("error") == "snapshot required"
+
+
+def test_r4_error_when_targets_none(fake_client, app_config):
+    """flag on + included_targets=None → indeterminate, error status."""
+    snap = _FakeSnapshot(
+        asset_groups=[],
+        sample_ids=[1],
+        total_agents=1,
+        included_targets=None,  # explicit
+    )
+    fake_client.set_paginate_post("/api/3/assets/search", [])
+
+    result = AssetCoverageCheck().run(fake_client, _r4_app_config(app_config), snapshot=snap)
+    rule = _rule(result, "op.asset_coverage.agent_only_assets")
+
+    assert rule.status == "error"
+    assert rule.summary["agent_only_count_sampled"] == 0
+    assert rule.summary.get("error") == "no targets"
+
+
+def test_r4_all_in_scope_pass(fake_client, app_config):
+    """Sample fully in-scope → status pass, summary finding info-severity, no per-outsider findings."""
+    snap = _FakeSnapshot(
+        asset_groups=[],
+        sample_ids=[100, 101, 102],
+        total_agents=300,
+        included_targets=_r4_targets("10.0.0.0/24"),
+    )
+    fake_client.set_get("/api/3/assets/100", {"ip": "10.0.0.5", "hostName": "h-100"})
+    fake_client.set_get("/api/3/assets/101", {"ip": "10.0.0.6", "hostName": "h-101"})
+    fake_client.set_get("/api/3/assets/102", {"ip": "10.0.0.7", "hostName": "h-102"})
+    fake_client.set_paginate_post("/api/3/assets/search", [])
+
+    result = AssetCoverageCheck().run(fake_client, _r4_app_config(app_config), snapshot=snap)
+    rule = _rule(result, "op.asset_coverage.agent_only_assets")
+
+    assert rule.status == "pass"
+    assert rule.summary["agent_only_count_sampled"] == 0
+    assert rule.summary["sampled_fetched"] == 3
+    assert rule.summary["sampled_outside_scope_pct"] == 0.0
+    assert rule.summary["estimated_outsiders_fleetwide"] == 0
+    # Only the directional summary finding; no per-outsider findings.
+    assert len(rule.findings) == 1
+    assert rule.findings[0].severity == "info"
+    assert "Sampled" in rule.findings[0].message
 
 
 # ----- integration: shape, rollup, backwards-compat -----
