@@ -22,6 +22,8 @@ class Rapid7Config:
     request_timeout_seconds: int
     max_retries: int
     auth_mode: str = "api_key"
+    parallel_pages: int = 1
+    page_size: int = 250
 
 
 @dataclass(frozen=True)
@@ -247,7 +249,7 @@ def _build_rapid7_config(data: Any) -> Rapid7Config:
         raise ConfigError(f"rapid7: expected mapping, got {type(data).__name__}")
 
     required = {"base_url", "verify_tls", "request_timeout_seconds", "max_retries"}
-    optional = {"auth_mode"}
+    optional = {"auth_mode", "parallel_pages", "page_size"}
     expected = required | optional
 
     unknown = set(data.keys()) - expected
@@ -272,12 +274,35 @@ def _build_rapid7_config(data: Any) -> Rapid7Config:
             f"rapid7.auth_mode: must be one of {list(_VALID_AUTH_MODES)}, got {auth_mode!r}"
         )
 
+    parallel_pages = data.get("parallel_pages", 1)
+    _check_scalar("parallel_pages", parallel_pages, int, "rapid7")
+    if not (1 <= parallel_pages <= 16):
+        raise ConfigError(
+            f"rapid7.parallel_pages must be in range [1, 16]; got {parallel_pages}"
+        )
+    if parallel_pages > 8:
+        import logging as _logging
+        _logging.getLogger(__name__).warning(
+            "rapid7.parallel_pages=%d exceeds the documented InsightVM "
+            "8-parallel-request limit; proceed at your own risk",
+            parallel_pages,
+        )
+
+    page_size = data.get("page_size", 250)
+    _check_scalar("page_size", page_size, int, "rapid7")
+    if not (1 <= page_size <= 500):
+        raise ConfigError(
+            f"rapid7.page_size must be in range [1, 500]; got {page_size}"
+        )
+
     return Rapid7Config(
         base_url=data["base_url"],
         verify_tls=data["verify_tls"],
         request_timeout_seconds=data["request_timeout_seconds"],
         max_retries=data["max_retries"],
         auth_mode=auth_mode,
+        parallel_pages=parallel_pages,
+        page_size=page_size,
     )
 
 

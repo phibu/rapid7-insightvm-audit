@@ -424,3 +424,68 @@ def test_user_audit_invalid_severity_raises(tmp_path):
 def test_user_permission_audit_check_toggle_default_true(tmp_path):
     cfg = load_config(write(tmp_path, VALID_YAML))
     assert cfg.checks["user_permission_audit"] is True
+
+
+def _yaml_with_rapid7_extras(*, parallel_pages: int | None = None, page_size: int | None = None) -> str:
+    """Inject parallel_pages / page_size into the rapid7: block of VALID_YAML."""
+    extras = []
+    if parallel_pages is not None:
+        extras.append(f"  parallel_pages: {parallel_pages}")
+    if page_size is not None:
+        extras.append(f"  page_size: {page_size}")
+    if not extras:
+        return VALID_YAML
+    insertion = "\n".join(extras) + "\n"
+    return VALID_YAML.replace(
+        "  max_retries: 3\n",
+        f"  max_retries: 3\n{insertion}",
+    )
+
+
+def test_rapid7_parallel_pages_default_is_one(tmp_path):
+    cfg = load_config(write(tmp_path, VALID_YAML))
+    assert cfg.rapid7.parallel_pages == 1
+
+
+def test_rapid7_parallel_pages_accepts_six(tmp_path):
+    body = _yaml_with_rapid7_extras(parallel_pages=6)
+    cfg = load_config(write(tmp_path, body))
+    assert cfg.rapid7.parallel_pages == 6
+
+
+def test_rapid7_parallel_pages_rejects_zero(tmp_path):
+    body = _yaml_with_rapid7_extras(parallel_pages=0)
+    with pytest.raises(ConfigError, match="parallel_pages"):
+        load_config(write(tmp_path, body))
+
+
+def test_rapid7_parallel_pages_rejects_seventeen(tmp_path):
+    body = _yaml_with_rapid7_extras(parallel_pages=17)
+    with pytest.raises(ConfigError, match="parallel_pages"):
+        load_config(write(tmp_path, body))
+
+
+def test_rapid7_parallel_pages_nine_warns(tmp_path, caplog):
+    """Values >8 are accepted but emit a warning log line."""
+    body = _yaml_with_rapid7_extras(parallel_pages=9)
+    with caplog.at_level("WARNING"):
+        cfg = load_config(write(tmp_path, body))
+    assert cfg.rapid7.parallel_pages == 9
+    assert any("8-parallel" in r.message for r in caplog.records)
+
+
+def test_rapid7_page_size_default_is_250(tmp_path):
+    cfg = load_config(write(tmp_path, VALID_YAML))
+    assert cfg.rapid7.page_size == 250
+
+
+def test_rapid7_page_size_rejects_zero(tmp_path):
+    body = _yaml_with_rapid7_extras(page_size=0)
+    with pytest.raises(ConfigError, match="page_size"):
+        load_config(write(tmp_path, body))
+
+
+def test_rapid7_page_size_rejects_501(tmp_path):
+    body = _yaml_with_rapid7_extras(page_size=501)
+    with pytest.raises(ConfigError, match="page_size"):
+        load_config(write(tmp_path, body))
