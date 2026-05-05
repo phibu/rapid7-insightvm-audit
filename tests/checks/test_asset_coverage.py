@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 
 from rapid7_healthcheck.checks.asset_coverage import AssetCoverageCheck
+from rapid7_healthcheck.client import Rapid7ClientError
 
 
 def _asset(host: str, asset_id: int = 1) -> dict:
@@ -503,21 +504,23 @@ def test_per_rule_failure_isolated_other_rules_still_run(fake_client, app_config
     """If one asset-coverage rule's API call raises, the other three rules
     still produce output. Mirrors the data_quality 0.2.8 regression test.
 
-    Triggers the failure on _stale_assets's paginate_post (the rule's
-    filter uses {"value": stale_asset_days} == 30 in the default fixture).
+    Triggers the failure on _stale_assets's paginate_post via the rule's
+    filter (last-scan-date is-earlier-than stale_asset_days). The
+    stale_asset_days value is derived from app_config at runtime so the
+    test stays correct if the fixture default ever changes.
     """
-    from rapid7_healthcheck.client import Rapid7ClientError
+    stale_days = app_config.thresholds.asset_coverage.stale_asset_days
 
     def paginate_post(path, json_body, params=None, page_size=500):
         if path == "/api/3/assets/search":
             # Match _stale_assets specifically: single filter, last-scan-date
-            # is-earlier-than 30 (the default stale_asset_days).
+            # is-earlier-than stale_asset_days.
             filters = json_body.get("filters", [])
             if (
                 len(filters) == 1
                 and filters[0].get("field") == "last-scan-date"
                 and filters[0].get("operator") == "is-earlier-than"
-                and filters[0].get("value") == 30
+                and filters[0].get("value") == stale_days
             ):
                 raise Rapid7ClientError("Read timed out", status_code=None)
         yield from []
