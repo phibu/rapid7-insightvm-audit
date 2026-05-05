@@ -461,3 +461,59 @@ def test_asset_group_member_count_returns_none_on_malformed_body():
     # Body itself is not a dict.
     c.set_get("/api/3/asset_groups/3/assets", "string-body")  # type: ignore[arg-type]
     assert s.asset_group_member_count(3) is None
+
+
+def test_asset_group_member_count_cached_per_id():
+    """Repeated calls for the same id hit the cache, not the client."""
+    c = _FakeClient()
+    c.set_get("/api/3/asset_groups/7/assets", {"resources": [1, 2], "links": []})
+    s = EnvSnapshot(c, full_scan=False, sample_size=500)
+    assert s.asset_group_member_count(7) == 2
+    assert s.asset_group_member_count(7) == 2
+    # Exactly one GET call was made.
+    assert sum(1 for path, _ in c.get_calls if path == "/api/3/asset_groups/7/assets") == 1
+
+
+def test_asset_group_member_count_returns_none_on_client_error():
+    """Rapid7ClientError → None (caller surfaces an info finding)."""
+    from rapid7_healthcheck.client import Rapid7ClientError
+
+    class _Client404(_FakeClient):
+        def get(self, path, params=None):
+            if path == "/api/3/asset_groups/9/assets":
+                self.get_calls.append((path, params))
+                raise Rapid7ClientError(
+                    "HTTP 404 from GET /api/3/asset_groups/9/assets: not found",
+                    status_code=404,
+                )
+            return super().get(path, params)
+
+    c = _Client404()
+    s = EnvSnapshot(c, full_scan=False, sample_size=500)
+    assert s.asset_group_member_count(9) is None
+    # Cached: subsequent call does not retry.
+    assert s.asset_group_member_count(9) is None
+    assert sum(1 for path, _ in c.get_calls if path == "/api/3/asset_groups/9/assets") == 1
+
+
+def test_asset_group_member_count_500_also_returns_none():
+    """Non-404 errors are also swallowed and cached as None — symmetric with 404.
+
+    Rationale: surface a per-group info finding regardless of the underlying
+    status. The rule already excludes the group from the dead-group analysis;
+    a 500 vs 404 distinction is not actionable at the rule level.
+    """
+    from rapid7_healthcheck.client import Rapid7ClientError
+
+    class _Client500(_FakeClient):
+        def get(self, path, params=None):
+            if path == "/api/3/asset_groups/11/assets":
+                raise Rapid7ClientError(
+                    "HTTP 500 from GET /api/3/asset_groups/11/assets: oops",
+                    status_code=500,
+                )
+            return super().get(path, params)
+
+    c = _Client500()
+    s = EnvSnapshot(c, full_scan=False, sample_size=500)
+    assert s.asset_group_member_count(11) is None
