@@ -511,3 +511,114 @@ def test_client_accepts_default_page_size_500(session):
         session=session,
     )
     assert c._default_page_size == 500
+
+
+import threading
+import time as _time_mod
+
+
+def test_parallel_paginate_yields_in_page_order(session):
+    """Pages 0, 1, 2 — page 1's response sleeps longest, page 2's shortest.
+    Iterator must still yield resources in page-0, page-1, page-2 order."""
+    page0 = {"resources": [{"id": "p0a"}, {"id": "p0b"}], "page": {"number": 0, "totalPages": 3}}
+    page1 = {"resources": [{"id": "p1a"}], "page": {"number": 1, "totalPages": 3}}
+    page2 = {"resources": [{"id": "p2a"}, {"id": "p2b"}], "page": {"number": 2, "totalPages": 3}}
+
+    pages_by_number = {0: page0, 1: page1, 2: page2}
+    sleep_by_number = {0: 0.0, 1: 0.05, 2: 0.0}
+
+    def fake_request(*args, **kwargs):
+        page_num = kwargs["params"]["page"]
+        _time_mod.sleep(sleep_by_number[page_num])
+        return _resp(200, pages_by_number[page_num])
+
+    session.request.side_effect = fake_request
+    c = make_client(session, parallel_pages=3)
+    items = list(c.paginate("/api/3/sites"))
+    assert [i["id"] for i in items] == ["p0a", "p0b", "p1a", "p2a", "p2b"]
+
+
+def test_parallel_paginate_propagates_first_error(session):
+    """Page 1 of 3 returns 500 — _paginate must raise Rapid7ClientError
+    and must not yield page 1's or page 2's resources. Page 0 is yielded
+    via Phase 1 before any failure."""
+    page0 = {"resources": [{"id": "p0"}], "page": {"number": 0, "totalPages": 3}}
+    page2 = {"resources": [{"id": "p2"}], "page": {"number": 2, "totalPages": 3}}
+
+    def fake_request(*args, **kwargs):
+        page_num = kwargs["params"]["page"]
+        if page_num == 0:
+            return _resp(200, page0)
+        if page_num == 1:
+            return _resp(500, {"message": "server error"})
+        if page_num == 2:
+            return _resp(200, page2)
+        raise AssertionError(f"unexpected page {page_num}")
+
+    session.request.side_effect = fake_request
+    c = make_client(session, parallel_pages=3, max_retries=0)
+
+    yielded: list[dict] = []
+    with pytest.raises(Rapid7ClientError) as exc_info:
+        for item in c.paginate("/api/3/sites"):
+            yielded.append(item)
+
+    assert exc_info.value.status_code == 500
+    assert yielded == [{"id": "p0"}]
+
+
+def test_parallel_paginate_default_one_is_sequential(session, monkeypatch):
+    """With parallel_pages=1, ThreadPoolExecutor must NOT be instantiated."""
+    from concurrent.futures import ThreadPoolExecutor as _real_pool
+    instances: list = []
+
+    def spy_pool(*args, **kwargs):
+        instances.append((args, kwargs))
+        return _real_pool(*args, **kwargs)
+
+    monkeypatch.setattr("rapid7_healthcheck.client.ThreadPoolExecutor", spy_pool)
+
+    page0 = {"resources": [{"id": 1}], "page": {"number": 0, "totalPages": 2}}
+    page1 = {"resources": [{"id": 2}], "page": {"number": 1, "totalPages": 2}}
+    session.request.side_effect = [_resp(200, page0), _resp(200, page1)]
+    c = make_client(session, parallel_pages=1)
+    items = list(c.paginate("/api/3/sites"))
+    assert [i["id"] for i in items] == [1, 2]
+    assert instances == []  # executor never created
+
+
+def test_parallel_paginate_per_call_kwarg_overrides_instance(session, monkeypatch):
+    """Per-call parallel_pages kwarg overrides instance default."""
+    from concurrent.futures import ThreadPoolExecutor as _real_pool
+    instances: list = []
+
+    def spy_pool(*args, max_workers=None, **kwargs):
+        instances.append(max_workers)
+        return _real_pool(*args, max_workers=max_workers, **kwargs)
+
+    monkeypatch.setattr("rapid7_healthcheck.client.ThreadPoolExecutor", spy_pool)
+
+    page0 = {"resources": [{"id": 1}], "page": {"number": 0, "totalPages": 2}}
+    page1 = {"resources": [{"id": 2}], "page": {"number": 1, "totalPages": 2}}
+    session.request.side_effect = [_resp(200, page0), _resp(200, page1)]
+    c = make_client(session, parallel_pages=1)  # instance default = 1
+    items = list(c.paginate("/api/3/sites", parallel_pages=4))
+    assert [i["id"] for i in items] == [1, 2]
+    assert instances == [4]  # per-call kwarg won
+
+
+def test_paginate_uses_default_page_size_when_unspecified(session):
+    """paginate() without page_size= uses instance default_page_size (250)."""
+    page0 = {"resources": [{"id": 1}], "page": {"number": 0, "totalPages": 1}}
+    session.request.return_value = _resp(200, page0)
+    c = make_client(session)  # default_page_size=250 (kwarg default)
+    list(c.paginate("/api/3/sites"))
+    assert session.request.call_args.kwargs["params"]["size"] == 250
+
+
+def test_paginate_explicit_page_size_overrides_default(session):
+    page0 = {"resources": [{"id": 1}], "page": {"number": 0, "totalPages": 1}}
+    session.request.return_value = _resp(200, page0)
+    c = make_client(session)
+    list(c.paginate("/api/3/sites", page_size=100))
+    assert session.request.call_args.kwargs["params"]["size"] == 100

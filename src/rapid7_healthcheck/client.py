@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Iterator
 from urllib.parse import urljoin
 
@@ -142,19 +143,30 @@ class Rapid7Client:
         self,
         path: str,
         params: dict | None = None,
-        page_size: int = 500,
+        page_size: int | None = None,
+        parallel_pages: int | None = None,
     ) -> Iterator[dict]:
-        yield from self._paginate("GET", path, params=params, page_size=page_size)
+        yield from self._paginate(
+            "GET", path,
+            params=params,
+            page_size=page_size if page_size is not None else self._default_page_size,
+            parallel_pages=parallel_pages if parallel_pages is not None else self._parallel_pages,
+        )
 
     def paginate_post(
         self,
         path: str,
         json_body: dict,
         params: dict | None = None,
-        page_size: int = 500,
+        page_size: int | None = None,
+        parallel_pages: int | None = None,
     ) -> Iterator[dict]:
         yield from self._paginate(
-            "POST", path, params=params, page_size=page_size, json_body=json_body
+            "POST", path,
+            params=params,
+            page_size=page_size if page_size is not None else self._default_page_size,
+            json_body=json_body,
+            parallel_pages=parallel_pages if parallel_pages is not None else self._parallel_pages,
         )
 
     def post_one(
@@ -182,22 +194,68 @@ class Rapid7Client:
         *,
         params: dict | None,
         page_size: int,
+        parallel_pages: int = 1,
         json_body: dict | None = None,
     ) -> Iterator[dict]:
-        page = 0
-        while True:
-            page_params = dict(params or {})
-            page_params["page"] = page
-            page_params["size"] = page_size
-            body = self._request(method, path, params=page_params, json_body=json_body)
-            for resource in body.get("resources", []):
-                yield resource
-            # If `page.totalPages` is missing or 0, treat as a single-page (or empty) response and stop.
-            meta = body.get("page", {})
-            total_pages = int(meta.get("totalPages", 0))
-            if page + 1 >= total_pages:
-                return
-            page += 1
+        # Phase 1: probe page 0 sequentially. We need totalPages before
+        # we can dispatch any parallel work.
+        page0_params = dict(params or {})
+        page0_params["page"] = 0
+        page0_params["size"] = page_size
+        body0 = self._request(method, path, params=page0_params, json_body=json_body)
+        for resource in body0.get("resources", []):
+            yield resource
+
+        meta = body0.get("page", {})
+        total_pages = int(meta.get("totalPages", 0))
+        if total_pages <= 1:
+            return
+
+        # Sequential fast path — preserve today's behavior bit-for-bit
+        # when caller hasn't opted into parallelism.
+        if parallel_pages <= 1:
+            for page_num in range(1, total_pages):
+                page_params = dict(params or {})
+                page_params["page"] = page_num
+                page_params["size"] = page_size
+                body = self._request(method, path, params=page_params, json_body=json_body)
+                for resource in body.get("resources", []):
+                    yield resource
+            return
+
+        # Phase 2: parallel batches of size `parallel_pages`.
+        logger.info(
+            "paginating %s with %d pages, parallel=%d",
+            path, total_pages, parallel_pages,
+        )
+        remaining = list(range(1, total_pages))
+        with ThreadPoolExecutor(max_workers=parallel_pages) as executor:
+            try:
+                while remaining:
+                    batch = remaining[:parallel_pages]
+                    remaining = remaining[parallel_pages:]
+                    futures = {}
+                    for page_num in batch:
+                        page_params = dict(params or {})
+                        page_params["page"] = page_num
+                        page_params["size"] = page_size
+                        fut = executor.submit(
+                            self._request, method, path,
+                            params=page_params, json_body=json_body,
+                        )
+                        futures[page_num] = fut
+
+                    # Collect results, then yield in page-index order.
+                    results: dict[int, dict] = {}
+                    for page_num, fut in futures.items():
+                        results[page_num] = fut.result()  # raises if the future failed
+
+                    for page_num in batch:
+                        for resource in results[page_num].get("resources", []):
+                            yield resource
+            except BaseException:
+                executor.shutdown(wait=False, cancel_futures=True)
+                raise
 
     def _request(
         self,
