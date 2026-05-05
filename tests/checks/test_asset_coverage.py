@@ -497,3 +497,72 @@ def test_optional_snapshot_kwarg_is_backwards_compatible(fake_client, app_config
     assert _rule(result, "op.asset_coverage.dead_asset_groups").status == "error"
     # R4 is skipped because flag_agent_only_assets=False by default — toggle check fires before snapshot check
     assert _rule(result, "op.asset_coverage.agent_only_assets").status == "skipped"
+
+
+def test_per_rule_failure_isolated_other_rules_still_run(fake_client, app_config):
+    """If one asset-coverage rule's API call raises, the other three rules
+    still produce output. Mirrors the data_quality 0.2.8 regression test.
+
+    Triggers the failure on _stale_assets's paginate_post (the rule's
+    filter uses {"value": stale_asset_days} == 30 in the default fixture).
+    """
+    from rapid7_healthcheck.client import Rapid7ClientError
+
+    def paginate_post(path, json_body, params=None, page_size=500):
+        if path == "/api/3/assets/search":
+            # Match _stale_assets specifically: single filter, last-scan-date
+            # is-earlier-than 30 (the default stale_asset_days).
+            filters = json_body.get("filters", [])
+            if (
+                len(filters) == 1
+                and filters[0].get("field") == "last-scan-date"
+                and filters[0].get("operator") == "is-earlier-than"
+                and filters[0].get("value") == 30
+            ):
+                raise Rapid7ClientError("Read timed out", status_code=None)
+        yield from []
+
+    fake_client.paginate_post = paginate_post  # type: ignore[assignment]
+    snap = _FakeSnapshot(asset_groups=[])
+    result = AssetCoverageCheck().run(fake_client, app_config, snapshot=snap)
+
+    # All 4 rules produce a RuleResult (the failing one as 'error', the
+    # others normally).
+    assert len(result.rule_results) == 4
+    stale = _rule(result, "op.asset_coverage.stale_assets")
+    assert stale.status == "error"
+    assert "Read timed out" in (stale.error or "")
+
+    # Other rules still ran — exact status depends on fake_client setup, but
+    # they must not be 'error' from the same exception.
+    for rid in (
+        "op.asset_coverage.never_scanned_assets",
+        "op.asset_coverage.dead_asset_groups",
+        "op.asset_coverage.agent_only_assets",
+    ):
+        rr = _rule(result, rid)
+        assert rr.status in ("pass", "warn", "fail", "skipped"), \
+            f"Rule {rid} should not be 'error' from another rule's failure; got {rr.status}"
+
+
+def test_rule_identity_matches_method_constants(fake_client, app_config):
+    """Drift guard: the rule_id strings duplicated in run()'s safe_run()
+    wrappers must match the rule_id each rule method emits internally.
+
+    Without this guard, if a rule method's rule_id changes but the
+    wrapper's stays the same, the report renders the wrapper's stale
+    identity for the success path and the method's new identity for the
+    error path — confusing operators and breaking delta-blob signatures.
+    """
+    fake_client.set_paginate_post("/api/3/assets/search", [])
+    snap = _FakeSnapshot(asset_groups=[])
+    result = AssetCoverageCheck().run(fake_client, app_config, snapshot=snap)
+
+    expected_rule_ids = {
+        "op.asset_coverage.stale_assets",
+        "op.asset_coverage.never_scanned_assets",
+        "op.asset_coverage.dead_asset_groups",
+        "op.asset_coverage.agent_only_assets",
+    }
+    actual_rule_ids = {rr.rule_id for rr in result.rule_results}
+    assert actual_rule_ids == expected_rule_ids
