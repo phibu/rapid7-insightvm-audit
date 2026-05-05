@@ -320,6 +320,30 @@ def test_r1_dead_asset_groups_errors_when_snapshot_missing(fake_client, app_conf
     assert "snapshot" in (rule.findings[0].message if rule.findings else "")
 
 
+def test_r1_dead_asset_groups_missing_inline_alive_via_fallback(fake_client, app_config):
+    """Regression: groups with missing inline `assets` count must NOT be
+    flagged as dead when the per-id fallback reveals members."""
+    snap = _FakeSnapshot(
+        asset_groups=[
+            {"id": 10, "name": "Dynamic Prod", "type": "dynamic"},  # no `assets` key
+            {"id": 11, "name": "Dynamic Workstations", "type": "dynamic"},  # no `assets` key
+        ],
+        member_counts={10: 42, 11: 0},
+    )
+    fake_client.set_paginate_post("/api/3/assets/search", [])
+    result = AssetCoverageCheck().run(fake_client, app_config, snapshot=snap)
+    rule = _rule(result, "op.asset_coverage.dead_asset_groups")
+
+    # Only group 11 is truly dead — group 10 has 42 members per fallback.
+    assert rule.summary["dead_groups_count"] == 1
+    assert rule.summary["groups_with_missing_count"] == 2
+    assert rule.summary["fallback_calls_made"] == 2
+    assert rule.summary["fallback_cap_reached"] is False
+    assert rule.summary["fallback_errors"] == 0
+    dead_names = {f.details["group_name"] for f in rule.findings if f.severity == "warn"}
+    assert dead_names == {"Dynamic Workstations"}
+
+
 # ----- R4: agent_only_assets (sampled, unconditional) -----
 # Replaces the old full-enumeration tests. Rule now runs unconditionally
 # regardless of audit.full_scan, samples up to audit.sample_size agents

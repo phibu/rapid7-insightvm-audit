@@ -262,19 +262,76 @@ class AssetCoverageCheck:
 
         rule_start = time.monotonic()
         groups = snapshot.asset_groups()
-        dead = [g for g in groups if int(g.get("assets") or 0) == 0]
+
+        # Pass 1: classify by inline count.
+        zero_inline: list[dict] = []      # inline == 0 → definitely dead
+        missing_inline: list[dict] = []   # inline is None / non-numeric → fallback candidate
+        for g in groups:
+            inline = g.get("assets")
+            if inline is None:
+                missing_inline.append(g)
+                continue
+            try:
+                if int(inline) == 0:
+                    zero_inline.append(g)
+            except (TypeError, ValueError):
+                # Non-numeric inline value: treat as missing for safety.
+                missing_inline.append(g)
+            # else: inline > 0, alive, skip.
+
+        # Pass 2: resolve fallback candidates up to the cap.
+        fallback_cap = int(getattr(t, "dead_groups_fallback_cap", 200))
+        fallback_calls = 0
+        fallback_errors = 0
+        fallback_dead: list[dict] = []
+        error_findings: list[Finding] = []
+        for g in missing_inline:
+            if fallback_calls >= fallback_cap:
+                break
+            count = snapshot.asset_group_member_count(g.get("id"))
+            fallback_calls += 1
+            if count is None:
+                fallback_errors += 1
+                gid = g.get("id")
+                gname = g.get("name") or f"id={gid}"
+                error_findings.append(Finding(
+                    severity="info",
+                    message=(
+                        f"Could not resolve membership for asset group "
+                        f"'{gname}' (HTTP error); excluded from dead-group "
+                        f"analysis."
+                    ),
+                    details={
+                        "group_id": gid,
+                        "group_name": g.get("name"),
+                        "type": g.get("type"),
+                    },
+                ))
+            elif count == 0:
+                fallback_dead.append(g)
+            # else: alive, skip.
+
+        fallback_cap_reached = fallback_calls < len(missing_inline)
+        fallback_skipped = len(missing_inline) - fallback_calls
+
+        dead = zero_inline + fallback_dead
+        # Track which groups came from the fallback path so we can label them.
+        fallback_dead_ids = {id(g) for g in fallback_dead}
         findings: list[Finding] = []
         head = dead[:_PER_ITEM_FINDING_CAP]
         for g in head:
             label = g.get("name") or f"id={g.get('id')}"
+            details = {
+                "group_id": g.get("id"),
+                "group_name": g.get("name"),
+                "type": g.get("type"),
+            }
+            if id(g) in fallback_dead_ids:
+                details["resolved_via"] = "per_group_fallback"
             findings.append(Finding(
                 severity="warn",
                 message=f"Asset group '{label}' has zero members",
-                details={
-                    "group_id": g.get("id"),
-                    "group_name": g.get("name"),
-                    "type": g.get("type"),
-                },
+                details=details,
             ))
         remainder = len(dead) - len(head)
         if remainder > 0:
@@ -283,13 +340,38 @@ class AssetCoverageCheck:
                 message=f"+ {remainder} more group(s) (truncated; showing first {_PER_ITEM_FINDING_CAP})",
                 details={"remainder": remainder, "total": len(dead), "cap": _PER_ITEM_FINDING_CAP},
             ))
+
+        # Append fallback diagnostics as info-severity findings.
+        findings.extend(error_findings)
+        if fallback_cap_reached:
+            findings.append(Finding(
+                severity="info",
+                message=(
+                    f"+ {fallback_skipped} more group(s) had missing inline "
+                    f"counts; per-group fallback skipped (cap={fallback_cap}). "
+                    f"Raise dead_groups_fallback_cap to inspect more."
+                ),
+                details={
+                    "missing_inline_total": len(missing_inline),
+                    "fallback_calls_made": fallback_calls,
+                    "fallback_cap": fallback_cap,
+                },
+            ))
+
         return make_rule_result(
             rule_id=rid,
             rule_name=name,
             description=desc,
             findings=findings,
             sources=sources,
-            summary={"dead_groups_count": len(dead), "total_groups": len(groups)},
+            summary={
+                "dead_groups_count": len(dead),
+                "total_groups": len(groups),
+                "groups_with_missing_count": len(missing_inline),
+                "fallback_calls_made": fallback_calls,
+                "fallback_cap_reached": fallback_cap_reached,
+                "fallback_errors": fallback_errors,
+            },
             duration_ms=int((time.monotonic() - rule_start) * 1000),
         )
 
