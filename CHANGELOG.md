@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.9] - 2026-05-05
+
 ### Fixed
 
 - **`AssetCoverageCheck` now isolates per-rule failures.** Extends the 0.2.8
@@ -882,7 +884,8 @@ InsightVM environment.
 - CI on Python 3.11 and 3.12 (GitHub Actions).
 - 153 unit tests covering checks, rules, config, client, and report rendering.
 
-[Unreleased]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.2.8...HEAD
+[Unreleased]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.2.9...HEAD
+[0.2.9]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.2.8...v0.2.9
 [0.2.8]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.2.7...v0.2.8
 [0.2.7]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.2.6...v0.2.7
 [0.2.6]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.2.5...v0.2.6
