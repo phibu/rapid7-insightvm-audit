@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import time
 from collections import defaultdict
-from typing import Any, Callable
+from typing import Any
 
 from rapid7_healthcheck.audit import RuleResult
 from rapid7_healthcheck.checks import CheckResult, Finding
@@ -13,6 +13,7 @@ from rapid7_healthcheck.checks._op_rule import (
     make_rule_result,
     rollup_check_status,
     rule_summary,
+    safe_run,
     skipped_rule,
 )
 from rapid7_healthcheck.config import AppConfig
@@ -48,25 +49,25 @@ class DataQualityCheck:
         # orchestrator's pattern. Each rule's identity is duplicated here
         # because the helper synthesizes a RuleResult shell when the rule
         # method itself raises before returning.
-        rule_results.append(self._safe(
+        rule_results.append(safe_run(
             lambda: self._missing_os(client, t),
-            rid="op.data_quality.missing_os",
-            name="Assets without OS fingerprint",
-            desc="Assets where the operating-system field is empty (fingerprinting failed or never ran).",
+            rule_id="op.data_quality.missing_os",
+            rule_name="Assets without OS fingerprint",
+            description="Assets where the operating-system field is empty (fingerprinting failed or never ran).",
             sources=[_SRC_FILTERED_SEARCH, _SRC_ASSET_SEARCH],
         ))
-        rule_results.append(self._safe(
+        rule_results.append(safe_run(
             lambda: self._empty_sites(client, t),
-            rid="op.data_quality.empty_sites",
-            name="Sites with zero assets",
-            desc="Sites whose include/exclude scope currently matches no assets.",
+            rule_id="op.data_quality.empty_sites",
+            rule_name="Sites with zero assets",
+            description="Sites whose include/exclude scope currently matches no assets.",
             sources=[_SRC_SITES],
         ))
-        rule_results.append(self._safe(
+        rule_results.append(safe_run(
             lambda: self._stale_assets(client, t),
-            rid="op.data_quality.stale_assets",
-            name="Long-stale assets",
-            desc=(
+            rule_id="op.data_quality.stale_assets",
+            rule_name="Long-stale assets",
+            description=(
                 "Assets whose last scan is older than the data-quality threshold. "
                 "Distinct from Asset Coverage's never-scanned signal — this flags "
                 "asset records whose data is so old it's likely unreliable."
@@ -106,36 +107,6 @@ class DataQualityCheck:
             duration_ms=int((time.monotonic() - start) * 1000),
             rule_results=rule_results,
         )
-
-    def _safe(
-        self,
-        fn: Callable[[], RuleResult],
-        *,
-        rid: str,
-        name: str,
-        desc: str,
-        sources: list[str],
-    ) -> RuleResult:
-        """Run a rule producer; on any exception, return an error RuleResult.
-
-        Identity (rid/name/desc/sources) is supplied here because the rule
-        method may raise before returning, so we cannot read its internal
-        constants reflectively. Stays in sync with each rule method's
-        own constants — drift is caught by the data_quality unit tests.
-        """
-        rule_start = time.monotonic()
-        try:
-            return fn()
-        except Exception as e:
-            logger.exception("data_quality rule %s raised", rid)
-            return error_rule(
-                rule_id=rid,
-                rule_name=name,
-                description=desc,
-                sources=sources,
-                error=e,
-                duration_ms=int((time.monotonic() - rule_start) * 1000),
-            )
 
     # ----- per-concept rules -----
 
