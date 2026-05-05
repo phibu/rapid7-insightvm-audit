@@ -216,6 +216,8 @@ def run(argv: list[str] | None = None) -> int:
             verify_tls=cfg.rapid7.verify_tls,
             timeout_seconds=cfg.rapid7.request_timeout_seconds,
             max_retries=cfg.rapid7.max_retries,
+            parallel_pages=cfg.rapid7.parallel_pages,
+            default_page_size=cfg.rapid7.page_size,
         )
         client.connect()
     except Rapid7AuthError as e:
