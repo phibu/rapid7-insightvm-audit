@@ -35,9 +35,6 @@ def test_safe_run_returns_fn_result_on_success():
     assert result.summary == {"ok": True}
 
 
-from rapid7_healthcheck.client import Rapid7ClientError
-
-
 def test_safe_run_returns_error_rule_on_exception():
     """safe_run synthesizes an error_rule when the producer raises."""
     def raises():
