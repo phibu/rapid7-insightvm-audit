@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import logging
 import typing
 from dataclasses import MISSING, dataclass, field, fields
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+logger = logging.getLogger(__name__)
 
 
 class ConfigError(Exception):
@@ -281,8 +284,7 @@ def _build_rapid7_config(data: Any) -> Rapid7Config:
             f"rapid7.parallel_pages must be in range [1, 16]; got {parallel_pages}"
         )
     if parallel_pages > 8:
-        import logging as _logging
-        _logging.getLogger(__name__).warning(
+        logger.warning(
             "rapid7.parallel_pages=%d exceeds the documented InsightVM "
             "8-parallel-request limit; proceed at your own risk",
             parallel_pages,
