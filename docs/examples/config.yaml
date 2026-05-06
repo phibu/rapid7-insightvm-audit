@@ -114,6 +114,13 @@ audit:
       # audit.full_scan: true to remove the cap.
       enabled: true
       severity: fail
+      # Skip the rule when the Insight Agent inventory exceeds this cap.
+      # /api/3/agents has no group-by, so the rule full-paginates the agent
+      # list to compute the agent-managed asset set. On large fleets
+      # (~hundreds of thousands of agents) this is too slow for a health
+      # check. Set to 0 to always skip; raise to override on consoles where
+      # agent pagination is fast enough.
+      max_agents: 50000
     site_vuln_template_no_creds:
       enabled: true
       severity: fail

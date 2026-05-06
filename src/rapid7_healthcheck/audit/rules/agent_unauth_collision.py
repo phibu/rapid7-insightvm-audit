@@ -78,7 +78,7 @@ class AgentUnauthCollisionRule:
                     message=(
                         f"Skipped: Insight Agent inventory ({total_agents} agents) "
                         f"exceeds the configured cap (max_agents = {max_agents}) "
-                        f"under audit.rules.agent_unauth_collision.knobs. Full "
+                        f"under audit.rules.agent_unauth_collision. Full "
                         f"pagination of /api/3/agents at this scale is too slow "
                         f"for a health-check pass. Raise the cap (set to 0 to "
                         f"disable the ceiling) or audit agent/unauth scan "
