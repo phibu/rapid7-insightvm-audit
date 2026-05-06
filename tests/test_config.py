@@ -487,3 +487,31 @@ def test_rapid7_page_size_rejects_501(tmp_path):
     body = _yaml_with_rapid7_extras(page_size=501)
     with pytest.raises(ConfigError, match="page_size"):
         load_config(write(tmp_path, body))
+
+
+def _yaml_with_dead_groups_cap(cap_value) -> str:
+    """Insert dead_groups_fallback_cap into asset_coverage block of VALID_YAML."""
+    insertion = f"    dead_groups_fallback_cap: {cap_value}\n"
+    return VALID_YAML.replace(
+        "    never_scanned_days: 90\n",
+        "    never_scanned_days: 90\n" + insertion,
+    )
+
+
+def test_dead_groups_fallback_cap_zero_disables_fallback(tmp_path):
+    """cap=0 is documented as 'disable fallback'; YAML->config must accept it."""
+    body = _yaml_with_dead_groups_cap(0)
+    cfg = load_config(write(tmp_path, body))
+    assert cfg.thresholds.asset_coverage.dead_groups_fallback_cap == 0
+
+
+def test_dead_groups_fallback_cap_negative_rejected(tmp_path):
+    body = _yaml_with_dead_groups_cap(-1)
+    with pytest.raises(ConfigError, match="dead_groups_fallback_cap"):
+        load_config(write(tmp_path, body))
+
+
+def test_dead_groups_fallback_cap_positive_accepted(tmp_path):
+    body = _yaml_with_dead_groups_cap(200)
+    cfg = load_config(write(tmp_path, body))
+    assert cfg.thresholds.asset_coverage.dead_groups_fallback_cap == 200

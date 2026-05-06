@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import typing
-from dataclasses import MISSING, dataclass, field, fields
+from dataclasses import MISSING, dataclass, field, fields, replace
 from pathlib import Path
 from typing import Any
 
@@ -317,10 +317,40 @@ def _build_thresholds(data: Any) -> Thresholds:
     missing = expected - set(data.keys())
     if missing:
         raise ConfigError(f"thresholds: missing required key(s): {sorted(missing)}")
+
+    # asset_coverage.dead_groups_fallback_cap accepts 0 (= disable fallback),
+    # which the generic _check_scalar (>0) rejects. Pull the field out, build
+    # the rest via the normal path, then re-attach the validated value.
+    ac_raw = data["asset_coverage"]
+    if not isinstance(ac_raw, dict):
+        raise ConfigError(
+            f"thresholds.asset_coverage: expected mapping, got {type(ac_raw).__name__}"
+        )
+    ac_data = dict(ac_raw)
+    cap: int | None = None
+    if "dead_groups_fallback_cap" in ac_data:
+        cap = ac_data.pop("dead_groups_fallback_cap")
+        if isinstance(cap, bool) or not isinstance(cap, int):
+            raise ConfigError(
+                f"thresholds.asset_coverage.dead_groups_fallback_cap: "
+                f"expected int, got {type(cap).__name__}"
+            )
+        if cap < 0:
+            raise ConfigError(
+                f"thresholds.asset_coverage.dead_groups_fallback_cap: "
+                f"must be a non-negative integer, got {cap}"
+            )
+
+    asset_coverage = _from_dict(
+        AssetCoverageThresholds, ac_data, "thresholds.asset_coverage"
+    )
+    if cap is not None:
+        asset_coverage = replace(asset_coverage, dead_groups_fallback_cap=cap)
+
     return Thresholds(
         scan_engines=_from_dict(ScanEngineThresholds, data["scan_engines"], "thresholds.scan_engines"),
         scan_activity=_from_dict(ScanActivityThresholds, data["scan_activity"], "thresholds.scan_activity"),
-        asset_coverage=_from_dict(AssetCoverageThresholds, data["asset_coverage"], "thresholds.asset_coverage"),
+        asset_coverage=asset_coverage,
         data_quality=_from_dict(DataQualityThresholds, data["data_quality"], "thresholds.data_quality"),
     )
 
