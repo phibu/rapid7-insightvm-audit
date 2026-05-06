@@ -33,6 +33,15 @@ report:
   # How many days back to compare against a prior report when computing the
   # "since last run" delta strip. null disables the feature.
   delta_max_age_days: 30
+  # File-log format. Stderr stays human-readable plain regardless.
+  #   plain   — current default; "<ts> <LEVEL> <logger>: <msg>" lines.
+  #   cmtrace — SCCM/MECM CMTrace viewer format. Useful on Windows when ops
+  #             open run logs in cmtrace.exe and want severity colorization
+  #             and the component filter.
+  #   json    — JSON Lines (one object per line). Useful when shipping logs
+  #             into Splunk/Loki/OpenSearch. Auto-derived path uses .jsonl.
+  # Override at runtime with `--log-format {plain,cmtrace,json}`.
+  log_format: plain
 
 thresholds:
   scan_engines:
