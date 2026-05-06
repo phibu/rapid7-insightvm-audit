@@ -53,6 +53,12 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     p.add_argument("--verbose", action="store_true", help="Enable DEBUG logging")
     p.add_argument("--log-file", default=None, help="Also write logs to this file")
     p.add_argument("--no-log-file", action="store_true", help="Suppress the default-on run log file")
+    p.add_argument(
+        "--log-format",
+        choices=["plain", "cmtrace", "json"],
+        default=None,
+        help="File log format. Overrides report.log_format. Stderr stays plain.",
+    )
     return p.parse_args(argv)
 
 
@@ -78,14 +84,18 @@ def _setup_logging(verbose: bool, log_file: str | None, log_format: str = "plain
     )
 
 
-def _resolve_log_file(args: argparse.Namespace, cfg: AppConfig) -> Path | None:
+def _resolve_log_file(args: argparse.Namespace, cfg: AppConfig, log_format: str) -> Path | None:
     """Resolve which path (if any) the run-log FileHandler should write to.
 
     Precedence:
       1. --no-log-file  -> None (suppress)
-      2. --log-file <p> -> <p> (explicit override)
+      2. --log-file <p> -> <p> (explicit override; honored verbatim)
       3. --output <p>   -> <p> with .log suffix (alongside report)
-      4. otherwise      -> cfg.report.output_dir + filename pattern with .log suffix
+      4. otherwise      -> cfg.report.output_dir + filename pattern with
+                           format-aware suffix (.jsonl for json, else .log)
+
+    Format-aware suffix applies ONLY to step 4. Explicit user paths in
+    steps 2 and 3 are never rewritten.
     """
     if getattr(args, "no_log_file", False):
         return None
@@ -96,7 +106,8 @@ def _resolve_log_file(args: argparse.Namespace, cfg: AppConfig) -> Path | None:
     # Derive from config — mirror what write_report does for the default path.
     timestamp = datetime.now().strftime("%Y-%m-%d_%H%M")
     base = cfg.report.filename_pattern.replace("{timestamp}", timestamp)
-    log_name = Path(base).with_suffix(".log").name
+    suffix = ".jsonl" if log_format == "json" else ".log"
+    log_name = Path(base).with_suffix(suffix).name
     return Path(cfg.report.output_dir) / log_name
 
 
@@ -175,8 +186,9 @@ def _run_checks(client: Any, cfg: AppConfig, progress: "ProgressReporter | None"
 
 def run(argv: list[str] | None = None) -> int:
     args = _parse_args(argv if argv is not None else sys.argv[1:])
-    # First pass: stderr-only so config errors are visible.
-    _setup_logging(args.verbose, log_file=None)
+    # First pass: stderr-only so config errors are visible. log_format is plain
+    # because we don't have the config yet; this pass never opens a file.
+    _setup_logging(args.verbose, log_file=None, log_format="plain")
     load_dotenv(override=False)
 
     try:
@@ -185,9 +197,16 @@ def run(argv: list[str] | None = None) -> int:
         logger.error("config error: %s", e)
         return EXIT_STARTUP
 
-    # Second pass: now we know where the log should go.
-    resolved_log = _resolve_log_file(args, cfg)
-    _setup_logging(args.verbose, log_file=str(resolved_log) if resolved_log else None)
+    # Effective format: CLI override > config default.
+    effective_log_format = args.log_format or cfg.report.log_format
+
+    # Second pass: now we know where the log should go and in which format.
+    resolved_log = _resolve_log_file(args, cfg, effective_log_format)
+    _setup_logging(
+        args.verbose,
+        log_file=str(resolved_log) if resolved_log else None,
+        log_format=effective_log_format,
+    )
 
     api_key: str | None = None
     basic_auth: tuple[str, str] | None = None

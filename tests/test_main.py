@@ -410,3 +410,51 @@ def test_run_with_audit_enabled_writes_audit_report(tmp_path, monkeypatch):
     html = out_path.read_text(encoding="utf-8")
     assert "Configuration Audit" in html
     assert "Vulnerability Template Without Credentials" in html
+
+
+def test_cli_log_format_overrides_config(tmp_path, monkeypatch):
+    """--log-format json overrides report.log_format=cmtrace from config."""
+    cfg_path = _write_config(tmp_path)
+    body = cfg_path.read_text(encoding="utf-8").replace(
+        'title: "T"',
+        'title: "T"\n  log_format: cmtrace',
+    )
+    cfg_path.write_text(body, encoding="utf-8")
+    monkeypatch.delenv("R7_API_KEY", raising=False)
+
+    captured = {}
+    real_setup = __import__("rapid7_healthcheck.__main__", fromlist=["_setup_logging"])._setup_logging
+
+    def spy(verbose, log_file=None, log_format="plain"):
+        captured["log_format"] = log_format
+        return real_setup(verbose, log_file=log_file, log_format=log_format)
+
+    with patch("rapid7_healthcheck.__main__._setup_logging", side_effect=spy):
+        code = run(["--config", str(cfg_path), "--log-format", "json", "--no-log-file"])
+
+    assert code == EXIT_STARTUP  # short-circuits via missing API key
+    assert captured["log_format"] == "json"  # CLI override wins
+
+
+def test_cli_log_format_falls_back_to_config(tmp_path, monkeypatch):
+    """When --log-format is absent, the config's report.log_format is used."""
+    cfg_path = _write_config(tmp_path)
+    body = cfg_path.read_text(encoding="utf-8").replace(
+        'title: "T"',
+        'title: "T"\n  log_format: cmtrace',
+    )
+    cfg_path.write_text(body, encoding="utf-8")
+    monkeypatch.delenv("R7_API_KEY", raising=False)
+
+    captured = {}
+    real_setup = __import__("rapid7_healthcheck.__main__", fromlist=["_setup_logging"])._setup_logging
+
+    def spy(verbose, log_file=None, log_format="plain"):
+        captured["log_format"] = log_format
+        return real_setup(verbose, log_file=log_file, log_format=log_format)
+
+    with patch("rapid7_healthcheck.__main__._setup_logging", side_effect=spy):
+        code = run(["--config", str(cfg_path), "--no-log-file"])
+
+    assert code == EXIT_STARTUP
+    assert captured["log_format"] == "cmtrace"

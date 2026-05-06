@@ -18,7 +18,7 @@ def test_explicit_log_file_path_wins_over_auto():
     cfg = MagicMock()
     cfg.report.output_dir = "reports"
     cfg.report.filename_pattern = "report-{timestamp}.html"
-    resolved = _resolve_log_file(args, cfg)
+    resolved = _resolve_log_file(args, cfg, log_format="plain")
     assert str(resolved).replace("\\", "/") == "/explicit/path.log"
 
 
@@ -31,7 +31,7 @@ def test_no_log_file_suppresses_auto():
     cfg = MagicMock()
     cfg.report.output_dir = "reports"
     cfg.report.filename_pattern = "report-{timestamp}.html"
-    assert _resolve_log_file(args, cfg) is None
+    assert _resolve_log_file(args, cfg, log_format="plain") is None
 
 
 def test_auto_resolves_from_output_path_when_explicit_output():
@@ -44,7 +44,7 @@ def test_auto_resolves_from_output_path_when_explicit_output():
     cfg = MagicMock()
     cfg.report.output_dir = "reports"
     cfg.report.filename_pattern = "report-{timestamp}.html"
-    resolved = _resolve_log_file(args, cfg)
+    resolved = _resolve_log_file(args, cfg, log_format="plain")
     assert resolved is not None
     assert str(resolved).endswith("myreport.log")
 
@@ -59,7 +59,7 @@ def test_auto_resolves_from_config_when_no_output():
     cfg = MagicMock()
     cfg.report.output_dir = "reports"
     cfg.report.filename_pattern = "report-{timestamp}.html"
-    resolved = _resolve_log_file(args, cfg)
+    resolved = _resolve_log_file(args, cfg, log_format="plain")
     assert resolved is not None
     s = str(resolved)
     assert s.endswith(".log")
@@ -153,3 +153,59 @@ def test_setup_logging_default_format_is_plain(tmp_path):
     file_handlers = [h for h in root.handlers if isinstance(h, FlushingFileHandler)]
     assert len(file_handlers) == 1
     assert isinstance(file_handlers[0].formatter, PlainFormatter)
+
+
+def test_auto_derived_log_path_uses_jsonl_for_json_format():
+    from rapid7_healthcheck.__main__ import _resolve_log_file
+    args = MagicMock()
+    args.no_log_file = False
+    args.log_file = None
+    args.output = None
+    cfg = MagicMock()
+    cfg.report.output_dir = "reports"
+    cfg.report.filename_pattern = "report-{timestamp}.html"
+    resolved = _resolve_log_file(args, cfg, log_format="json")
+    assert resolved is not None
+    assert str(resolved).endswith(".jsonl")
+
+
+def test_auto_derived_log_path_uses_log_for_cmtrace_format():
+    from rapid7_healthcheck.__main__ import _resolve_log_file
+    args = MagicMock()
+    args.no_log_file = False
+    args.log_file = None
+    args.output = None
+    cfg = MagicMock()
+    cfg.report.output_dir = "reports"
+    cfg.report.filename_pattern = "report-{timestamp}.html"
+    resolved = _resolve_log_file(args, cfg, log_format="cmtrace")
+    assert resolved is not None
+    assert str(resolved).endswith(".log")
+
+
+def test_explicit_log_file_path_not_rewritten_for_json():
+    """--log-file foo.log + json format keeps foo.log verbatim."""
+    from rapid7_healthcheck.__main__ import _resolve_log_file
+    args = MagicMock()
+    args.no_log_file = False
+    args.log_file = "foo.log"
+    args.output = None
+    cfg = MagicMock()
+    cfg.report.output_dir = "reports"
+    cfg.report.filename_pattern = "report-{timestamp}.html"
+    resolved = _resolve_log_file(args, cfg, log_format="json")
+    assert str(resolved) == "foo.log"
+
+
+def test_output_derived_log_path_not_rewritten_for_json():
+    """--output report.html + json format -> report.log (not report.jsonl)."""
+    from rapid7_healthcheck.__main__ import _resolve_log_file
+    args = MagicMock()
+    args.no_log_file = False
+    args.log_file = None
+    args.output = "/custom/myreport.html"
+    cfg = MagicMock()
+    cfg.report.output_dir = "reports"
+    cfg.report.filename_pattern = "report-{timestamp}.html"
+    resolved = _resolve_log_file(args, cfg, log_format="json")
+    assert str(resolved).endswith("myreport.log")
