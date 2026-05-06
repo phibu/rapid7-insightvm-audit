@@ -4,6 +4,15 @@ Public surface:
     FlushingFileHandler — drop-in for logging.FileHandler that flushes the
         underlying stream after every emit, so a tailed log file shows live
         progress during long-running audits.
+    PlainFormatter — current default file format; mirrors the legacy
+        basicConfig format string exactly.
+    CMTraceFormatter — SCCM/MECM CMTrace viewer format. Lets Windows ops
+        open run logs in cmtrace.exe with severity colorization and the
+        component filter.
+    JsonFormatter — JSON Lines (one object per line). For shipping logs
+        into Splunk/Loki/OpenSearch.
+    make_file_formatter — selector keyed by the literal config string
+        ("plain" | "cmtrace" | "json"); used by __main__._setup_logging.
 """
 from __future__ import annotations
 
@@ -79,7 +88,6 @@ class CMTraceFormatter(logging.Formatter):
             exc_text = self.formatException(record.exc_info)
             message = f"{message}\n{exc_text}"
 
-        # Local time HH:MM:SS.mmm
         local = datetime.fromtimestamp(record.created)
         time_str = local.strftime("%H:%M:%S") + f".{int(record.msecs):03d}"
         offset_str = _local_offset_string(record.created)
