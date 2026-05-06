@@ -11,6 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Configuration audit:** added `audit.rules.agent_unauth_collision.max_agents` knob (default `50000`). When the Insight Agent inventory exceeds this ceiling, the rule skips and emits a single info finding pointing to the Security Console UI. The v3 `/api/3/agents` endpoint requires full pagination to compute the agent-managed asset set; on large fleets (~hundreds of thousands of agents) this is too slow for a health-check pass. Set `max_agents: 0` to always skip; raise it to override the default behavior on consoles where pagination is fast enough.
 
+### Fixed
+
+- **Data Quality:** oversize-skip findings now point operators at `Security Console → Assets` (with breadcrumb) instead of the more vague "Security Console UI". Affects both the `duplicate_detection_max_assets=0` and the `total > cap` skip messages.
+
+### Internal
+
+- **Refactor (`checks/data_quality.py`):** extracted `_run_duplicate_detection(client, t, host_rule, ip_rule)` helper to flatten the previous 4-deep nesting in `DataQualityCheck.run`. Pure refactor — finding text and rule-result shapes byte-identical to 0.3.3.
+- **Test (`tests/checks/test_data_quality.py`):** added `test_duplicate_detection_runs_when_total_equals_threshold` to lock in the strict `>` operator at the boundary (`total_assets == cap` runs, does not skip). Guards against accidental drift to `>=`.
+
 ## [0.3.3] - 2026-05-06
 
 ### Added
