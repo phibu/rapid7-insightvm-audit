@@ -5,6 +5,26 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-05-06
+
+### Changed
+
+- **Operational checks: per-rule isolation extended to `scan_engines` and `scan_activity`.** Each rule now runs in its own try/except via `safe_run_rule`; a single rule's API failure no longer aborts the surrounding check. Brings these two checks in line with `asset_coverage` and `data_quality`.
+- **Operational checks: every op-check rule is now a class with class-level identity constants.** All 19 rules across the four op-check files declare `RULE_ID`, `RULE_NAME`, `DESCRIPTION`, `DEFAULT_SEVERITY`, `SOURCES` as class-level attributes. Identity is read once by both the dispatch site and the rule body, eliminating the prior duplication and drift risk.
+- **New `safe_run_rule(rule, fn)` helper in `_op_rule.py`** reads class-level identity off a rule object and delegates to `safe_run`.
+- **Internal (`checks/data_quality.py`): new `_collect_duplicate_groups(client, t)` helper** preserves the single-paginate API cost shared by `DuplicateHostnamesRule` and `DuplicateIpsRule`.
+- **Internal (`checks/scan_activity.py`): new `_ParsedScan` / `_ParsedSiteScans` file-scoped frozen dataclasses.** `run()` performs the site/scans I/O once and the six rule classes consume the parsed list. API call cost identical to 0.2.13.
+- **Internal (`checks/scan_engines.py`): new `_compute_engine_count_summary(engines, rule_results)` helper** preserves the existing `engines_total` / `engines_healthy` / `engines_warn` / `engines_fail` summary keys via per-engine worst-severity rollup across rule findings.
+
+### Fixed
+
+- **`op.data_quality.duplicate_ips` rule name is now consistent.** Previously the success path emitted `"Duplicate IP addresses"` while the rare error path emitted `"Duplicate IPs"`. Both paths now produce `"Duplicate IP addresses"`. `RULE_ID` is unchanged so delta-blob continuity is preserved.
+
+### Internal
+
+- Drift-guard concept replaced with a static check that every op-check rule class declares the five identity attributes. Class-level constants make rid/name/description drift between dispatch site and rule body structurally impossible.
+- All existing op-check `rule_id`s preserved verbatim; rendered finding messages byte-identical to 0.2.13.
+
 ## [0.2.13] - 2026-05-06
 
 ### Changed
