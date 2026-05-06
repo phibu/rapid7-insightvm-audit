@@ -35,3 +35,70 @@ class PlainFormatter(logging.Formatter):
 
     def __init__(self) -> None:
         super().__init__(fmt="%(asctime)s %(levelname)s %(name)s: %(message)s")
+
+
+_CMTRACE_TYPE_BY_LEVELNO: dict[int, int] = {
+    logging.DEBUG: 1,
+    logging.INFO: 1,
+    logging.WARNING: 2,
+    logging.ERROR: 3,
+    logging.CRITICAL: 3,
+}
+
+
+def _local_offset_string(record_created: float) -> str:
+    """Return CMTrace-style local UTC offset for the record's wall-clock time.
+
+    Format: '+NNN' or '-NNN' where NNN is the offset in minutes (zero-padded
+    to three digits). Matches what SCCM client logs emit.
+    """
+    local = datetime.fromtimestamp(record_created).astimezone()
+    offset = local.utcoffset()
+    if offset is None:
+        return "+000"
+    total_minutes = int(offset.total_seconds() // 60)
+    sign = "+" if total_minutes >= 0 else "-"
+    return f"{sign}{abs(total_minutes):03d}"
+
+
+class CMTraceFormatter(logging.Formatter):
+    """Format log records for the SCCM/MECM CMTrace viewer.
+
+    Line shape:
+      <![LOG[<message>]LOG]!><time="HH:mm:ss.fff+ZZZ" date="MM-dd-yyyy"
+      component="<logger>" context="" type="<1|2|3>" thread="<tid>"
+      file="<module>:<lineno>">
+    """
+
+    def format(self, record: logging.LogRecord) -> str:
+        message = record.getMessage()
+        if record.exc_info:
+            # CMTrace handles multi-line messages inside <![LOG[...]LOG]!>; we
+            # append the formatted traceback so the exception is visible in the
+            # same record (no second envelope).
+            exc_text = self.formatException(record.exc_info)
+            message = f"{message}\n{exc_text}"
+
+        # Local time HH:MM:SS.mmm
+        local = datetime.fromtimestamp(record.created)
+        time_str = local.strftime("%H:%M:%S") + f".{int(record.msecs):03d}"
+        offset_str = _local_offset_string(record.created)
+        date_str = local.strftime("%m-%d-%Y")
+
+        cmtype = _CMTRACE_TYPE_BY_LEVELNO.get(record.levelno, 1)
+        component = record.name
+        thread_id = record.thread or 0
+        # `record.module` is the basename without extension (logging strips it),
+        # so we always append ".py" for the CMTrace `file=` field.
+        file_field = f"{record.module}.py:{record.lineno}"
+
+        return (
+            f"<![LOG[{message}]LOG]!>"
+            f'<time="{time_str}{offset_str}" '
+            f'date="{date_str}" '
+            f'component="{component}" '
+            f'context="" '
+            f'type="{cmtype}" '
+            f'thread="{thread_id}" '
+            f'file="{file_field}">'
+        )
