@@ -280,7 +280,7 @@ class AssetCoverageCheck:
             # else: inline > 0, alive, skip.
 
         # Pass 2: resolve fallback candidates up to the cap.
-        fallback_cap = int(getattr(t, "dead_groups_fallback_cap", 200))
+        fallback_cap = int(t.dead_groups_fallback_cap)
         fallback_calls = 0
         fallback_errors = 0
         fallback_dead: list[dict] = []
@@ -316,7 +316,8 @@ class AssetCoverageCheck:
 
         dead = zero_inline + fallback_dead
         # Track which groups came from the fallback path so we can label them.
-        fallback_dead_ids = {id(g) for g in fallback_dead}
+        # API group IDs are unique per console, so g["id"] is the natural key.
+        fallback_dead_ids = {g.get("id") for g in fallback_dead}
         findings: list[Finding] = []
         head = dead[:_PER_ITEM_FINDING_CAP]
         for g in head:
@@ -326,7 +327,7 @@ class AssetCoverageCheck:
                 "group_name": g.get("name"),
                 "type": g.get("type"),
             }
-            if id(g) in fallback_dead_ids:
+            if g.get("id") in fallback_dead_ids:
                 details["resolved_via"] = "per_group_fallback"
             findings.append(Finding(
                 severity="warn",
