@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Configurable file-log format.** New `report.log_format` config key and `--log-format {plain,cmtrace,json}` CLI flag (CLI overrides config). Default `plain` is byte-identical to the previous hard-coded format string. `cmtrace` produces SCCM/MECM CMTrace-viewer-compatible lines (severity colorization, component filter, multi-line exception inside the envelope). `json` produces JSON Lines (one record per line; UTC ISO-8601 timestamps; `ensure_ascii=False`) for shipping into Splunk/Loki/OpenSearch. Stderr always stays plain regardless. Auto-derived log paths use `.jsonl` for json; explicit `--log-file <path>` is honored verbatim.
+
+## [0.3.2] - 2026-05-06
+
+### Added
+
 - **Report: each rule card now surfaces effective severity** as a second badge in the summary line (e.g. `sev: WARN`), reflecting the config override or the rule's `default_severity`. Previously only the rolled-up status (`PASS`/`WARN`/`FAIL`) was visible.
 - **Report: each rule card now renders `RuleResult.summary`** as an inline `key=value` strip below the description when non-empty (e.g. `missing_os_count=12 · sites_examined=42`). The field was already populated by every rule but was dropped silently by the template.
 
