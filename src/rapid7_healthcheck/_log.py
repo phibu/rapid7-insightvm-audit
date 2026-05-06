@@ -7,7 +7,9 @@ Public surface:
 """
 from __future__ import annotations
 
+import json as _json
 import logging
+from datetime import datetime, timezone
 
 
 class FlushingFileHandler(logging.FileHandler):
@@ -21,3 +23,15 @@ class FlushingFileHandler(logging.FileHandler):
     def emit(self, record: logging.LogRecord) -> None:
         super().emit(record)
         self.flush()
+
+
+class PlainFormatter(logging.Formatter):
+    """Drop-in for the legacy format string used by basicConfig.
+
+    Format: "%(asctime)s %(levelname)s %(name)s: %(message)s"
+    Centralized here so the three file formatters live side-by-side and the
+    string isn't duplicated between `_setup_logging` and tests.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(fmt="%(asctime)s %(levelname)s %(name)s: %(message)s")
