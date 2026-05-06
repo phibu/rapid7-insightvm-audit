@@ -17,7 +17,7 @@ from rapid7_healthcheck.checks._op_rule import (
     make_rule_result,
     rollup_check_status,
     rule_summary,
-    safe_run,
+    safe_run_rule,
     skipped_rule,
 )
 from rapid7_healthcheck.config import AppConfig
@@ -112,86 +112,17 @@ def _per_asset_findings(
     )
 
 
-class AssetCoverageCheck:
-    name = "Asset Coverage"
-    description = "Stale and never-scanned assets relative to configured thresholds."
+class StaleAssetsRule:
+    RULE_ID = "op.asset_coverage.stale_assets"
+    RULE_NAME = "Stale assets"
+    DESCRIPTION = (
+        "Assets whose last scan is older than the stale threshold "
+        "(coverage gap, but not yet expired)."
+    )
+    SOURCES = (_SRC_FILTERED_SEARCH,)
+    DEFAULT_SEVERITY = "warn"
 
-    def run(self, client: Any, config: AppConfig, *, snapshot: "EnvSnapshot | None" = None) -> CheckResult:
-        start = time.monotonic()
-        t = config.thresholds.asset_coverage
-        rule_results: list[RuleResult] = [
-            safe_run(
-                lambda: self._stale_assets(client, t),
-                rule_id="op.asset_coverage.stale_assets",
-                rule_name="Stale assets",
-                description=(
-                    "Assets whose last scan is older than the stale threshold "
-                    "(coverage gap, but not yet expired)."
-                ),
-                sources=[_SRC_FILTERED_SEARCH],
-            ),
-            safe_run(
-                lambda: self._never_scanned_assets(client, t),
-                rule_id="op.asset_coverage.never_scanned_assets",
-                rule_name="Never-scanned assets",
-                description=(
-                    "Assets whose last scan exceeds the never-scanned threshold — "
-                    "treated as effectively unscanned."
-                ),
-                sources=[_SRC_FILTERED_SEARCH],
-                default_severity="fail",
-            ),
-            safe_run(
-                lambda: self._dead_asset_groups(snapshot, t),
-                rule_id="op.asset_coverage.dead_asset_groups",
-                rule_name="Asset groups with zero members",
-                description=(
-                    "Asset groups whose membership criteria match no assets — orphaned "
-                    "RBAC/report scopes that were probably created for a project that "
-                    "ended or for assets that have since been removed."
-                ),
-                sources=[_SRC_ASSET_GROUPS],
-            ),
-            safe_run(
-                lambda: self._agent_only_assets(snapshot, client, t, config.audit),
-                rule_id="op.asset_coverage.agent_only_assets",
-                rule_name="Insight Agent assets outside scheduled scan scope",
-                description=(
-                    "Assets reporting via Insight Agent whose IP falls outside "
-                    "every site's configured included_targets. These assets only "
-                    "get opportunistic agent data; they're never reached by "
-                    "scheduled scans.\n\n"
-                    "Sampled. Inspects up to audit.sample_size agents (default "
-                    "100) drawn in API default order from /api/3/agents. Result "
-                    "is a directional estimate, not a complete inventory — for "
-                    "environments with hundreds of thousands of agents, full "
-                    "enumeration is intentionally avoided. Increase "
-                    "audit.sample_size for a tighter estimate at the cost of "
-                    "more API calls."
-                ),
-                sources=[_SRC_INSIGHT_AGENT],
-            ),
-        ]
-
-        return CheckResult(
-            name=self.name,
-            description=self.description,
-            status=rollup_check_status(rule_results),
-            findings=flatten_findings(rule_results),
-            summary=rule_summary(rule_results),
-            duration_ms=int((time.monotonic() - start) * 1000),
-            rule_results=rule_results,
-        )
-
-    def _stale_assets(self, client: Any, t) -> RuleResult:
-        rid = "op.asset_coverage.stale_assets"
-        name = "Stale assets"
-        desc = (
-            "Assets whose last scan is older than the stale threshold "
-            "(coverage gap, but not yet expired)."
-        )
-        sources = [_SRC_FILTERED_SEARCH]
-
+    def run(self, client: Any, t) -> RuleResult:
         rule_start = time.monotonic()
         body = {
             "filters": [
@@ -213,26 +144,34 @@ class AssetCoverageCheck:
             extra_details={"stale_asset_days": t.stale_asset_days},
         )
         return make_rule_result(
-            rule_id=rid,
-            rule_name=name,
-            description=desc,
+            rule_id=self.RULE_ID,
+            rule_name=self.RULE_NAME,
+            description=self.DESCRIPTION,
             findings=findings,
-            sources=sources,
+            sources=self.SOURCES,
             summary={"stale_count": len(stale), "stale_asset_days": t.stale_asset_days},
             duration_ms=int((time.monotonic() - rule_start) * 1000),
         )
 
-    def _never_scanned_assets(self, client: Any, t) -> RuleResult:
-        rid = "op.asset_coverage.never_scanned_assets"
-        name = "Never-scanned assets"
-        desc = (
-            "Assets whose last scan exceeds the never-scanned threshold — "
-            "treated as effectively unscanned."
-        )
-        sources = [_SRC_FILTERED_SEARCH]
 
+class NeverScannedAssetsRule:
+    RULE_ID = "op.asset_coverage.never_scanned_assets"
+    RULE_NAME = "Never-scanned assets"
+    DESCRIPTION = (
+        "Assets whose last scan exceeds the never-scanned threshold — "
+        "treated as effectively unscanned."
+    )
+    SOURCES = (_SRC_FILTERED_SEARCH,)
+    DEFAULT_SEVERITY = "fail"
+
+    def run(self, client: Any, t) -> RuleResult:
         if not t.flag_unscanned_assets:
-            return skipped_rule(rule_id=rid, rule_name=name, description=desc, sources=sources)
+            return skipped_rule(
+                rule_id=self.RULE_ID,
+                rule_name=self.RULE_NAME,
+                description=self.DESCRIPTION,
+                sources=self.SOURCES,
+            )
 
         rule_start = time.monotonic()
         body = {
@@ -255,40 +194,48 @@ class AssetCoverageCheck:
             extra_details={"never_scanned_days": t.never_scanned_days},
         )
         return make_rule_result(
-            rule_id=rid,
-            rule_name=name,
-            description=desc,
+            rule_id=self.RULE_ID,
+            rule_name=self.RULE_NAME,
+            description=self.DESCRIPTION,
             findings=findings,
-            sources=sources,
+            sources=self.SOURCES,
             summary={"unscanned_count": len(unscanned), "never_scanned_days": t.never_scanned_days},
             duration_ms=int((time.monotonic() - rule_start) * 1000),
             default_severity="fail",
         )
 
-    def _dead_asset_groups(self, snapshot: "EnvSnapshot | None", t) -> RuleResult:
-        rid = "op.asset_coverage.dead_asset_groups"
-        name = "Asset groups with zero members"
-        desc = (
-            "Asset groups whose membership criteria match no assets — orphaned "
-            "RBAC/report scopes that were probably created for a project that "
-            "ended or for assets that have since been removed."
-        )
-        sources = [_SRC_ASSET_GROUPS]
 
+class DeadAssetGroupsRule:
+    RULE_ID = "op.asset_coverage.dead_asset_groups"
+    RULE_NAME = "Asset groups with zero members"
+    DESCRIPTION = (
+        "Asset groups whose membership criteria match no assets — orphaned "
+        "RBAC/report scopes that were probably created for a project that "
+        "ended or for assets that have since been removed."
+    )
+    SOURCES = (_SRC_ASSET_GROUPS,)
+    DEFAULT_SEVERITY = "warn"
+
+    def run(self, snapshot: "EnvSnapshot | None", t) -> RuleResult:
         if not t.flag_dead_asset_groups:
-            return skipped_rule(rule_id=rid, rule_name=name, description=desc, sources=sources)
+            return skipped_rule(
+                rule_id=self.RULE_ID,
+                rule_name=self.RULE_NAME,
+                description=self.DESCRIPTION,
+                sources=self.SOURCES,
+            )
 
         if snapshot is None:
             # make_rule_result derives status from finding severity (no "error" mapping); construct directly.
             return RuleResult(
-                rule_id=rid,
-                rule_name=name,
-                description=desc,
+                rule_id=self.RULE_ID,
+                rule_name=self.RULE_NAME,
+                description=self.DESCRIPTION,
                 severity="warn",
                 status="error",
                 findings=[Finding(severity="warn", message="snapshot required but not provided to check")],
                 summary={"dead_groups_count": 0, "error": "snapshot required"},
-                sources=sources,
+                sources=self.SOURCES,
             )
 
         rule_start = time.monotonic()
@@ -389,11 +336,11 @@ class AssetCoverageCheck:
             ))
 
         return make_rule_result(
-            rule_id=rid,
-            rule_name=name,
-            description=desc,
+            rule_id=self.RULE_ID,
+            rule_name=self.RULE_NAME,
+            description=self.DESCRIPTION,
             findings=findings,
-            sources=sources,
+            sources=self.SOURCES,
             summary={
                 "dead_groups_count": len(dead),
                 "total_groups": len(groups),
@@ -405,44 +352,52 @@ class AssetCoverageCheck:
             duration_ms=int((time.monotonic() - rule_start) * 1000),
         )
 
-    def _agent_only_assets(
+
+class AgentOnlyAssetsRule:
+    RULE_ID = "op.asset_coverage.agent_only_assets"
+    RULE_NAME = "Insight Agent assets outside scheduled scan scope"
+    DESCRIPTION = (
+        "Assets reporting via Insight Agent whose IP falls outside "
+        "every site's configured included_targets. These assets only "
+        "get opportunistic agent data; they're never reached by "
+        "scheduled scans.\n\n"
+        "Sampled. Inspects up to audit.sample_size agents (default "
+        "100) drawn in API default order from /api/3/agents. Result "
+        "is a directional estimate, not a complete inventory — for "
+        "environments with hundreds of thousands of agents, full "
+        "enumeration is intentionally avoided. Increase "
+        "audit.sample_size for a tighter estimate at the cost of "
+        "more API calls."
+    )
+    SOURCES = (_SRC_INSIGHT_AGENT,)
+    DEFAULT_SEVERITY = "warn"
+
+    def run(
         self,
         snapshot: "EnvSnapshot | None",
         client: Any,
         t,
         audit_settings,
     ) -> RuleResult:
-        rid = "op.asset_coverage.agent_only_assets"
-        name = "Insight Agent assets outside scheduled scan scope"
-        desc = (
-            "Assets reporting via Insight Agent whose IP falls outside "
-            "every site's configured included_targets. These assets only "
-            "get opportunistic agent data; they're never reached by "
-            "scheduled scans.\n\n"
-            "Sampled. Inspects up to audit.sample_size agents (default "
-            "100) drawn in API default order from /api/3/agents. Result "
-            "is a directional estimate, not a complete inventory — for "
-            "environments with hundreds of thousands of agents, full "
-            "enumeration is intentionally avoided. Increase "
-            "audit.sample_size for a tighter estimate at the cost of "
-            "more API calls."
-        )
-        sources = [_SRC_INSIGHT_AGENT]
-
         if not t.flag_agent_only_assets:
-            return skipped_rule(rule_id=rid, rule_name=name, description=desc, sources=sources)
+            return skipped_rule(
+                rule_id=self.RULE_ID,
+                rule_name=self.RULE_NAME,
+                description=self.DESCRIPTION,
+                sources=self.SOURCES,
+            )
 
         if snapshot is None:
             # make_rule_result derives status from finding severity (no "error" mapping); construct directly.
             return RuleResult(
-                rule_id=rid,
-                rule_name=name,
-                description=desc,
+                rule_id=self.RULE_ID,
+                rule_name=self.RULE_NAME,
+                description=self.DESCRIPTION,
                 severity="warn",
                 status="error",
                 findings=[Finding(severity="warn", message="snapshot required but not provided to check")],
                 summary={"agent_only_count_sampled": 0, "error": "snapshot required"},
-                sources=sources,
+                sources=self.SOURCES,
             )
 
         rule_start = time.monotonic()
@@ -455,10 +410,10 @@ class AssetCoverageCheck:
 
         if snapshot.is_agents_unavailable():
             return skipped_rule(
-                rule_id=rid,
-                rule_name=f"{name} (agents endpoint unavailable on this console)",
-                description=desc,
-                sources=sources,
+                rule_id=self.RULE_ID,
+                rule_name=f"{self.RULE_NAME} (agents endpoint unavailable on this console)",
+                description=self.DESCRIPTION,
+                sources=self.SOURCES,
             )
 
         targets = snapshot.all_included_targets()
@@ -466,14 +421,14 @@ class AssetCoverageCheck:
         if targets is None:
             # snapshot fake / edge case — treat as no scope coverage info, rule indeterminate.
             return RuleResult(
-                rule_id=rid,
-                rule_name=name,
-                description=desc,
+                rule_id=self.RULE_ID,
+                rule_name=self.RULE_NAME,
+                description=self.DESCRIPTION,
                 severity="warn",
                 status="error",
                 findings=[Finding(severity="warn", message="all_included_targets() returned None")],
                 summary={"agent_only_count_sampled": 0, "error": "no targets"},
-                sources=sources,
+                sources=self.SOURCES,
             )
 
         logger.info(
@@ -490,14 +445,14 @@ class AssetCoverageCheck:
                 f"{audit_settings.sample_size}; population=0"
             )
             return make_rule_result(
-                rule_id=rid,
-                rule_name=name,
-                description=desc,
+                rule_id=self.RULE_ID,
+                rule_name=self.RULE_NAME,
+                description=self.DESCRIPTION,
                 findings=[Finding(
                     severity="info",
                     message="No Insight Agents deployed in this environment.",
                 )],
-                sources=sources,
+                sources=self.SOURCES,
                 summary={
                     "agent_only_count_sampled": 0,
                     "sample_size": 0,
@@ -585,11 +540,11 @@ class AssetCoverageCheck:
         )
 
         return make_rule_result(
-            rule_id=rid,
-            rule_name=name,
-            description=desc,
+            rule_id=self.RULE_ID,
+            rule_name=self.RULE_NAME,
+            description=self.DESCRIPTION,
             findings=findings,
-            sources=sources,
+            sources=self.SOURCES,
             summary={
                 "agent_only_count_sampled": len(outsiders),
                 "sample_size": len(sample_ids),
@@ -602,4 +557,33 @@ class AssetCoverageCheck:
             sampled=True,
             sample_info=sample_info,
             duration_ms=int((time.monotonic() - rule_start) * 1000),
+        )
+
+
+class AssetCoverageCheck:
+    name = "Asset Coverage"
+    description = "Stale and never-scanned assets relative to configured thresholds."
+
+    def run(self, client: Any, config: AppConfig, *, snapshot: "EnvSnapshot | None" = None) -> CheckResult:
+        start = time.monotonic()
+        t = config.thresholds.asset_coverage
+        stale = StaleAssetsRule()
+        never = NeverScannedAssetsRule()
+        dead = DeadAssetGroupsRule()
+        agent_only = AgentOnlyAssetsRule()
+        rule_results: list[RuleResult] = [
+            safe_run_rule(stale, lambda: stale.run(client, t)),
+            safe_run_rule(never, lambda: never.run(client, t)),
+            safe_run_rule(dead, lambda: dead.run(snapshot, t)),
+            safe_run_rule(agent_only, lambda: agent_only.run(snapshot, client, t, config.audit)),
+        ]
+
+        return CheckResult(
+            name=self.name,
+            description=self.description,
+            status=rollup_check_status(rule_results),
+            findings=flatten_findings(rule_results),
+            summary=rule_summary(rule_results),
+            duration_ms=int((time.monotonic() - start) * 1000),
+            rule_results=rule_results,
         )
