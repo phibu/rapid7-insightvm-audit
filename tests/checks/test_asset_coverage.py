@@ -344,6 +344,128 @@ def test_r1_dead_asset_groups_missing_inline_alive_via_fallback(fake_client, app
     assert dead_names == {"Dynamic Workstations"}
 
 
+def test_r1_dead_asset_groups_fallback_cap_reached(fake_client, app_config):
+    """When more missing-inline groups than the cap, emit info finding and
+    set fallback_cap_reached=True. Groups beyond the cap are not resolved."""
+    from dataclasses import replace
+    cfg = replace(
+        app_config,
+        thresholds=replace(
+            app_config.thresholds,
+            asset_coverage=replace(
+                app_config.thresholds.asset_coverage,
+                dead_groups_fallback_cap=2,
+            ),
+        ),
+    )
+    snap = _FakeSnapshot(
+        asset_groups=[
+            {"id": 1, "name": "g1", "type": "dynamic"},  # missing inline
+            {"id": 2, "name": "g2", "type": "dynamic"},  # missing inline
+            {"id": 3, "name": "g3", "type": "dynamic"},  # missing inline, beyond cap
+        ],
+        member_counts={1: 0, 2: 5},  # group 3 not registered (rule must not call it)
+    )
+    fake_client.set_paginate_post("/api/3/assets/search", [])
+    result = AssetCoverageCheck().run(fake_client, cfg, snapshot=snap)
+    rule = _rule(result, "op.asset_coverage.dead_asset_groups")
+
+    assert rule.summary["groups_with_missing_count"] == 3
+    assert rule.summary["fallback_calls_made"] == 2
+    assert rule.summary["fallback_cap_reached"] is True
+    # Only group 1 was both within cap AND zero-membership.
+    assert rule.summary["dead_groups_count"] == 1
+    # Cap-tail info finding present.
+    assert any(
+        f.severity == "info" and "fallback skipped" in f.message
+        for f in rule.findings
+    )
+
+
+def test_r1_dead_asset_groups_fallback_error(fake_client, app_config):
+    """When the fallback returns None (HTTP error), surface an info finding
+    and do NOT flag the group as dead."""
+    snap = _FakeSnapshot(
+        asset_groups=[
+            {"id": 5, "name": "broken-group", "type": "dynamic"},
+        ],
+        member_counts={5: None},  # simulate accessor returning None
+    )
+    fake_client.set_paginate_post("/api/3/assets/search", [])
+    result = AssetCoverageCheck().run(fake_client, app_config, snapshot=snap)
+    rule = _rule(result, "op.asset_coverage.dead_asset_groups")
+
+    assert rule.summary["dead_groups_count"] == 0
+    assert rule.summary["fallback_errors"] == 1
+    # Info finding emitted for the unresolvable group.
+    assert any(
+        f.severity == "info" and f.details.get("group_id") == 5
+        for f in rule.findings
+    )
+    # No warn-severity finding for that group.
+    assert not any(
+        f.severity == "warn" and (f.details or {}).get("group_id") == 5
+        for f in rule.findings
+    )
+
+
+def test_r1_dead_asset_groups_fallback_cap_zero_disables_fallback(fake_client, app_config):
+    """cap=0: missing-inline groups are not resolved and not flagged as dead.
+    Different from the pre-fix bug, which flagged every missing-inline group."""
+    from dataclasses import replace
+    cfg = replace(
+        app_config,
+        thresholds=replace(
+            app_config.thresholds,
+            asset_coverage=replace(
+                app_config.thresholds.asset_coverage,
+                dead_groups_fallback_cap=0,
+            ),
+        ),
+    )
+    snap = _FakeSnapshot(
+        asset_groups=[
+            {"id": 1, "name": "missing-inline", "type": "dynamic"},  # no assets key
+            {"id": 2, "name": "explicit-zero", "type": "static", "assets": 0},
+        ],
+        member_counts={},  # cap=0 means no fallback calls; nothing to register
+    )
+    fake_client.set_paginate_post("/api/3/assets/search", [])
+    result = AssetCoverageCheck().run(fake_client, cfg, snapshot=snap)
+    rule = _rule(result, "op.asset_coverage.dead_asset_groups")
+
+    # Only the explicit-zero group is flagged dead. The missing-inline group
+    # is NOT flagged (and not resolved).
+    assert rule.summary["dead_groups_count"] == 1
+    assert rule.summary["groups_with_missing_count"] == 1
+    assert rule.summary["fallback_calls_made"] == 0
+    # cap_reached is True when missing > calls (cap=0, missing=1).
+    assert rule.summary["fallback_cap_reached"] is True
+    dead_names = {
+        f.details["group_name"] for f in rule.findings
+        if f.severity == "warn" and "group_name" in (f.details or {})
+    }
+    assert dead_names == {"explicit-zero"}
+
+
+def test_r1_dead_asset_groups_non_numeric_inline_treated_as_missing(fake_client, app_config):
+    """If a console returns a non-numeric `assets` value, treat as missing
+    (route through fallback) rather than crashing or false-flagging."""
+    snap = _FakeSnapshot(
+        asset_groups=[
+            {"id": 1, "name": "weird", "type": "dynamic", "assets": "n/a"},
+        ],
+        member_counts={1: 7},
+    )
+    fake_client.set_paginate_post("/api/3/assets/search", [])
+    result = AssetCoverageCheck().run(fake_client, app_config, snapshot=snap)
+    rule = _rule(result, "op.asset_coverage.dead_asset_groups")
+
+    assert rule.summary["dead_groups_count"] == 0
+    assert rule.summary["groups_with_missing_count"] == 1
+    assert rule.summary["fallback_calls_made"] == 1
+
+
 # ----- R4: agent_only_assets (sampled, unconditional) -----
 # Replaces the old full-enumeration tests. Rule now runs unconditionally
 # regardless of audit.full_scan, samples up to audit.sample_size agents
