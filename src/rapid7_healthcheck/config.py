@@ -68,6 +68,7 @@ class DataQualityThresholds:
     stale_asset_days: int = 180
     flag_duplicate_hostnames: bool = True
     flag_duplicate_ips: bool = True
+    duplicate_detection_max_assets: int = 50000
 
 
 @dataclass(frozen=True)
@@ -347,11 +348,41 @@ def _build_thresholds(data: Any) -> Thresholds:
     if cap is not None:
         asset_coverage = replace(asset_coverage, dead_groups_fallback_cap=cap)
 
+    # data_quality.duplicate_detection_max_assets accepts 0 (= always skip),
+    # which the generic _check_scalar (>0) rejects. Pull it out, build the
+    # rest via the normal path, then re-attach the validated value. Mirrors
+    # the asset_coverage.dead_groups_fallback_cap handling above.
+    dq_raw = data["data_quality"]
+    if not isinstance(dq_raw, dict):
+        raise ConfigError(
+            f"thresholds.data_quality: expected mapping, got {type(dq_raw).__name__}"
+        )
+    dq_data = dict(dq_raw)
+    dup_cap: int | None = None
+    if "duplicate_detection_max_assets" in dq_data:
+        dup_cap = dq_data.pop("duplicate_detection_max_assets")
+        if isinstance(dup_cap, bool) or not isinstance(dup_cap, int):
+            raise ConfigError(
+                f"thresholds.data_quality.duplicate_detection_max_assets: "
+                f"expected int, got {type(dup_cap).__name__}"
+            )
+        if dup_cap < 0:
+            raise ConfigError(
+                f"thresholds.data_quality.duplicate_detection_max_assets: "
+                f"must be a non-negative integer, got {dup_cap}"
+            )
+
+    data_quality = _from_dict(
+        DataQualityThresholds, dq_data, "thresholds.data_quality"
+    )
+    if dup_cap is not None:
+        data_quality = replace(data_quality, duplicate_detection_max_assets=dup_cap)
+
     return Thresholds(
         scan_engines=_from_dict(ScanEngineThresholds, data["scan_engines"], "thresholds.scan_engines"),
         scan_activity=_from_dict(ScanActivityThresholds, data["scan_activity"], "thresholds.scan_activity"),
         asset_coverage=asset_coverage,
-        data_quality=_from_dict(DataQualityThresholds, data["data_quality"], "thresholds.data_quality"),
+        data_quality=data_quality,
     )
 
 
