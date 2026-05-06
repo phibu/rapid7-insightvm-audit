@@ -33,7 +33,10 @@ class AgentUnauthCollisionRule:
     ]
 
     def run(self, snapshot, severity, full_scan, sample_size, rule_config) -> RuleResult:
-        agent_ids = snapshot.agent_asset_ids()
+        # Prime the unavailable flag via agent_count() before checking it,
+        # then branch: 404 -> existing skip path; oversize -> new skip path;
+        # else -> existing main loop.
+        total_agents = snapshot.agent_count()
 
         if snapshot.is_agents_unavailable():
             return RuleResult(
@@ -61,6 +64,46 @@ class AgentUnauthCollisionRule:
                 },
                 sources=list(self.sources),
             )
+
+        knobs = rule_config.knobs if hasattr(rule_config, "knobs") else rule_config
+        max_agents = knobs.get("max_agents", 50000)
+        if total_agents > max_agents:
+            return RuleResult(
+                rule_id=self.rule_id,
+                rule_name=self.rule_name,
+                description=self.description,
+                severity=severity,
+                status="skipped",
+                findings=[Finding(
+                    severity="info",
+                    message=(
+                        f"Skipped: Insight Agent inventory ({total_agents} agents) "
+                        f"exceeds the configured cap (max_agents = {max_agents}) "
+                        f"under audit.rules.agent_unauth_collision.knobs. Full "
+                        f"pagination of /api/3/agents at this scale is too slow "
+                        f"for a health-check pass. Raise the cap (set to 0 to "
+                        f"disable the ceiling) or audit agent/unauth scan "
+                        f"overlap manually in the Security Console."
+                    ),
+                    details={
+                        "agent_count": total_agents,
+                        "max_agents_cap": max_agents,
+                        "inventory_oversize": True,
+                    },
+                )],
+                summary={
+                    "sites_examined": 0,
+                    "sites_flagged": 0,
+                    "sites_truncated": 0,
+                    "per_site_cap": None,
+                    "agent_asset_ids": 0,
+                    "agent_count": total_agents,
+                    "max_agents_cap": max_agents,
+                },
+                sources=list(self.sources),
+            )
+
+        agent_ids = snapshot.agent_asset_ids()
 
         per_site_cap = None if full_scan else sample_size
 

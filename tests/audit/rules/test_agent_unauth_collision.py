@@ -366,3 +366,195 @@ def test_agent_id_via_links_href(fake_snapshot):
     r = AgentUnauthCollisionRule().run(fake_snapshot, "fail", False, 500, {})
     assert r.status == "fail"
     assert r.findings[0].details["examined"] == 1
+
+
+def test_oversize_inventory_skips_with_default_cap():
+    """When agent_count exceeds the default 50000 cap, rule skips."""
+    from rapid7_healthcheck.audit.rules.agent_unauth_collision import (
+        AgentUnauthCollisionRule,
+    )
+
+    class _FakeSnapshot:
+        def __init__(self):
+            self.agent_asset_ids_called = False
+
+        def is_agents_unavailable(self):
+            return False
+
+        def agent_count(self):
+            return 60000
+
+        def agent_asset_ids(self):
+            self.agent_asset_ids_called = True
+            return set()
+
+        def sites(self):  # pragma: no cover - main loop must not run
+            raise AssertionError("sites() should not be called when oversize")
+
+    snap = _FakeSnapshot()
+    rule_config = type("C", (), {"knobs": {}})()
+    result = AgentUnauthCollisionRule().run(
+        snap, severity="fail", full_scan=False, sample_size=100,
+        rule_config=rule_config,
+    )
+
+    assert result.status == "skipped"
+    assert len(result.findings) == 1
+    finding = result.findings[0]
+    assert finding.severity == "info"
+    assert finding.details["inventory_oversize"] is True
+    assert finding.details["agent_count"] == 60000
+    assert finding.details["max_agents_cap"] == 50000
+    assert "max_agents" in finding.message
+    assert "Security Console" in finding.message
+    assert snap.agent_asset_ids_called is False
+    assert result.summary["agent_count"] == 60000
+    assert result.summary["max_agents_cap"] == 50000
+
+
+def test_oversize_inventory_respects_explicit_max_agents_knob():
+    """rule_config.knobs.max_agents overrides the default."""
+    from rapid7_healthcheck.audit.rules.agent_unauth_collision import (
+        AgentUnauthCollisionRule,
+    )
+
+    class _FakeSnapshot:
+        def is_agents_unavailable(self): return False
+        def agent_count(self): return 5000
+        def agent_asset_ids(self): return set()
+        def sites(self): raise AssertionError("should not run")
+
+    rule_config = type("C", (), {"knobs": {"max_agents": 1000}})()
+    result = AgentUnauthCollisionRule().run(
+        _FakeSnapshot(), severity="fail", full_scan=False, sample_size=100,
+        rule_config=rule_config,
+    )
+
+    assert result.status == "skipped"
+    assert result.findings[0].details["max_agents_cap"] == 1000
+
+
+def test_inventory_at_cap_runs_strict_greater_than():
+    """Boundary: agent_count == max_agents runs the main loop (strict >)."""
+    from rapid7_healthcheck.audit.rules.agent_unauth_collision import (
+        AgentUnauthCollisionRule,
+    )
+
+    sites_called = []
+
+    class _FakeSnapshot:
+        def is_agents_unavailable(self): return False
+        def agent_count(self): return 50000  # exactly equal to cap
+        def agent_asset_ids(self): return set()
+        def sites(self):
+            sites_called.append(True)
+            return []
+
+    rule_config = type("C", (), {"knobs": {"max_agents": 50000}})()
+    result = AgentUnauthCollisionRule().run(
+        _FakeSnapshot(), severity="fail", full_scan=False, sample_size=100,
+        rule_config=rule_config,
+    )
+
+    assert sites_called == [True]
+    assert result.status == "pass"
+
+
+def test_max_agents_zero_always_skips():
+    """Sentinel: max_agents=0 means any non-empty fleet skips."""
+    from rapid7_healthcheck.audit.rules.agent_unauth_collision import (
+        AgentUnauthCollisionRule,
+    )
+
+    class _FakeSnapshot:
+        def is_agents_unavailable(self): return False
+        def agent_count(self): return 1
+        def agent_asset_ids(self): return set()
+        def sites(self): raise AssertionError("should not run")
+
+    rule_config = type("C", (), {"knobs": {"max_agents": 0}})()
+    result = AgentUnauthCollisionRule().run(
+        _FakeSnapshot(), severity="fail", full_scan=False, sample_size=100,
+        rule_config=rule_config,
+    )
+
+    assert result.status == "skipped"
+    assert result.findings[0].details["inventory_oversize"] is True
+
+
+def test_max_agents_zero_with_empty_fleet_runs():
+    """Edge case: max_agents=0 AND agent_count=0 means strict 0 > 0 is False."""
+    from rapid7_healthcheck.audit.rules.agent_unauth_collision import (
+        AgentUnauthCollisionRule,
+    )
+
+    sites_called = []
+
+    class _FakeSnapshot:
+        def is_agents_unavailable(self): return False
+        def agent_count(self): return 0
+        def agent_asset_ids(self): return set()
+        def sites(self):
+            sites_called.append(True)
+            return []
+
+    rule_config = type("C", (), {"knobs": {"max_agents": 0}})()
+    result = AgentUnauthCollisionRule().run(
+        _FakeSnapshot(), severity="fail", full_scan=False, sample_size=100,
+        rule_config=rule_config,
+    )
+
+    assert sites_called == [True]
+    assert result.status == "pass"
+
+
+def test_404_path_wins_over_oversize_path():
+    """When agents endpoint is 404, the existing 404 finding fires
+    regardless of agent_count / max_agents."""
+    from rapid7_healthcheck.audit.rules.agent_unauth_collision import (
+        AgentUnauthCollisionRule,
+    )
+
+    class _FakeSnapshot:
+        def is_agents_unavailable(self): return True
+        def agent_count(self): return 999999
+        def agent_asset_ids(self): return set()
+        def sites(self): raise AssertionError("should not run")
+
+    rule_config = type("C", (), {"knobs": {"max_agents": 100}})()
+    result = AgentUnauthCollisionRule().run(
+        _FakeSnapshot(), severity="fail", full_scan=False, sample_size=100,
+        rule_config=rule_config,
+    )
+
+    assert result.status == "skipped"
+    finding = result.findings[0]
+    assert finding.details.get("agents_endpoint_unavailable") is True
+    assert finding.details.get("inventory_oversize") is None
+
+
+def test_below_cap_runs_main_loop_unchanged():
+    """Regression: when below the cap, behavior matches pre-change baseline."""
+    from rapid7_healthcheck.audit.rules.agent_unauth_collision import (
+        AgentUnauthCollisionRule,
+    )
+
+    sites_called = []
+
+    class _FakeSnapshot:
+        def is_agents_unavailable(self): return False
+        def agent_count(self): return 100
+        def agent_asset_ids(self): return set()
+        def sites(self):
+            sites_called.append(True)
+            return []
+
+    rule_config = type("C", (), {"knobs": {}})()
+    result = AgentUnauthCollisionRule().run(
+        _FakeSnapshot(), severity="fail", full_scan=False, sample_size=100,
+        rule_config=rule_config,
+    )
+
+    assert sites_called == [True]
+    assert result.status == "pass"
+    assert result.findings == []

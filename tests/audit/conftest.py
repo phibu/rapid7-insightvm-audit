@@ -118,6 +118,9 @@ class FakeSnapshot:
     def is_agents_unavailable(self) -> bool:
         return self._agents_unavailable
 
+    def agent_count(self) -> int:
+        return self._agents_total
+
     def agent_asset_ids(self) -> set[int]:
         ids: set[int] = set()
         for a in self._agents:
