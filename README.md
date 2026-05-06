@@ -286,6 +286,9 @@ All thresholds live in `config.yaml` under `thresholds:`. Every report footer pr
 - `asset_coverage.flag_unscanned_assets` — also list assets that have not been scanned recently.
 - `asset_coverage.never_scanned_days` — days since last scan to flag an asset as effectively never scanned (default 90).
 - `data_quality.flag_missing_os` / `flag_empty_sites` — toggle data quality sub-checks.
+- `data_quality.duplicate_detection_max_assets` (default `50000`) — skip duplicate hostname/IP detection when total assets exceed this ceiling. The v3 API has no group-by; on large consoles (500k+ assets, ~45s/page) full pagination is infeasible. Above the ceiling, both rules emit an info finding pointing to the Security Console UI. Set to `0` to always skip; raise it to override on consoles where pagination is fast enough.
+
+At inventory sizes above `data_quality.duplicate_detection_max_assets` (default 50,000), the duplicate-hostname and duplicate-IP rules are skipped because the v3 API has no group-by operator and full pagination becomes infeasible on large consoles. The rule cards in the report point users to the Security Console UI for manual review.
 
 You can also disable an entire check by setting its toggle in `checks:` to `false` — it appears in the report as `SKIPPED`.
 

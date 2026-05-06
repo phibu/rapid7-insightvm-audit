@@ -515,3 +515,50 @@ def test_dead_groups_fallback_cap_positive_accepted(tmp_path):
     body = _yaml_with_dead_groups_cap(200)
     cfg = load_config(write(tmp_path, body))
     assert cfg.thresholds.asset_coverage.dead_groups_fallback_cap == 200
+
+
+def _yaml_with_duplicate_detection_max_assets(value) -> str:
+    """Insert duplicate_detection_max_assets into data_quality block of VALID_YAML.
+
+    `value` is rendered verbatim so callers can pass non-int YAML scalars
+    (e.g. the literal string '"fifty thousand"') for negative-path tests.
+    """
+    insertion = f"    duplicate_detection_max_assets: {value}\n"
+    return VALID_YAML.replace(
+        "    flag_empty_sites: true\n",
+        "    flag_empty_sites: true\n" + insertion,
+    )
+
+
+def test_data_quality_default_duplicate_detection_max_assets(tmp_path):
+    """Default value should be 50000 when key is absent from YAML."""
+    cfg = load_config(write(tmp_path, VALID_YAML))
+    assert cfg.thresholds.data_quality.duplicate_detection_max_assets == 50000
+
+
+def test_data_quality_duplicate_detection_max_assets_zero_accepted(tmp_path):
+    """Zero is the 'always skip' sentinel and must be accepted."""
+    body = _yaml_with_duplicate_detection_max_assets(0)
+    cfg = load_config(write(tmp_path, body))
+    assert cfg.thresholds.data_quality.duplicate_detection_max_assets == 0
+
+
+def test_data_quality_duplicate_detection_max_assets_negative_rejected(tmp_path):
+    """Negative values must be rejected with a clear error."""
+    body = _yaml_with_duplicate_detection_max_assets(-1)
+    with pytest.raises(ConfigError, match="must be a non-negative integer"):
+        load_config(write(tmp_path, body))
+
+
+def test_data_quality_duplicate_detection_max_assets_non_int_rejected(tmp_path):
+    """A string value must be rejected."""
+    body = _yaml_with_duplicate_detection_max_assets('"fifty thousand"')
+    with pytest.raises(ConfigError, match="expected int, got"):
+        load_config(write(tmp_path, body))
+
+
+def test_data_quality_duplicate_detection_max_assets_positive_accepted(tmp_path):
+    """A non-default positive value round-trips through the validator (re-attach path)."""
+    body = _yaml_with_duplicate_detection_max_assets(100000)
+    cfg = load_config(write(tmp_path, body))
+    assert cfg.thresholds.data_quality.duplicate_detection_max_assets == 100000

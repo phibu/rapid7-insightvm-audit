@@ -76,6 +76,14 @@ thresholds:
     flag_duplicate_hostnames: true
     flag_duplicate_ips: true
 
+    # Skip duplicate hostname/IP detection when total assets exceed this
+    # ceiling. The v3 API has no group-by, so duplicate detection requires
+    # walking every asset; on large consoles (~500k assets, ~45s/page) that
+    # is infeasible. Above this size, both rules emit an info finding
+    # pointing to the Security Console UI instead. Set to 0 to always skip
+    # duplicate detection.
+    duplicate_detection_max_assets: 50000
+
 checks:
   scan_engines: true
   scan_activity: true
