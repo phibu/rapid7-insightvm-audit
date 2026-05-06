@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Callable, NamedTuple
 
 from rapid7_healthcheck.audit import RuleResult
 from rapid7_healthcheck.checks import CheckResult, Finding
@@ -19,6 +19,46 @@ _MAX_FAILED_FINDINGS = 20
 
 _SRC_SITES = "https://help.rapid7.com/insightvm/en-us/api/index.html#tag/Site"
 _SRC_SCANS = "https://help.rapid7.com/insightvm/en-us/api/index.html#tag/Scan"
+
+
+class _RecentStatusRule(NamedTuple):
+    """One row per recent-status concept tracked inside the scan loop."""
+    predicate: Callable[[str], bool]
+    message_phrase: str   # e.g. "a {status} scan" / "an unknown-status scan"
+    overflow_label: str   # e.g. "failed scans" / "unknown-status scans"
+
+
+_RECENT_STATUS_RULES: tuple[_RecentStatusRule, ...] = (
+    _RecentStatusRule(
+        predicate=lambda s: s in _FAILED_STATUSES,
+        message_phrase="a {status} scan",
+        overflow_label="failed scans",
+    ),
+    _RecentStatusRule(
+        predicate=lambda s: s == "unknown",
+        message_phrase="an unknown-status scan",
+        overflow_label="unknown-status scans",
+    ),
+)
+
+
+def _emit_overflow_rollup(
+    findings: list[Finding],
+    *,
+    total_count: int,
+    emitted_count: int,
+    overflow_label: str,
+    cap: int,
+) -> None:
+    """Append the 'N additional ... omitted (capped at K)' rollup finding when warranted."""
+    if total_count > emitted_count:
+        findings.append(Finding(
+            severity="warn",
+            message=(
+                f"{total_count - emitted_count} additional {overflow_label} "
+                f"omitted from findings (capped at {cap})"
+            ),
+        ))
 
 
 def _parse_iso(value: str | None) -> datetime | None:
@@ -93,31 +133,37 @@ class ScanActivityCheck:
                         details={"site_id": site_id, "scan_id": s.get("id"), "age_hours": round(age_h, 1)},
                     ))
                     stuck_count += 1
-                if status in _FAILED_STATUSES and start_time >= recent_cutoff:
-                    failed_count += 1
-                    if failed_findings_emitted < _MAX_FAILED_FINDINGS:
-                        failed_recent_findings.append(Finding(
-                            severity="warn",
-                            message=f"Site '{site_name}' had a {status} scan {start_time.isoformat()}",
-                            details={"site_id": site_id, "scan_id": s.get("id"), "status": status},
-                        ))
-                        failed_findings_emitted += 1
-                if status == "unknown" and start_time >= recent_cutoff:
-                    unknown_count += 1
-                    if unknown_findings_emitted < _MAX_FAILED_FINDINGS:
-                        unknown_recent_findings.append(Finding(
-                            severity="warn",
-                            message=(
-                                f"Site '{site_name}' had an unknown-status scan "
-                                f"{start_time.isoformat()}"
-                            ),
-                            details={
-                                "site_id": site_id,
-                                "scan_id": s.get("id"),
-                                "status": status,
-                            },
-                        ))
-                        unknown_findings_emitted += 1
+                if start_time >= recent_cutoff:
+                    if _RECENT_STATUS_RULES[0].predicate(status):
+                        failed_count += 1
+                        if failed_findings_emitted < _MAX_FAILED_FINDINGS:
+                            failed_recent_findings.append(Finding(
+                                severity="warn",
+                                message=(
+                                    f"Site '{site_name}' had "
+                                    f"{_RECENT_STATUS_RULES[0].message_phrase.format(status=status)} "
+                                    f"{start_time.isoformat()}"
+                                ),
+                                details={"site_id": site_id, "scan_id": s.get("id"), "status": status},
+                            ))
+                            failed_findings_emitted += 1
+                    if _RECENT_STATUS_RULES[1].predicate(status):
+                        unknown_count += 1
+                        if unknown_findings_emitted < _MAX_FAILED_FINDINGS:
+                            unknown_recent_findings.append(Finding(
+                                severity="warn",
+                                message=(
+                                    f"Site '{site_name}' had "
+                                    f"{_RECENT_STATUS_RULES[1].message_phrase.format(status=status)} "
+                                    f"{start_time.isoformat()}"
+                                ),
+                                details={
+                                    "site_id": site_id,
+                                    "scan_id": s.get("id"),
+                                    "status": status,
+                                },
+                            ))
+                            unknown_findings_emitted += 1
                 if status == "finished":
                     if most_recent_finished is None or start_time > most_recent_finished:
                         most_recent_finished = start_time
@@ -153,23 +199,20 @@ class ScanActivityCheck:
             else:
                 sites_with_recent += 1
 
-        if failed_count > failed_findings_emitted:
-            failed_recent_findings.append(Finding(
-                severity="warn",
-                message=(
-                    f"{failed_count - failed_findings_emitted} additional failed scans "
-                    f"omitted from findings (capped at {_MAX_FAILED_FINDINGS})"
-                ),
-            ))
-
-        if unknown_count > unknown_findings_emitted:
-            unknown_recent_findings.append(Finding(
-                severity="warn",
-                message=(
-                    f"{unknown_count - unknown_findings_emitted} additional unknown-status scans "
-                    f"omitted from findings (capped at {_MAX_FAILED_FINDINGS})"
-                ),
-            ))
+        _emit_overflow_rollup(
+            failed_recent_findings,
+            total_count=failed_count,
+            emitted_count=failed_findings_emitted,
+            overflow_label=_RECENT_STATUS_RULES[0].overflow_label,
+            cap=_MAX_FAILED_FINDINGS,
+        )
+        _emit_overflow_rollup(
+            unknown_recent_findings,
+            total_count=unknown_count,
+            emitted_count=unknown_findings_emitted,
+            overflow_label=_RECENT_STATUS_RULES[1].overflow_label,
+            cap=_MAX_FAILED_FINDINGS,
+        )
 
         rule_results: list[RuleResult] = [
             make_rule_result(
