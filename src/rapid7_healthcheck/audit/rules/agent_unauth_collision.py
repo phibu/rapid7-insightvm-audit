@@ -65,8 +65,7 @@ class AgentUnauthCollisionRule:
                 sources=list(self.sources),
             )
 
-        knobs = rule_config.knobs if hasattr(rule_config, "knobs") else rule_config
-        max_agents = knobs.get("max_agents", 50000)
+        max_agents = rule_config.get("max_agents", 50000)
         if total_agents > max_agents:
             return RuleResult(
                 rule_id=self.rule_id,

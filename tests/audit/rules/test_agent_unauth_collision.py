@@ -392,7 +392,7 @@ def test_oversize_inventory_skips_with_default_cap():
             raise AssertionError("sites() should not be called when oversize")
 
     snap = _FakeSnapshot()
-    rule_config = type("C", (), {"knobs": {}})()
+    rule_config: dict = {}
     result = AgentUnauthCollisionRule().run(
         snap, severity="fail", full_scan=False, sample_size=100,
         rule_config=rule_config,
@@ -424,7 +424,7 @@ def test_oversize_inventory_respects_explicit_max_agents_knob():
         def agent_asset_ids(self): return set()
         def sites(self): raise AssertionError("should not run")
 
-    rule_config = type("C", (), {"knobs": {"max_agents": 1000}})()
+    rule_config = {"max_agents": 1000}
     result = AgentUnauthCollisionRule().run(
         _FakeSnapshot(), severity="fail", full_scan=False, sample_size=100,
         rule_config=rule_config,
@@ -450,7 +450,7 @@ def test_inventory_at_cap_runs_strict_greater_than():
             sites_called.append(True)
             return []
 
-    rule_config = type("C", (), {"knobs": {"max_agents": 50000}})()
+    rule_config = {"max_agents": 50000}
     result = AgentUnauthCollisionRule().run(
         _FakeSnapshot(), severity="fail", full_scan=False, sample_size=100,
         rule_config=rule_config,
@@ -472,7 +472,7 @@ def test_max_agents_zero_always_skips():
         def agent_asset_ids(self): return set()
         def sites(self): raise AssertionError("should not run")
 
-    rule_config = type("C", (), {"knobs": {"max_agents": 0}})()
+    rule_config = {"max_agents": 0}
     result = AgentUnauthCollisionRule().run(
         _FakeSnapshot(), severity="fail", full_scan=False, sample_size=100,
         rule_config=rule_config,
@@ -498,7 +498,7 @@ def test_max_agents_zero_with_empty_fleet_runs():
             sites_called.append(True)
             return []
 
-    rule_config = type("C", (), {"knobs": {"max_agents": 0}})()
+    rule_config = {"max_agents": 0}
     result = AgentUnauthCollisionRule().run(
         _FakeSnapshot(), severity="fail", full_scan=False, sample_size=100,
         rule_config=rule_config,
@@ -521,7 +521,7 @@ def test_404_path_wins_over_oversize_path():
         def agent_asset_ids(self): return set()
         def sites(self): raise AssertionError("should not run")
 
-    rule_config = type("C", (), {"knobs": {"max_agents": 100}})()
+    rule_config = {"max_agents": 100}
     result = AgentUnauthCollisionRule().run(
         _FakeSnapshot(), severity="fail", full_scan=False, sample_size=100,
         rule_config=rule_config,
@@ -549,7 +549,7 @@ def test_below_cap_runs_main_loop_unchanged():
             sites_called.append(True)
             return []
 
-    rule_config = type("C", (), {"knobs": {}})()
+    rule_config: dict = {}
     result = AgentUnauthCollisionRule().run(
         _FakeSnapshot(), severity="fail", full_scan=False, sample_size=100,
         rule_config=rule_config,
