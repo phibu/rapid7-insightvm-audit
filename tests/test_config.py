@@ -546,12 +546,19 @@ def test_data_quality_duplicate_detection_max_assets_zero_accepted(tmp_path):
 def test_data_quality_duplicate_detection_max_assets_negative_rejected(tmp_path):
     """Negative values must be rejected with a clear error."""
     body = _yaml_with_duplicate_detection_max_assets(-1)
-    with pytest.raises(ConfigError, match="duplicate_detection_max_assets"):
+    with pytest.raises(ConfigError, match="must be a non-negative integer"):
         load_config(write(tmp_path, body))
 
 
 def test_data_quality_duplicate_detection_max_assets_non_int_rejected(tmp_path):
     """A string value must be rejected."""
     body = _yaml_with_duplicate_detection_max_assets('"fifty thousand"')
-    with pytest.raises(ConfigError, match="duplicate_detection_max_assets"):
+    with pytest.raises(ConfigError, match="expected int, got"):
         load_config(write(tmp_path, body))
+
+
+def test_data_quality_duplicate_detection_max_assets_positive_accepted(tmp_path):
+    """A non-default positive value round-trips through the validator (re-attach path)."""
+    body = _yaml_with_duplicate_detection_max_assets(100000)
+    cfg = load_config(write(tmp_path, body))
+    assert cfg.thresholds.data_quality.duplicate_detection_max_assets == 100000
