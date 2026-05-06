@@ -115,3 +115,52 @@ def test_make_rule_result_passes_sampled_and_sample_info():
     )
     assert r.sampled is True
     assert r.sample_info == "strategy=first-n; sampled=100; population=500000"
+
+
+class _IdRule:
+    """Minimal rule shape for testing safe_run_rule."""
+    RULE_ID = "op.test.id_rule"
+    RULE_NAME = "Test rule"
+    DESCRIPTION = "A rule used by the safe_run_rule tests."
+    DEFAULT_SEVERITY = "warn"
+    SOURCES = ("https://example.com/docs",)
+
+
+def test_safe_run_rule_dispatches_with_class_attrs():
+    """Success path: helper reads class-level identity and forwards to safe_run."""
+    from rapid7_healthcheck.checks._op_rule import safe_run_rule
+
+    rule = _IdRule()
+    sentinel = make_rule_result(
+        rule_id=rule.RULE_ID,
+        rule_name=rule.RULE_NAME,
+        description=rule.DESCRIPTION,
+        findings=[],
+        sources=rule.SOURCES,
+        default_severity=rule.DEFAULT_SEVERITY,
+    )
+
+    result = safe_run_rule(rule, lambda: sentinel)
+
+    assert result is sentinel
+    assert result.rule_id == "op.test.id_rule"
+    assert result.rule_name == "Test rule"
+
+
+def test_safe_run_rule_synthesizes_error_rule_on_exception():
+    """Failure path: when fn raises, helper returns an error_rule keyed on the class identity."""
+    from rapid7_healthcheck.checks._op_rule import safe_run_rule
+
+    rule = _IdRule()
+
+    def boom() -> RuleResult:
+        raise RuntimeError("simulated failure")
+
+    result = safe_run_rule(rule, boom)
+
+    assert result.status == "error"
+    assert result.rule_id == "op.test.id_rule"
+    assert result.rule_name == "Test rule"
+    assert result.description == "A rule used by the safe_run_rule tests."
+    assert result.severity == "warn"  # DEFAULT_SEVERITY
+    assert "simulated failure" in (result.error or "")

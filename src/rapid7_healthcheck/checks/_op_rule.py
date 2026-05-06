@@ -156,6 +156,25 @@ def safe_run(
         )
 
 
+def safe_run_rule(rule, fn: Callable[[], RuleResult]) -> RuleResult:
+    """Run a rule's producer, reading identity from the rule's class attributes.
+
+    Convenience wrapper over `safe_run` for rule classes that declare their
+    identity as `RULE_ID`, `RULE_NAME`, `DESCRIPTION`, `DEFAULT_SEVERITY`,
+    `SOURCES` class attributes. The helper preserves `safe_run`'s contract:
+    on any exception in `fn`, returns an `error_rule` keyed on the rule's
+    identity instead of propagating.
+    """
+    return safe_run(
+        fn,
+        rule_id=rule.RULE_ID,
+        rule_name=rule.RULE_NAME,
+        description=rule.DESCRIPTION,
+        sources=rule.SOURCES,
+        default_severity=rule.DEFAULT_SEVERITY,
+    )
+
+
 def rollup_check_status(rule_results: list[RuleResult]) -> Status:
     """Aggregate rule statuses into a check-level status.
 
