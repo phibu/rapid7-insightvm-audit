@@ -13,7 +13,7 @@ from rapid7_healthcheck.checks._op_rule import (
     make_rule_result,
     rollup_check_status,
     rule_summary,
-    safe_run,
+    safe_run_rule,
     skipped_rule,
 )
 from rapid7_healthcheck.config import AppConfig
@@ -32,92 +32,16 @@ def _example_hostnames(assets: list[dict]) -> list[str]:
     return [a.get("hostName") or a.get("ip") or f"id={a.get('id')}" for a in assets[:_EXAMPLES_LIMIT]]
 
 
-class DataQualityCheck:
-    name = "Data Quality"
-    description = (
-        "Assets without OS fingerprint, sites with zero assets, "
-        "long-stale assets, and duplicate hostnames/IPs."
-    )
+class MissingOsRule:
+    RULE_ID = "op.data_quality.missing_os"
+    RULE_NAME = "Assets without OS fingerprint"
+    DESCRIPTION = "Assets where the operating-system field is empty (fingerprinting failed or never ran)."
+    DEFAULT_SEVERITY = "warn"
+    SOURCES = (_SRC_FILTERED_SEARCH, _SRC_ASSET_SEARCH)
 
-    def run(self, client: Any, config: AppConfig, **_kwargs: object) -> CheckResult:
-        start = time.monotonic()
-        t = config.thresholds.data_quality
-        rule_results: list[RuleResult] = []
-
-        # Per-rule isolation: a single rule's API call timing out or 400-ing
-        # must not blackhole the rest of the check. Mirrors the audit
-        # orchestrator's pattern. Each rule's identity is duplicated here
-        # because the helper synthesizes a RuleResult shell when the rule
-        # method itself raises before returning.
-        rule_results.append(safe_run(
-            lambda: self._missing_os(client, t),
-            rule_id="op.data_quality.missing_os",
-            rule_name="Assets without OS fingerprint",
-            description="Assets where the operating-system field is empty (fingerprinting failed or never ran).",
-            sources=[_SRC_FILTERED_SEARCH, _SRC_ASSET_SEARCH],
-        ))
-        rule_results.append(safe_run(
-            lambda: self._empty_sites(client, t),
-            rule_id="op.data_quality.empty_sites",
-            rule_name="Sites with zero assets",
-            description="Sites whose include/exclude scope currently matches no assets.",
-            sources=[_SRC_SITES],
-        ))
-        rule_results.append(safe_run(
-            lambda: self._stale_assets(client, t),
-            rule_id="op.data_quality.stale_assets",
-            rule_name="Long-stale assets",
-            description=(
-                "Assets whose last scan is older than the data-quality threshold. "
-                "Distinct from Asset Coverage's never-scanned signal — this flags "
-                "asset records whose data is so old it's likely unreliable."
-            ),
-            sources=[_SRC_FILTERED_SEARCH],
-        ))
-
-        # Duplicate detection — single paginate, two rules. If the paginate
-        # itself fails, both rules surface as errors (the helper synthesizes
-        # one error_rule per concept so the report still shows both rule cards).
-        try:
-            dup_rules = self._duplicates(client, t)
-            rule_results.extend(dup_rules)
-        except Exception as e:
-            logger.exception("data_quality._duplicates raised")
-            rule_results.append(error_rule(
-                rule_id="op.data_quality.duplicate_hostnames",
-                rule_name="Duplicate hostnames",
-                description="Assets with the same hostName (case-insensitive) — likely duplicate records.",
-                sources=[_SRC_DUPLICATE_ASSETS],
-                error=e,
-            ))
-            rule_results.append(error_rule(
-                rule_id="op.data_quality.duplicate_ips",
-                rule_name="Duplicate IPs",
-                description="Assets sharing an IP — usually two records for one host (re-imaged, agent + scan).",
-                sources=[_SRC_DUPLICATE_ASSETS],
-                error=e,
-            ))
-
-        return CheckResult(
-            name=self.name,
-            description=self.description,
-            status=rollup_check_status(rule_results),
-            findings=flatten_findings(rule_results),
-            summary=rule_summary(rule_results),
-            duration_ms=int((time.monotonic() - start) * 1000),
-            rule_results=rule_results,
-        )
-
-    # ----- per-concept rules -----
-
-    def _missing_os(self, client: Any, t) -> RuleResult:
-        rid = "op.data_quality.missing_os"
-        name = "Assets without OS fingerprint"
-        desc = "Assets where the operating-system field is empty (fingerprinting failed or never ran)."
-        sources = [_SRC_FILTERED_SEARCH, _SRC_ASSET_SEARCH]
-
+    def run(self, client: Any, t) -> RuleResult:
         if not t.flag_missing_os:
-            return skipped_rule(rule_id=rid, rule_name=name, description=desc, sources=sources)
+            return skipped_rule(rule_id=self.RULE_ID, rule_name=self.RULE_NAME, description=self.DESCRIPTION, sources=self.SOURCES)
 
         rule_start = time.monotonic()
         body = client.post_one(
@@ -138,23 +62,26 @@ class DataQualityCheck:
                 details={"total": total, "examples": _example_hostnames(examples)},
             ))
         return make_rule_result(
-            rule_id=rid,
-            rule_name=name,
-            description=desc,
+            rule_id=self.RULE_ID,
+            rule_name=self.RULE_NAME,
+            description=self.DESCRIPTION,
             findings=findings,
-            sources=sources,
+            sources=self.SOURCES,
             summary={"missing_os_count": total},
             duration_ms=int((time.monotonic() - rule_start) * 1000),
         )
 
-    def _empty_sites(self, client: Any, t) -> RuleResult:
-        rid = "op.data_quality.empty_sites"
-        name = "Sites with zero assets"
-        desc = "Sites whose include/exclude scope currently matches no assets."
-        sources = [_SRC_SITES]
 
+class EmptySitesRule:
+    RULE_ID = "op.data_quality.empty_sites"
+    RULE_NAME = "Sites with zero assets"
+    DESCRIPTION = "Sites whose include/exclude scope currently matches no assets."
+    DEFAULT_SEVERITY = "warn"
+    SOURCES = (_SRC_SITES,)
+
+    def run(self, client: Any, t) -> RuleResult:
         if not t.flag_empty_sites:
-            return skipped_rule(rule_id=rid, rule_name=name, description=desc, sources=sources)
+            return skipped_rule(rule_id=self.RULE_ID, rule_name=self.RULE_NAME, description=self.DESCRIPTION, sources=self.SOURCES)
 
         rule_start = time.monotonic()
         empty_sites: list[dict] = []
@@ -175,27 +102,30 @@ class DataQualityCheck:
                 },
             ))
         return make_rule_result(
-            rule_id=rid,
-            rule_name=name,
-            description=desc,
+            rule_id=self.RULE_ID,
+            rule_name=self.RULE_NAME,
+            description=self.DESCRIPTION,
             findings=findings,
-            sources=sources,
+            sources=self.SOURCES,
             summary={"empty_sites_count": len(empty_sites)},
             duration_ms=int((time.monotonic() - rule_start) * 1000),
         )
 
-    def _stale_assets(self, client: Any, t) -> RuleResult:
-        rid = "op.data_quality.stale_assets"
-        name = "Long-stale assets"
-        desc = (
-            "Assets whose last scan is older than the data-quality threshold. "
-            "Distinct from Asset Coverage's never-scanned signal — this flags "
-            "asset records whose data is so old it's likely unreliable."
-        )
-        sources = [_SRC_FILTERED_SEARCH]
 
+class StaleAssetsRule:
+    RULE_ID = "op.data_quality.stale_assets"
+    RULE_NAME = "Long-stale assets"
+    DESCRIPTION = (
+        "Assets whose last scan is older than the data-quality threshold. "
+        "Distinct from Asset Coverage's never-scanned signal — this flags "
+        "asset records whose data is so old it's likely unreliable."
+    )
+    DEFAULT_SEVERITY = "warn"
+    SOURCES = (_SRC_FILTERED_SEARCH,)
+
+    def run(self, client: Any, t) -> RuleResult:
         if not t.flag_stale_assets:
-            return skipped_rule(rule_id=rid, rule_name=name, description=desc, sources=sources)
+            return skipped_rule(rule_id=self.RULE_ID, rule_name=self.RULE_NAME, description=self.DESCRIPTION, sources=self.SOURCES)
 
         rule_start = time.monotonic()
         body = client.post_one(
@@ -229,13 +159,69 @@ class DataQualityCheck:
                 },
             ))
         return make_rule_result(
-            rule_id=rid,
-            rule_name=name,
-            description=desc,
+            rule_id=self.RULE_ID,
+            rule_name=self.RULE_NAME,
+            description=self.DESCRIPTION,
             findings=findings,
-            sources=sources,
+            sources=self.SOURCES,
             summary={"stale_assets_count": total},
             duration_ms=int((time.monotonic() - rule_start) * 1000),
+        )
+
+
+class DataQualityCheck:
+    name = "Data Quality"
+    description = (
+        "Assets without OS fingerprint, sites with zero assets, "
+        "long-stale assets, and duplicate hostnames/IPs."
+    )
+
+    def run(self, client: Any, config: AppConfig, **_kwargs: object) -> CheckResult:
+        start = time.monotonic()
+        t = config.thresholds.data_quality
+        rule_results: list[RuleResult] = []
+
+        # Per-rule isolation: a single rule's API call timing out or 400-ing
+        # must not blackhole the rest of the check. Mirrors the audit
+        # orchestrator's pattern.
+        missing_os = MissingOsRule()
+        empty_sites = EmptySitesRule()
+        stale = StaleAssetsRule()
+        rule_results.append(safe_run_rule(missing_os, lambda: missing_os.run(client, t)))
+        rule_results.append(safe_run_rule(empty_sites, lambda: empty_sites.run(client, t)))
+        rule_results.append(safe_run_rule(stale, lambda: stale.run(client, t)))
+
+        # Duplicate detection — single paginate, two rules. If the paginate
+        # itself fails, both rules surface as errors (the helper synthesizes
+        # one error_rule per concept so the report still shows both rule cards).
+        try:
+            dup_rules = self._duplicates(client, t)
+            rule_results.extend(dup_rules)
+        except Exception as e:
+            logger.exception("data_quality._duplicates raised")
+            rule_results.append(error_rule(
+                rule_id="op.data_quality.duplicate_hostnames",
+                rule_name="Duplicate hostnames",
+                description="Assets with the same hostName (case-insensitive) — likely duplicate records.",
+                sources=[_SRC_DUPLICATE_ASSETS],
+                error=e,
+            ))
+            rule_results.append(error_rule(
+                rule_id="op.data_quality.duplicate_ips",
+                rule_name="Duplicate IPs",
+                description="Assets sharing an IP — usually two records for one host (re-imaged, agent + scan).",
+                sources=[_SRC_DUPLICATE_ASSETS],
+                error=e,
+            ))
+
+        return CheckResult(
+            name=self.name,
+            description=self.description,
+            status=rollup_check_status(rule_results),
+            findings=flatten_findings(rule_results),
+            summary=rule_summary(rule_results),
+            duration_ms=int((time.monotonic() - start) * 1000),
+            rule_results=rule_results,
         )
 
     def _duplicates(self, client: Any, t) -> list[RuleResult]:
