@@ -210,19 +210,6 @@ class FakeSnapshot:
             )
         yield from self._site_assets_iter[site_id]
 
-    def asset_has_agent(self, asset: dict) -> bool | None:
-        """Mirrors EnvSnapshot.asset_has_agent — pure logic, no network."""
-        agent = asset.get("agent")
-        if isinstance(agent, dict):
-            if agent.get("agentId"):
-                return True
-            return False
-        if "agent" in asset and asset["agent"] is None:
-            return False
-        if "agentId" in asset:
-            return bool(asset.get("agentId"))
-        return None
-
     def asset_groups(self) -> list[dict]: return self._asset_groups
 
     def asset_group_search_criteria(self, group_id: int) -> dict:
