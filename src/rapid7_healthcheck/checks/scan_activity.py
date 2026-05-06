@@ -14,7 +14,7 @@ from rapid7_healthcheck.checks._op_rule import (
 )
 from rapid7_healthcheck.config import AppConfig
 
-_FAILED_STATUSES = {"failed", "aborted", "stopped", "error"}
+_FAILED_STATUSES = {"aborted", "stopped", "error"}
 _MAX_FAILED_FINDINGS = 20
 
 _SRC_SITES = "https://help.rapid7.com/insightvm/en-us/api/index.html#tag/Site"
@@ -47,6 +47,7 @@ class ScanActivityCheck:
         no_success_findings: list[Finding] = []
         stuck_findings: list[Finding] = []
         failed_recent_findings: list[Finding] = []
+        unknown_recent_findings: list[Finding] = []
         late_site_findings: list[Finding] = []
 
         sites_total = 0
@@ -54,6 +55,8 @@ class ScanActivityCheck:
         failed_count = 0
         stuck_count = 0
         failed_findings_emitted = 0
+        unknown_count = 0
+        unknown_findings_emitted = 0
 
         for site in client.paginate("/api/3/sites"):
             sites_total += 1
@@ -99,6 +102,22 @@ class ScanActivityCheck:
                             details={"site_id": site_id, "scan_id": s.get("id"), "status": status},
                         ))
                         failed_findings_emitted += 1
+                if status == "unknown" and start_time >= recent_cutoff:
+                    unknown_count += 1
+                    if unknown_findings_emitted < _MAX_FAILED_FINDINGS:
+                        unknown_recent_findings.append(Finding(
+                            severity="warn",
+                            message=(
+                                f"Site '{site_name}' had an unknown-status scan "
+                                f"{start_time.isoformat()}"
+                            ),
+                            details={
+                                "site_id": site_id,
+                                "scan_id": s.get("id"),
+                                "status": status,
+                            },
+                        ))
+                        unknown_findings_emitted += 1
                 if status == "finished":
                     if most_recent_finished is None or start_time > most_recent_finished:
                         most_recent_finished = start_time
@@ -143,6 +162,15 @@ class ScanActivityCheck:
                 ),
             ))
 
+        if unknown_count > unknown_findings_emitted:
+            unknown_recent_findings.append(Finding(
+                severity="warn",
+                message=(
+                    f"{unknown_count - unknown_findings_emitted} additional unknown-status scans "
+                    f"omitted from findings (capped at {_MAX_FAILED_FINDINGS})"
+                ),
+            ))
+
         rule_results: list[RuleResult] = [
             make_rule_result(
                 rule_id="op.scan_activity.sites_never_scanned",
@@ -182,11 +210,24 @@ class ScanActivityCheck:
                 rule_name="Recent failed scans",
                 description=(
                     "Scans within the recent window that finished in a non-success state "
-                    "(failed / aborted / stopped / error)."
+                    "(aborted / stopped / error)."
                 ),
                 findings=failed_recent_findings,
                 sources=[_SRC_SCANS],
                 summary={"failed_count": failed_count},
+                default_severity="warn",
+            ),
+            make_rule_result(
+                rule_id="op.scan_activity.recent_unknown_scans",
+                rule_name="Recent scans in unknown state",
+                description=(
+                    "Scans within the recent window whose status is reported as "
+                    "'unknown' — indeterminate scan state, likely needs operator "
+                    "inspection."
+                ),
+                findings=unknown_recent_findings,
+                sources=[_SRC_SCANS],
+                summary={"unknown_count": unknown_count},
                 default_severity="warn",
             ),
             make_rule_result(

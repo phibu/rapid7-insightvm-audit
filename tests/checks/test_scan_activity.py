@@ -70,7 +70,7 @@ def test_failed_scan_in_recent_window_warns(fake_client, app_config):
         {
             "resources": [
                 _site_scan("finished", days_ago=1),
-                _site_scan("failed", days_ago=2),
+                _site_scan("error", days_ago=2),
             ],
             "page": {"totalPages": 1},
         },
@@ -89,3 +89,25 @@ def test_site_with_zero_scans_fails(fake_client, app_config):
     result = ScanActivityCheck().run(fake_client, app_config)
     # Never scanned at all → fail
     assert result.status == "fail"
+
+
+def test_unknown_status_scan_in_recent_window_warns(fake_client, app_config):
+    fake_client.set_paginate("/api/3/sites", [{"id": 1, "name": "Prod"}])
+    fake_client.set_get(
+        "/api/3/sites/1/scans",
+        {
+            "resources": [
+                _site_scan("finished", days_ago=1),
+                _site_scan("unknown", days_ago=2),
+            ],
+            "page": {"totalPages": 1},
+        },
+    )
+    result = ScanActivityCheck().run(fake_client, app_config)
+    unknown_rule = _rule(result, "op.scan_activity.recent_unknown_scans")
+    assert unknown_rule.status == "warn"
+    assert unknown_rule.summary["unknown_count"] == 1
+    assert any(
+        f.severity == "warn" and "unknown" in f.message.lower()
+        for f in unknown_rule.findings
+    )
