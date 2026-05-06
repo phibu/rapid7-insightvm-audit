@@ -5,6 +5,14 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.13] - 2026-05-06
+
+### Changed
+
+- **Documentation: scan-engine OS support documented as a v3 API gap.** The v3 `ScanEngine` schema does not expose engine-host OS; cannot be audited read-only. Audit via Security Console UI (Administration → Engines).
+- **Internal (`checks/scan_engines.py`): parallel `_BAD_STATUS_SEVERITY` and `_BAD_STATUS_REASON` dicts collapsed into a single `_BAD_STATUS` mapping** with `_BadStatus(severity, reason)` `NamedTuple` values. No behavior change.
+- **Internal (`checks/scan_activity.py`): `_RECENT_STATUS_RULES` table and `_emit_overflow_rollup` helper extracted** to deduplicate the structurally identical recent-failed and recent-unknown blocks. Rule ids and finding text byte-identical to 0.2.12.
+
 ## [0.2.12] - 2026-05-06
 
 ### Fixed
