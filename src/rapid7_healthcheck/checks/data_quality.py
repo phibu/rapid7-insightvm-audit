@@ -27,6 +27,8 @@ _SRC_SITES = "https://help.rapid7.com/insightvm/en-us/api/index.html#tag/Site"
 _SRC_FILTERED_SEARCH = "https://docs.rapid7.com/insightvm/filtered-asset-search"
 _SRC_DUPLICATE_ASSETS = "https://docs.rapid7.com/insightvm/managing-assets#duplicate-assets"
 
+_KIND_LABEL = {"hostname": "hostnames", "ip": "IP addresses"}
+
 
 def _example_hostnames(assets: list[dict]) -> list[str]:
     return [a.get("hostName") or a.get("ip") or f"id={a.get('id')}" for a in assets[:_EXAMPLES_LIMIT]]
@@ -52,18 +54,19 @@ def _oversize_skip_rule(rule, total_assets: int, threshold: int, *, kind: str) -
     to read RULE_ID / RULE_NAME / DESCRIPTION / SOURCES. `kind` is "hostname"
     or "ip" and is interpolated into the user-visible message.
     """
+    label = _KIND_LABEL[kind]
     if threshold == 0:
         msg = (
             f"Duplicate {kind} detection disabled "
             f"(duplicate_detection_max_assets=0). "
-            f"Review duplicate {kind}s in Security Console -> Assets."
+            f"Review duplicate {label} in the Security Console UI."
         )
     else:
         msg = (
             f"Skipped: {total_assets:,} assets exceed threshold "
             f"({threshold:,}). Walking the full inventory would take too long "
             f"on this console (v3 API has no group-by). Review duplicate "
-            f"{kind}s in Security Console -> Assets, or raise "
+            f"{label} in the Security Console UI, or raise "
             f"duplicate_detection_max_assets to override."
         )
     return make_rule_result(
@@ -76,7 +79,7 @@ def _oversize_skip_rule(rule, total_assets: int, threshold: int, *, kind: str) -
             details={"total_assets": total_assets, "threshold": threshold},
         )],
         sources=rule.SOURCES,
-        summary={f"{kind}_detection_skipped": True, "total_assets": total_assets},
+        summary={f"duplicate_{kind}_detection_skipped": True, "total_assets": total_assets},
     )
 
 

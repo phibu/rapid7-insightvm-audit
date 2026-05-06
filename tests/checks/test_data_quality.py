@@ -259,6 +259,7 @@ def test_per_rule_failure_isolated_other_rules_still_run(fake_client, app_config
     fake_client.post_one = post_one_raise  # type: ignore[assignment]
     fake_client.set_paginate("/api/3/sites", [{"id": 1, "name": "Prod"}])
     fake_client.set_get("/api/3/sites/1/assets", {"resources": [], "page": {"totalResources": 5}})
+    fake_client.set_get("/api/3/assets", {"resources": [], "page": {"totalResources": 2, "size": 1}})
     fake_client.set_paginate("/api/3/assets", [
         {"id": 1, "hostName": "host-a", "ip": "10.0.0.1"},
         {"id": 2, "hostName": "host-b", "ip": "10.0.0.2"},
@@ -278,6 +279,10 @@ def test_per_rule_failure_isolated_other_rules_still_run(fake_client, app_config
     # passes here).
     empty = _rule(result, "op.data_quality.empty_sites")
     assert empty.status == "pass"
+    dup_host = _rule(result, "op.data_quality.duplicate_hostnames")
+    dup_ip = _rule(result, "op.data_quality.duplicate_ips")
+    assert dup_host.status == "pass"
+    assert dup_ip.status == "pass"
 
 
 def test_duplicates_paginate_failure_emits_two_error_rules(fake_client, app_config):
