@@ -130,9 +130,7 @@ def test_agent_count_returns_zero_and_sets_unavailable_on_404():
 
     class _FailingClient:
         def get(self, path, params=None):
-            err = Rapid7ClientError(f"404 from {path}")
-            err.status_code = 404
-            raise err
+            raise Rapid7ClientError(f"404 from {path}", status_code=404)
 
     snap = EnvSnapshot(_FailingClient(), full_scan=False, sample_size=100)
 
