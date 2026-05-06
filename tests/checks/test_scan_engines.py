@@ -7,6 +7,13 @@ import pytest
 from rapid7_healthcheck.checks.scan_engines import ScanEnginesCheck
 
 
+def _rule(result, rule_id: str):
+    for r in result.rule_results:
+        if r.rule_id == rule_id:
+            return r
+    raise AssertionError(f"rule_id {rule_id!r} not in {[r.rule_id for r in result.rule_results]}")
+
+
 def _now_iso(offset_hours: float = 0) -> str:
     t = datetime.now(timezone.utc) - timedelta(hours=offset_hours)
     return t.isoformat().replace("+00:00", "Z")
@@ -28,7 +35,7 @@ def test_all_engines_healthy(fake_client, app_config):
     assert result.status == "pass"
     assert result.summary["engines_total"] == 2
     assert result.summary["engines_healthy"] == 2
-    assert result.findings == []
+    assert all(not r.findings for r in result.rule_results)
 
 
 def test_engine_warn_when_last_contact_exceeds_warn_hours(fake_client, app_config):
@@ -43,7 +50,8 @@ def test_engine_warn_when_last_contact_exceeds_warn_hours(fake_client, app_confi
     )
     result = ScanEnginesCheck().run(fake_client, app_config)
     assert result.status == "warn"
-    assert any(f.severity == "warn" and "warm" in f.message for f in result.findings)
+    last_contact = _rule(result, "op.scan_engines.last_contact")
+    assert any(f.severity == "warn" and "warm" in f.message for f in last_contact.findings)
     assert result.summary["engines_warn"] == 1
 
 
@@ -59,6 +67,8 @@ def test_engine_fail_when_last_contact_exceeds_fail_hours(fake_client, app_confi
     )
     result = ScanEnginesCheck().run(fake_client, app_config)
     assert result.status == "fail"
+    last_contact = _rule(result, "op.scan_engines.last_contact")
+    assert any(f.severity == "fail" and "stale" in f.message for f in last_contact.findings)
     assert result.summary["engines_fail"] == 1
 
 
@@ -85,8 +95,7 @@ def test_bad_status_engine_is_flagged(
     )
     result = ScanEnginesCheck().run(fake_client, app_config)
     assert result.status == expected_status
-    bad = next(rr for rr in result.rule_results
-               if rr.rule_id == "op.scan_engines.bad_status")
+    bad = _rule(result, "op.scan_engines.bad_status")
     assert any(f.severity == expected_severity and status in f.message
                for f in bad.findings)
 
@@ -103,7 +112,8 @@ def test_engine_with_no_sites_is_warn(fake_client, app_config):
     )
     result = ScanEnginesCheck().run(fake_client, app_config)
     assert result.status == "warn"
-    assert any("not paired" in f.message.lower() for f in result.findings)
+    unpaired = _rule(result, "op.scan_engines.unpaired")
+    assert any("not paired" in f.message.lower() for f in unpaired.findings)
 
 
 def test_unpaired_engine_finding_includes_identification_details(fake_client, app_config):
@@ -130,7 +140,8 @@ def test_unpaired_engine_finding_includes_identification_details(fake_client, ap
         },
     )
     result = ScanEnginesCheck().run(fake_client, app_config)
-    unpaired = [f for f in result.findings if "not paired" in f.message.lower()]
+    unpaired_rule = _rule(result, "op.scan_engines.unpaired")
+    unpaired = [f for f in unpaired_rule.findings if "not paired" in f.message.lower()]
     assert len(unpaired) == 1
     d = unpaired[0].details
     assert d["id"] == 7
@@ -157,6 +168,8 @@ def test_missing_last_refreshed_is_warn(fake_client, app_config):
     )
     result = ScanEnginesCheck().run(fake_client, app_config)
     assert result.status == "warn"
+    missing = _rule(result, "op.scan_engines.missing_last_refresh")
+    assert any("no lastRefreshedDate" in f.message for f in missing.findings)
 
 
 def test_double_warn_engine_counted_once(fake_client, app_config):
@@ -178,8 +191,11 @@ def test_double_warn_engine_counted_once(fake_client, app_config):
     )
     result = ScanEnginesCheck().run(fake_client, app_config)
     assert result.status == "warn"
-    # Two findings, one engine
-    assert len(result.findings) == 2
+    # Two findings (one per rule), one engine
+    last_contact = _rule(result, "op.scan_engines.last_contact")
+    unpaired = _rule(result, "op.scan_engines.unpaired")
+    assert len(last_contact.findings) == 1
+    assert len(unpaired.findings) == 1
     assert result.summary["engines_total"] == 1
     assert result.summary["engines_warn"] == 1
     assert result.summary["engines_fail"] == 0
