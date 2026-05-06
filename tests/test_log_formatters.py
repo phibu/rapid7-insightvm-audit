@@ -165,3 +165,22 @@ def test_json_formatter_each_line_is_valid_json():
     out = fmt.format(r1) + "\n" + fmt.format(r2)
     parsed = [json.loads(line) for line in out.splitlines()]
     assert [o["msg"] for o in parsed] == ["first", "second"]
+
+
+# ---------- make_file_formatter ----------
+
+@pytest.mark.parametrize("name,cls_name", [
+    ("plain", "PlainFormatter"),
+    ("cmtrace", "CMTraceFormatter"),
+    ("json", "JsonFormatter"),
+])
+def test_make_file_formatter_returns_expected_class(name, cls_name):
+    from rapid7_healthcheck import _log as logmod
+    f = logmod.make_file_formatter(name)
+    assert type(f).__name__ == cls_name
+
+
+def test_make_file_formatter_rejects_unknown():
+    from rapid7_healthcheck._log import make_file_formatter
+    with pytest.raises(ValueError, match="unknown log_format"):
+        make_file_formatter("xml")

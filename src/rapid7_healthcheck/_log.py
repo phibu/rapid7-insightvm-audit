@@ -126,3 +126,17 @@ class JsonFormatter(logging.Formatter):
         if record.exc_info:
             obj["exc"] = self.formatException(record.exc_info)
         return _json.dumps(obj, ensure_ascii=False, separators=(",", ":"))
+
+
+def make_file_formatter(log_format: str) -> logging.Formatter:
+    """Return the file-log formatter matching the requested string.
+
+    Defensive — config validation should have caught unknown values upstream.
+    """
+    if log_format == "plain":
+        return PlainFormatter()
+    if log_format == "cmtrace":
+        return CMTraceFormatter()
+    if log_format == "json":
+        return JsonFormatter()
+    raise ValueError(f"unknown log_format: {log_format!r}")
