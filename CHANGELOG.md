@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **README: per-rule tables for the three previously undocumented op-checks.** Added `## Scan Engines`, `## Scan Activity`, and `## Data Quality` sections (parallel to the existing `## Asset Coverage` section), each listing every `op.*.*` rule_id with its description and default severity. Source URLs continue to render only on the report rule cards (single source of truth).
+
+## [0.3.1] - 2026-05-06
+
+### Changed
+
 - **Data Quality:** added `thresholds.data_quality.duplicate_detection_max_assets` (default `50000`). When the total asset inventory exceeds this ceiling, the duplicate-hostname and duplicate-IP rules are skipped and emit an info finding pointing to the Security Console UI. The v3 API has no group-by operator, so duplicate detection requires paginating every asset; on large consoles (~500k assets, ~45s/page) this is infeasible. Set the threshold to `0` to always skip duplicate detection; raise it to override the default behavior on consoles where pagination is fast enough.
 
 ## [0.3.0] - 2026-05-06
