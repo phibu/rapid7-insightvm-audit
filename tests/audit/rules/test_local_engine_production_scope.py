@@ -6,7 +6,7 @@ from rapid7_healthcheck.audit.rules.local_engine_production_scope import (
 
 
 def _site(site_id, name, engine_id):
-    return {"id": site_id, "name": name, "scanEngineId": engine_id}
+    return {"id": site_id, "name": name, "scanEngine": engine_id}
 
 
 def test_pass_when_no_local_engine(fake_snapshot):

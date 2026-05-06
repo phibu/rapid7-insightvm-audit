@@ -3,7 +3,7 @@ from __future__ import annotations
 from rapid7_healthcheck.audit.rules.single_engine_overload import SingleEngineOverloadRule
 
 
-def _site(site_id, name, engine_id): return {"id": site_id, "name": name, "scanEngineId": engine_id}
+def _site(site_id, name, engine_id): return {"id": site_id, "name": name, "scanEngine": engine_id}
 
 
 def test_pass_when_each_engine_serves_one_site(fake_snapshot):

@@ -26,7 +26,7 @@ class SingleEngineOverloadRule:
         engines_by_id = {e["id"]: e for e in snapshot.scan_engines()}
         sites_by_engine: dict[int, list[int]] = defaultdict(list)
         for site in snapshot.sites():
-            engine_id = site.get("scanEngineId")
+            engine_id = site.get("scanEngine")
             if engine_id is not None:
                 sites_by_engine[engine_id].append(site["id"])
 
