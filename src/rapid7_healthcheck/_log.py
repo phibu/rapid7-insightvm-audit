@@ -102,3 +102,27 @@ class CMTraceFormatter(logging.Formatter):
             f'thread="{thread_id}" '
             f'file="{file_field}">'
         )
+
+
+class JsonFormatter(logging.Formatter):
+    """Format log records as one JSON object per line (JSONL).
+
+    Shape: {"ts": "<UTC ISO-8601 with .ms and Z>", "level": "<NAME>",
+            "logger": "<record.name>", "msg": "<rendered message>"}
+    Adds an "exc" field with the formatted traceback when record.exc_info is set.
+    """
+
+    def format(self, record: logging.LogRecord) -> str:
+        # UTC ISO-8601 with millisecond precision, trailing Z.
+        utc = datetime.fromtimestamp(record.created, tz=timezone.utc)
+        ts = utc.strftime("%Y-%m-%dT%H:%M:%S") + f".{int(record.msecs):03d}Z"
+
+        obj: dict[str, object] = {
+            "ts": ts,
+            "level": record.levelname,
+            "logger": record.name,
+            "msg": record.getMessage(),
+        }
+        if record.exc_info:
+            obj["exc"] = self.formatException(record.exc_info)
+        return _json.dumps(obj, ensure_ascii=False, separators=(",", ":"))

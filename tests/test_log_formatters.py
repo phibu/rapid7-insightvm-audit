@@ -109,3 +109,59 @@ def test_cmtrace_time_offset_format():
     # Offset string must be exactly 4 chars: sign + 3 digits.
     offset = m["time"][-4:]
     assert re.match(r"[+-]\d{3}$", offset), f"unexpected offset: {offset!r}"
+
+
+# ---------- JsonFormatter ----------
+
+def test_json_formatter_minimal_shape():
+    from rapid7_healthcheck._log import JsonFormatter
+    record = _make_record(level=logging.WARNING, name="rapid7_healthcheck.audit", msg="suspicious config")
+    line = JsonFormatter().format(record)
+    obj = json.loads(line)
+    assert set(obj.keys()) == {"ts", "level", "logger", "msg"}
+    assert obj["level"] == "WARNING"
+    assert obj["logger"] == "rapid7_healthcheck.audit"
+    assert obj["msg"] == "suspicious config"
+    assert re.match(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$", obj["ts"]), obj["ts"]
+
+
+def test_json_formatter_args_are_interpolated():
+    """logger.info('hello %s', 'world') must produce msg='hello world'."""
+    from rapid7_healthcheck._log import JsonFormatter
+    record = _make_record(msg="hello %s", args=("world",))
+    obj = json.loads(JsonFormatter().format(record))
+    assert obj["msg"] == "hello world"
+
+
+def test_json_formatter_exception_field():
+    from rapid7_healthcheck._log import JsonFormatter
+    try:
+        raise ValueError("boom")
+    except ValueError:
+        import sys
+        record = _make_record(level=logging.ERROR, msg="failed", exc_info=sys.exc_info())
+    obj = json.loads(JsonFormatter().format(record))
+    assert set(obj.keys()) == {"ts", "level", "logger", "msg", "exc"}
+    assert "ValueError: boom" in obj["exc"]
+
+
+def test_json_formatter_non_ascii_round_trips():
+    """ensure_ascii=False keeps unicode readable in the file."""
+    from rapid7_healthcheck._log import JsonFormatter
+    record = _make_record(msg="München")
+    line = JsonFormatter().format(record)
+    # Literal unicode, not \uXXXX escape.
+    assert "München" in line
+    obj = json.loads(line)
+    assert obj["msg"] == "München"
+
+
+def test_json_formatter_each_line_is_valid_json():
+    """Two records produce two parseable JSON objects (one per line)."""
+    from rapid7_healthcheck._log import JsonFormatter
+    fmt = JsonFormatter()
+    r1 = _make_record(msg="first")
+    r2 = _make_record(msg="second")
+    out = fmt.format(r1) + "\n" + fmt.format(r2)
+    parsed = [json.loads(line) for line in out.splitlines()]
+    assert [o["msg"] for o in parsed] == ["first", "second"]
