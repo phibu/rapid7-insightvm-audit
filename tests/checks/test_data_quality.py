@@ -377,6 +377,32 @@ def test_duplicate_detection_runs_when_under_threshold(fake_client, app_config):
     assert any(c[0] == "paginate" and c[1] == "/api/3/assets" for c in fake_client.calls)
 
 
+def test_duplicate_detection_runs_when_total_equals_threshold(fake_client, app_config):
+    """Boundary: total == cap runs (strict >). Locks the operator against
+    accidental change to >= which would silently skip at the boundary."""
+    cfg = _all_off_except(
+        app_config,
+        flag_duplicate_hostnames=True,
+        flag_duplicate_ips=True,
+        duplicate_detection_max_assets=50000,
+    )
+    fake_client.set_get(
+        "/api/3/assets",
+        {"resources": [{"id": 1}], "page": {"totalResources": 50000, "size": 1}},
+    )
+    fake_client.set_paginate("/api/3/assets", [
+        {"id": 1, "hostName": "dup", "ip": "10.0.0.1"},
+        {"id": 2, "hostName": "dup", "ip": "10.0.0.1"},
+    ])
+
+    result = DataQualityCheck().run(fake_client, cfg)
+
+    host = _rule(result, "op.data_quality.duplicate_hostnames")
+    assert host.status == "warn"
+    # Paginate was called — strict > means the boundary value runs the rule.
+    assert any(c[0] == "paginate" and c[1] == "/api/3/assets" for c in fake_client.calls)
+
+
 def test_duplicate_detection_threshold_zero_always_skips(fake_client, app_config):
     """Threshold=0 means always skip, regardless of total."""
     cfg = _all_off_except(
