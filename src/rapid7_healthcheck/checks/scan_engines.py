@@ -18,6 +18,23 @@ _SRC_SCAN_ENGINES = "https://help.rapid7.com/insightvm/en-us/api/index.html#tag/
 _SRC_ENGINE_STATUS = "https://docs.rapid7.com/insightvm/managing-scan-engines"
 
 
+# Per v3 ScanEngine.status enum: [active, incompatible-version, not-responding,
+# pending-authorization, unknown]. "active" is the only good state.
+_BAD_STATUS_SEVERITY: dict[str, str] = {
+    "incompatible-version": "fail",
+    "not-responding": "fail",
+    "pending-authorization": "warn",
+    "unknown": "warn",
+}
+
+_BAD_STATUS_REASON: dict[str, str] = {
+    "incompatible-version": "engine code is incompatible with this console; cannot scan",
+    "not-responding": "console cannot reach engine; scans blocked",
+    "pending-authorization": "engine reachable but not yet authorized",
+    "unknown": "engine status is indeterminate",
+}
+
+
 def _parse_iso(value: str | None) -> datetime | None:
     if not value:
         return None
@@ -51,13 +68,15 @@ class ScanEnginesCheck:
             last_refreshed = _parse_iso(engine.get("lastRefreshedDate"))
             sites = engine.get("sites") or []
 
-            if status == "inactive" or status == "unknown":
+            if status in _BAD_STATUS_SEVERITY:
+                severity = _BAD_STATUS_SEVERITY[status]
+                reason = _BAD_STATUS_REASON[status]
                 bad_status_findings.append(Finding(
-                    severity="fail",
-                    message=f"Engine '{name}' status is '{status}'",
+                    severity=severity,
+                    message=f"Engine '{name}' status is '{status}' — {reason}",
                     details={"id": engine.get("id"), "status": status},
                 ))
-                per_engine_worst.append("fail")
+                per_engine_worst.append(severity)
                 continue
 
             if last_refreshed is None:
@@ -123,10 +142,13 @@ class ScanEnginesCheck:
         rule_results: list[RuleResult] = [
             make_rule_result(
                 rule_id="op.scan_engines.bad_status",
-                rule_name="Engines in inactive or unknown state",
+                rule_name="Engines in non-active state",
                 description=(
-                    "Scan engines reporting status 'inactive' or 'unknown' — "
-                    "console can no longer reach them."
+                    "Scan engines whose status is 'incompatible-version', "
+                    "'not-responding', 'pending-authorization', or 'unknown' — "
+                    "console cannot reliably use them for scans. Severity per "
+                    "finding: incompatible-version and not-responding are fail; "
+                    "pending-authorization and unknown are warn."
                 ),
                 findings=bad_status_findings,
                 sources=[_SRC_SCAN_ENGINES, _SRC_ENGINE_STATUS],

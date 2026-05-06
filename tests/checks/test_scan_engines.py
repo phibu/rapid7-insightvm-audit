@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 from rapid7_healthcheck.checks.scan_engines import ScanEnginesCheck
 
 
@@ -60,18 +62,33 @@ def test_engine_fail_when_last_contact_exceeds_fail_hours(fake_client, app_confi
     assert result.summary["engines_fail"] == 1
 
 
-def test_inactive_engine_is_fail(fake_client, app_config):
+@pytest.mark.parametrize(
+    "status,expected_status,expected_severity",
+    [
+        ("incompatible-version", "fail", "fail"),
+        ("not-responding", "fail", "fail"),
+        ("pending-authorization", "warn", "warn"),
+        ("unknown", "warn", "warn"),
+    ],
+)
+def test_bad_status_engine_is_flagged(
+    status, expected_status, expected_severity, fake_client, app_config
+):
     fake_client.set_get(
         "/api/3/scan_engines",
         {
             "resources": [
-                {"id": 1, "name": "off", "status": "inactive",
+                {"id": 1, "name": f"engine-{status}", "status": status,
                  "lastRefreshedDate": _now_iso(0), "sites": [10]},
             ]
         },
     )
     result = ScanEnginesCheck().run(fake_client, app_config)
-    assert result.status == "fail"
+    assert result.status == expected_status
+    bad = next(rr for rr in result.rule_results
+               if rr.rule_id == "op.scan_engines.bad_status")
+    assert any(f.severity == expected_severity and status in f.message
+               for f in bad.findings)
 
 
 def test_engine_with_no_sites_is_warn(fake_client, app_config):
@@ -183,7 +200,7 @@ def test_summary_counts_partition_engines(fake_client, app_config):
                  "lastRefreshedDate": _now_iso(3), "sites": []},            # warn (worst sev)
                 {"id": 4, "name": "stale-fail", "status": "active",
                  "lastRefreshedDate": _now_iso(48), "sites": [10]},         # fail
-                {"id": 5, "name": "off", "status": "inactive",
+                {"id": 5, "name": "off", "status": "not-responding",
                  "lastRefreshedDate": _now_iso(0), "sites": [10]},          # fail
             ]
         },
