@@ -413,7 +413,7 @@ def test_oversize_inventory_skips_with_default_cap():
 
 
 def test_oversize_inventory_respects_explicit_max_agents_knob():
-    """rule_config.knobs.max_agents overrides the default."""
+    """rule_config['max_agents'] (passed as the knobs dict) overrides the default."""
     from rapid7_healthcheck.audit.rules.agent_unauth_collision import (
         AgentUnauthCollisionRule,
     )
