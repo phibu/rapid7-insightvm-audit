@@ -102,3 +102,54 @@ def test_setup_logging_creates_parent_dir_when_missing(tmp_path, caplog):
         "could not open log file" in r.message.lower() or "log file unavailable" in r.message.lower()
         for r in caplog.records
     ), f"unexpected warning when parent dir was auto-creatable: {[r.message for r in caplog.records]}"
+
+
+def test_setup_logging_uses_json_formatter_for_file_handler(tmp_path):
+    """When log_format='json', the file handler's formatter is JsonFormatter."""
+    import logging as _logging
+    from rapid7_healthcheck.__main__ import _setup_logging
+    from rapid7_healthcheck._log import JsonFormatter, FlushingFileHandler
+
+    log_path = tmp_path / "out.log"
+    _setup_logging(verbose=False, log_file=str(log_path), log_format="json")
+
+    root = _logging.getLogger()
+    file_handlers = [h for h in root.handlers if isinstance(h, FlushingFileHandler)]
+    assert len(file_handlers) == 1
+    assert isinstance(file_handlers[0].formatter, JsonFormatter)
+
+
+def test_setup_logging_stderr_stays_plain_when_format_is_json(tmp_path):
+    """Stderr StreamHandler's formatter is unaffected by log_format."""
+    import logging as _logging
+    from rapid7_healthcheck.__main__ import _setup_logging
+    from rapid7_healthcheck._log import JsonFormatter, FlushingFileHandler
+
+    log_path = tmp_path / "out.log"
+    _setup_logging(verbose=False, log_file=str(log_path), log_format="json")
+
+    root = _logging.getLogger()
+    # At least one StreamHandler that is NOT a FlushingFileHandler (which is a
+    # StreamHandler subclass via FileHandler) and whose formatter isn't JsonFormatter.
+    plain_stream = [
+        h for h in root.handlers
+        if isinstance(h, _logging.StreamHandler)
+        and not isinstance(h, FlushingFileHandler)
+        and not isinstance(h.formatter, JsonFormatter)
+    ]
+    assert len(plain_stream) >= 1, "expected a non-JSON stderr StreamHandler"
+
+
+def test_setup_logging_default_format_is_plain(tmp_path):
+    """When log_format is omitted, default is 'plain' for the file handler."""
+    import logging as _logging
+    from rapid7_healthcheck.__main__ import _setup_logging
+    from rapid7_healthcheck._log import PlainFormatter, FlushingFileHandler
+
+    log_path = tmp_path / "out.log"
+    _setup_logging(verbose=False, log_file=str(log_path))  # no log_format kwarg
+
+    root = _logging.getLogger()
+    file_handlers = [h for h in root.handlers if isinstance(h, FlushingFileHandler)]
+    assert len(file_handlers) == 1
+    assert isinstance(file_handlers[0].formatter, PlainFormatter)
