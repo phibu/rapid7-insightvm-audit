@@ -883,6 +883,68 @@ def test_per_rule_failure_isolated_other_rules_still_run(fake_client, app_config
             f"Rule {rid} should not be 'error' from another rule's failure; got {rr.status}"
 
 
+from rapid7_healthcheck.checks import Finding
+from rapid7_healthcheck.checks.asset_coverage import _capped_findings_with_rollup
+
+
+def _make_finding(item):
+    return Finding(severity="warn", message=f"item {item['id']}", details={"id": item["id"]})
+
+
+def test_capped_helper_under_cap_no_rollup():
+    items = [{"id": i} for i in range(3)]
+    out = _capped_findings_with_rollup(
+        items, _make_finding, severity="warn", label="thing", cap=10,
+    )
+    assert len(out) == 3
+    assert all("more thing" not in f.message for f in out)
+
+
+def test_capped_helper_at_cap_no_rollup():
+    items = [{"id": i} for i in range(5)]
+    out = _capped_findings_with_rollup(
+        items, _make_finding, severity="warn", label="thing", cap=5,
+    )
+    assert len(out) == 5
+    assert all("more thing" not in f.message for f in out)
+
+
+def test_capped_helper_over_cap_emits_rollup():
+    items = [{"id": i} for i in range(7)]
+    out = _capped_findings_with_rollup(
+        items, _make_finding, severity="warn", label="thing", cap=5,
+    )
+    assert len(out) == 6
+    rollup = out[-1]
+    assert rollup.severity == "warn"
+    assert "+ 2 more thing(s)" in rollup.message
+    assert rollup.details == {"remainder": 2, "total": 7, "cap": 5}
+
+
+def test_capped_helper_rollup_details_extra_merges():
+    items = [{"id": i} for i in range(3)]
+    out = _capped_findings_with_rollup(
+        items, _make_finding, severity="warn", label="asset", cap=2,
+        rollup_details_extra={"sample_strategy": "first-n"},
+    )
+    rollup = out[-1]
+    assert rollup.details == {
+        "remainder": 1, "total": 3, "cap": 2,
+        "sample_strategy": "first-n",
+    }
+
+
+def test_capped_helper_cap_zero_emits_only_rollup():
+    items = [{"id": i} for i in range(3)]
+    out = _capped_findings_with_rollup(
+        items, _make_finding, severity="warn", label="thing", cap=0,
+    )
+    # No head findings, just one rollup covering all items.
+    assert len(out) == 1
+    assert out[0].details == {"remainder": 3, "total": 3, "cap": 0}
+    assert "+ 3 more thing(s)" in out[0].message
+
+
 def test_rule_identity_matches_method_constants(fake_client, app_config):
     """Drift guard: the rule_id strings duplicated in run()'s safe_run()
     wrappers must match the rule_id each rule method emits internally.

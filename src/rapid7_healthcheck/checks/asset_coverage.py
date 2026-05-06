@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +37,46 @@ def _asset_label(asset: dict) -> str:
     return asset.get("hostName") or asset.get("ip") or f"id={asset.get('id')}"
 
 
+def _capped_findings_with_rollup(
+    items: list,
+    build_finding: Callable[[dict], Finding],
+    severity: str,
+    label: str,
+    cap: int = _PER_ITEM_FINDING_CAP,
+    rollup_details_extra: dict | None = None,
+) -> list[Finding]:
+    """Build per-item findings up to ``cap``; append one rollup Finding for the
+    remainder.
+
+    ``label`` is the noun used in the rollup message:
+    ``"+ N more <label>(s) (truncated; showing first <cap>)"``.
+    ``rollup_details_extra`` is merged into the rollup finding's ``details``
+    dict (alongside the canonical ``remainder`` / ``total`` / ``cap`` keys).
+    """
+    findings: list[Finding] = []
+    head = items[:cap]
+    for item in head:
+        findings.append(build_finding(item))
+    remainder = len(items) - len(head)
+    if remainder > 0:
+        rollup_details: dict = {
+            "remainder": remainder,
+            "total": len(items),
+            "cap": cap,
+        }
+        if rollup_details_extra:
+            rollup_details.update(rollup_details_extra)
+        findings.append(Finding(
+            severity=severity,
+            message=(
+                f"+ {remainder} more {label}(s) "
+                f"(truncated; showing first {cap})"
+            ),
+            details=rollup_details,
+        ))
+    return findings
+
+
 def _per_asset_findings(
     assets: list[dict],
     severity: str,
@@ -49,9 +89,7 @@ def _per_asset_findings(
     count stays bounded while still reflecting the actual affected-asset count
     in the row. ``message_for(asset) -> str`` builds the per-asset message.
     """
-    findings: list[Finding] = []
-    head = assets[:_PER_ITEM_FINDING_CAP]
-    for asset in head:
+    def _build(asset: dict) -> Finding:
         details: dict = {
             "asset_id": asset.get("id"),
             "hostName": asset.get("hostName"),
@@ -59,26 +97,19 @@ def _per_asset_findings(
         }
         if extra_details:
             details.update(extra_details)
-        findings.append(Finding(
+        return Finding(
             severity=severity,
             message=message_for(asset),
             details=details,
-        ))
-    remainder = len(assets) - len(head)
-    if remainder > 0:
-        rollup_details: dict = {
-            "remainder": remainder,
-            "total": len(assets),
-            "cap": _PER_ITEM_FINDING_CAP,
-        }
-        if extra_details:
-            rollup_details.update(extra_details)
-        findings.append(Finding(
-            severity=severity,
-            message=f"+ {remainder} more asset(s) (truncated; showing first {_PER_ITEM_FINDING_CAP})",
-            details=rollup_details,
-        ))
-    return findings
+        )
+
+    return _capped_findings_with_rollup(
+        assets,
+        _build,
+        severity=severity,
+        label="asset",
+        rollup_details_extra=extra_details,
+    )
 
 
 class AssetCoverageCheck:
@@ -318,9 +349,7 @@ class AssetCoverageCheck:
         # Track which groups came from the fallback path so we can label them.
         # API group IDs are unique per console, so g["id"] is the natural key.
         fallback_dead_ids = {g.get("id") for g in fallback_dead}
-        findings: list[Finding] = []
-        head = dead[:_PER_ITEM_FINDING_CAP]
-        for g in head:
+        def _build_dead_group(g: dict) -> Finding:
             label = g.get("name") or f"id={g.get('id')}"
             details = {
                 "group_id": g.get("id"),
@@ -329,18 +358,18 @@ class AssetCoverageCheck:
             }
             if g.get("id") in fallback_dead_ids:
                 details["resolved_via"] = "per_group_fallback"
-            findings.append(Finding(
+            return Finding(
                 severity="warn",
                 message=f"Asset group '{label}' has zero members",
                 details=details,
-            ))
-        remainder = len(dead) - len(head)
-        if remainder > 0:
-            findings.append(Finding(
-                severity="warn",
-                message=f"+ {remainder} more group(s) (truncated; showing first {_PER_ITEM_FINDING_CAP})",
-                details={"remainder": remainder, "total": len(dead), "cap": _PER_ITEM_FINDING_CAP},
-            ))
+            )
+
+        findings: list[Finding] = _capped_findings_with_rollup(
+            dead,
+            _build_dead_group,
+            severity="warn",
+            label="group",
+        )
 
         # Append fallback diagnostics as info-severity findings.
         findings.extend(error_findings)
@@ -532,21 +561,20 @@ class AssetCoverageCheck:
 
         findings: list[Finding] = [summary_finding]
 
-        head = outsiders[:_PER_ITEM_FINDING_CAP]
-        for o in head:
+        def _build_outsider(o: dict) -> Finding:
             label = o.get("hostname") or o.get("ip") or f"id={o.get('asset_id')}"
-            findings.append(Finding(
+            return Finding(
                 severity="warn",
                 message=f"Agent-managed asset {label} is outside every site's scan scope",
                 details=o,
-            ))
-        remainder = len(outsiders) - len(head)
-        if remainder > 0:
-            findings.append(Finding(
-                severity="warn",
-                message=f"+ {remainder} more asset(s) (truncated; showing first {_PER_ITEM_FINDING_CAP})",
-                details={"remainder": remainder, "total": len(outsiders), "cap": _PER_ITEM_FINDING_CAP},
-            ))
+            )
+
+        findings.extend(_capped_findings_with_rollup(
+            outsiders,
+            _build_outsider,
+            severity="warn",
+            label="asset",
+        ))
 
         sample_info = (
             f"strategy=first-n; sampled={len(sample_ids)}; "
