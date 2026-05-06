@@ -32,6 +32,54 @@ def _example_hostnames(assets: list[dict]) -> list[str]:
     return [a.get("hostName") or a.get("ip") or f"id={a.get('id')}" for a in assets[:_EXAMPLES_LIMIT]]
 
 
+def _peek_total_assets(client: Any) -> int:
+    """One-shot GET /api/3/assets?page=0&size=1 to read page.totalResources cheaply.
+
+    Used by DataQualityCheck.run to decide whether duplicate detection is
+    feasible at this inventory size before walking the full asset list. The
+    v3 API has no group-by, so duplicate detection requires paginating every
+    asset; on large consoles (~500k assets, ~45s/page) that is infeasible.
+    """
+    body = client.get("/api/3/assets", params={"page": 0, "size": 1})
+    return int(body.get("page", {}).get("totalResources", 0))
+
+
+def _oversize_skip_rule(rule, total_assets: int, threshold: int, *, kind: str) -> RuleResult:
+    """Build a pass-status RuleResult with a single info finding explaining
+    why duplicate detection was skipped at this inventory size.
+
+    `rule` is a DuplicateHostnamesRule or DuplicateIpsRule instance — used only
+    to read RULE_ID / RULE_NAME / DESCRIPTION / SOURCES. `kind` is "hostname"
+    or "ip" and is interpolated into the user-visible message.
+    """
+    if threshold == 0:
+        msg = (
+            f"Duplicate {kind} detection disabled "
+            f"(duplicate_detection_max_assets=0). "
+            f"Review duplicate {kind}s in Security Console -> Assets."
+        )
+    else:
+        msg = (
+            f"Skipped: {total_assets:,} assets exceed threshold "
+            f"({threshold:,}). Walking the full inventory would take too long "
+            f"on this console (v3 API has no group-by). Review duplicate "
+            f"{kind}s in Security Console -> Assets, or raise "
+            f"duplicate_detection_max_assets to override."
+        )
+    return make_rule_result(
+        rule_id=rule.RULE_ID,
+        rule_name=rule.RULE_NAME,
+        description=rule.DESCRIPTION,
+        findings=[Finding(
+            severity="info",
+            message=msg,
+            details={"total_assets": total_assets, "threshold": threshold},
+        )],
+        sources=rule.SOURCES,
+        summary={f"{kind}_detection_skipped": True, "total_assets": total_assets},
+    )
+
+
 class MissingOsRule:
     RULE_ID = "op.data_quality.missing_os"
     RULE_NAME = "Assets without OS fingerprint"
@@ -322,32 +370,65 @@ class DataQualityCheck:
         rule_results.append(safe_run_rule(empty_sites, lambda: empty_sites.run(client, t)))
         rule_results.append(safe_run_rule(stale, lambda: stale.run(client, t)))
 
-        # Duplicate detection — single paginate, two rules. If the paginate
-        # itself fails, both rules surface as errors (the helper synthesizes
-        # one error_rule per concept so the report still shows both rule cards).
+        # Duplicate detection — single paginate, two rules. On large consoles
+        # the paginate is infeasible (v3 has no group-by, ~45s/page on 500k
+        # assets), so peek totalResources first and skip with a Console-UI
+        # pointer above the configured ceiling.
         host_rule = DuplicateHostnamesRule()
         ip_rule = DuplicateIpsRule()
-        try:
-            host_groups, ip_groups = _collect_duplicate_groups(client, t)
-        except Exception as e:
-            logger.exception("data_quality._collect_duplicate_groups raised")
-            rule_results.append(error_rule(
-                rule_id=host_rule.RULE_ID,
-                rule_name=host_rule.RULE_NAME,
-                description=host_rule.DESCRIPTION,
-                sources=host_rule.SOURCES,
-                error=e,
-            ))
-            rule_results.append(error_rule(
-                rule_id=ip_rule.RULE_ID,
-                rule_name=ip_rule.RULE_NAME,
-                description=ip_rule.DESCRIPTION,
-                sources=ip_rule.SOURCES,
-                error=e,
-            ))
+
+        if not (t.flag_duplicate_hostnames or t.flag_duplicate_ips):
+            # Both flags off: take the existing skipped path. Do NOT peek
+            # (avoid a wasted API request when the user has explicitly
+            # disabled both rules).
+            rule_results.append(safe_run_rule(host_rule, lambda: host_rule.run([], t)))
+            rule_results.append(safe_run_rule(ip_rule, lambda: ip_rule.run([], t)))
         else:
-            rule_results.append(safe_run_rule(host_rule, lambda: host_rule.run(host_groups, t)))
-            rule_results.append(safe_run_rule(ip_rule, lambda: ip_rule.run(ip_groups, t)))
+            try:
+                total_assets = _peek_total_assets(client)
+            except Exception as e:
+                logger.exception("data_quality._peek_total_assets raised")
+                rule_results.append(error_rule(
+                    rule_id=host_rule.RULE_ID,
+                    rule_name=host_rule.RULE_NAME,
+                    description=host_rule.DESCRIPTION,
+                    sources=host_rule.SOURCES,
+                    error=e,
+                ))
+                rule_results.append(error_rule(
+                    rule_id=ip_rule.RULE_ID,
+                    rule_name=ip_rule.RULE_NAME,
+                    description=ip_rule.DESCRIPTION,
+                    sources=ip_rule.SOURCES,
+                    error=e,
+                ))
+            else:
+                cap = t.duplicate_detection_max_assets
+                if cap == 0 or total_assets > cap:
+                    rule_results.append(_oversize_skip_rule(host_rule, total_assets, cap, kind="hostname"))
+                    rule_results.append(_oversize_skip_rule(ip_rule, total_assets, cap, kind="ip"))
+                else:
+                    try:
+                        host_groups, ip_groups = _collect_duplicate_groups(client, t)
+                    except Exception as e:
+                        logger.exception("data_quality._collect_duplicate_groups raised")
+                        rule_results.append(error_rule(
+                            rule_id=host_rule.RULE_ID,
+                            rule_name=host_rule.RULE_NAME,
+                            description=host_rule.DESCRIPTION,
+                            sources=host_rule.SOURCES,
+                            error=e,
+                        ))
+                        rule_results.append(error_rule(
+                            rule_id=ip_rule.RULE_ID,
+                            rule_name=ip_rule.RULE_NAME,
+                            description=ip_rule.DESCRIPTION,
+                            sources=ip_rule.SOURCES,
+                            error=e,
+                        ))
+                    else:
+                        rule_results.append(safe_run_rule(host_rule, lambda: host_rule.run(host_groups, t)))
+                        rule_results.append(safe_run_rule(ip_rule, lambda: ip_rule.run(ip_groups, t)))
 
         return CheckResult(
             name=self.name,

@@ -32,6 +32,10 @@ def test_all_quality_good(fake_client, app_config):
     )
     fake_client.set_paginate("/api/3/sites", [{"id": 1, "name": "Prod"}])
     fake_client.set_get("/api/3/sites/1/assets", {"resources": [], "page": {"totalResources": 5}})
+    fake_client.set_get(
+        "/api/3/assets",
+        {"resources": [], "page": {"totalResources": 2, "size": 1}},
+    )
     fake_client.set_paginate("/api/3/assets", [
         {"id": 1, "hostName": "host-a", "ip": "10.0.0.1"},
         {"id": 2, "hostName": "host-b", "ip": "10.0.0.2"},
@@ -146,6 +150,10 @@ def test_stale_assets_disabled_skips_call(fake_client, app_config):
 
 def test_duplicate_hostnames_warn(fake_client, app_config):
     cfg = _all_off_except(app_config, flag_duplicate_hostnames=True)
+    fake_client.set_get(
+        "/api/3/assets",
+        {"resources": [], "page": {"totalResources": 3, "size": 1}},
+    )
     fake_client.set_paginate("/api/3/assets", [
         {"id": 1, "hostName": "Web-01", "ip": "10.0.0.1"},
         {"id": 2, "hostName": "web-01", "ip": "10.0.0.2"},  # case-insensitive collision
@@ -165,6 +173,10 @@ def test_duplicate_hostnames_warn(fake_client, app_config):
 
 def test_duplicate_ips_warn(fake_client, app_config):
     cfg = _all_off_except(app_config, flag_duplicate_ips=True)
+    fake_client.set_get(
+        "/api/3/assets",
+        {"resources": [], "page": {"totalResources": 3, "size": 1}},
+    )
     fake_client.set_paginate("/api/3/assets", [
         {"id": 1, "hostName": "host-a", "ip": "10.0.0.1"},
         {"id": 2, "hostName": "host-b", "ip": "10.0.0.1"},
@@ -183,6 +195,10 @@ def test_duplicates_share_one_paginate(fake_client, app_config):
     cfg = _all_off_except(
         app_config, flag_duplicate_hostnames=True, flag_duplicate_ips=True,
     )
+    fake_client.set_get(
+        "/api/3/assets",
+        {"resources": [], "page": {"totalResources": 2, "size": 1}},
+    )
     fake_client.set_paginate("/api/3/assets", [
         {"id": 1, "hostName": "web-01", "ip": "10.0.0.1"},
         {"id": 2, "hostName": "web-01", "ip": "10.0.0.1"},
@@ -199,6 +215,10 @@ def test_duplicate_blank_identifiers_ignored(fake_client, app_config):
     """Empty hostName / ip should not be grouped as 'duplicates'."""
     cfg = _all_off_except(
         app_config, flag_duplicate_hostnames=True, flag_duplicate_ips=True,
+    )
+    fake_client.set_get(
+        "/api/3/assets",
+        {"resources": [], "page": {"totalResources": 3, "size": 1}},
     )
     fake_client.set_paginate("/api/3/assets", [
         {"id": 1, "hostName": "", "ip": ""},
@@ -270,6 +290,10 @@ def test_duplicates_paginate_failure_emits_two_error_rules(fake_client, app_conf
         {"resources": [], "page": {"totalResources": 0, "size": 10}},
     )
     fake_client.set_paginate("/api/3/sites", [])
+    fake_client.set_get(
+        "/api/3/assets",
+        {"resources": [], "page": {"totalResources": 10, "size": 1}},
+    )
 
     def paginate_assets(path, params=None, page_size=500):
         if path == "/api/3/assets":
@@ -287,3 +311,131 @@ def test_duplicates_paginate_failure_emits_two_error_rules(fake_client, app_conf
     assert dup_ip.status == "error"
     assert dup_host.error_status_code == 500
     assert dup_ip.error_status_code == 500
+
+
+def test_duplicate_detection_skipped_when_total_exceeds_threshold(fake_client, app_config):
+    """Above threshold: both rules emit pass+info findings; paginate is NOT called."""
+    cfg = _all_off_except(
+        app_config,
+        flag_duplicate_hostnames=True,
+        flag_duplicate_ips=True,
+        duplicate_detection_max_assets=50000,
+    )
+    fake_client.set_get(
+        "/api/3/assets",
+        {"resources": [{"id": 1}], "page": {"totalResources": 100000, "size": 1}},
+    )
+    # Intentionally do NOT register /api/3/assets paginate; if invoked, the
+    # FakeRapid7Client raises AssertionError("unexpected paginate ...").
+
+    result = DataQualityCheck().run(fake_client, cfg)
+
+    host = _rule(result, "op.data_quality.duplicate_hostnames")
+    ip = _rule(result, "op.data_quality.duplicate_ips")
+    assert host.status == "pass"
+    assert ip.status == "pass"
+    assert len(host.findings) == 1
+    assert host.findings[0].severity == "info"
+    assert "100,000" in host.findings[0].message
+    assert "50,000" in host.findings[0].message
+    assert host.findings[0].details["total_assets"] == 100000
+    assert host.findings[0].details["threshold"] == 50000
+    # Confirm paginate was never called.
+    assert not any(c[0] == "paginate" and c[1] == "/api/3/assets" for c in fake_client.calls)
+
+
+def test_duplicate_detection_runs_when_under_threshold(fake_client, app_config):
+    """Below threshold: paginate IS called and rules report duplicates normally."""
+    cfg = _all_off_except(
+        app_config,
+        flag_duplicate_hostnames=True,
+        flag_duplicate_ips=True,
+        duplicate_detection_max_assets=50000,
+    )
+    fake_client.set_get(
+        "/api/3/assets",
+        {"resources": [{"id": 1}], "page": {"totalResources": 1000, "size": 1}},
+    )
+    fake_client.set_paginate("/api/3/assets", [
+        {"id": 1, "hostName": "dup", "ip": "10.0.0.1"},
+        {"id": 2, "hostName": "dup", "ip": "10.0.0.1"},
+    ])
+
+    result = DataQualityCheck().run(fake_client, cfg)
+
+    host = _rule(result, "op.data_quality.duplicate_hostnames")
+    ip = _rule(result, "op.data_quality.duplicate_ips")
+    assert host.status == "warn"
+    assert ip.status == "warn"
+    assert host.summary["duplicate_hostname_groups"] == 1
+    # Paginate was called.
+    assert any(c[0] == "paginate" and c[1] == "/api/3/assets" for c in fake_client.calls)
+
+
+def test_duplicate_detection_threshold_zero_always_skips(fake_client, app_config):
+    """Threshold=0 means always skip, regardless of total."""
+    cfg = _all_off_except(
+        app_config,
+        flag_duplicate_hostnames=True,
+        flag_duplicate_ips=True,
+        duplicate_detection_max_assets=0,
+    )
+    fake_client.set_get(
+        "/api/3/assets",
+        {"resources": [], "page": {"totalResources": 5, "size": 1}},
+    )
+
+    result = DataQualityCheck().run(fake_client, cfg)
+
+    host = _rule(result, "op.data_quality.duplicate_hostnames")
+    assert host.status == "pass"
+    assert "disabled" in host.findings[0].message
+    assert not any(c[0] == "paginate" for c in fake_client.calls)
+
+
+def test_duplicate_detection_peek_failure_emits_error_rules(fake_client, app_config):
+    """If the peek GET raises, both duplicate rules surface as error_rule;
+    the other three Data Quality rules are unaffected."""
+    cfg = _all_off_except(
+        app_config,
+        flag_missing_os=True,
+        flag_empty_sites=True,
+        flag_stale_assets=True,
+        flag_duplicate_hostnames=True,
+        flag_duplicate_ips=True,
+        duplicate_detection_max_assets=50000,
+    )
+    fake_client.set_post_one(
+        "/api/3/assets/search",
+        {"resources": [], "page": {"totalResources": 0, "size": 10}},
+    )
+    fake_client.set_paginate("/api/3/sites", [])
+    fake_client.set_get_raises("/api/3/assets", RuntimeError("simulated 500"))
+
+    result = DataQualityCheck().run(fake_client, cfg)
+
+    host = _rule(result, "op.data_quality.duplicate_hostnames")
+    ip = _rule(result, "op.data_quality.duplicate_ips")
+    assert host.status == "error"
+    assert ip.status == "error"
+    missing = _rule(result, "op.data_quality.missing_os")
+    assert missing.status == "pass"
+
+
+def test_duplicate_detection_skipped_when_both_flags_off_does_not_peek(fake_client, app_config):
+    """Both flags off: peek is NOT called (no wasted API request); both rules emit skipped."""
+    cfg = _all_off_except(
+        app_config,
+        flag_duplicate_hostnames=False,
+        flag_duplicate_ips=False,
+        duplicate_detection_max_assets=50000,
+    )
+    # No GET /api/3/assets registered — if called, fake_client raises.
+
+    result = DataQualityCheck().run(fake_client, cfg)
+
+    host = _rule(result, "op.data_quality.duplicate_hostnames")
+    ip = _rule(result, "op.data_quality.duplicate_ips")
+    assert host.status == "skipped"
+    assert ip.status == "skipped"
+    assert not any(c[0] == "get" and c[1] == "/api/3/assets" for c in fake_client.calls)
