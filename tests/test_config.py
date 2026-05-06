@@ -562,3 +562,28 @@ def test_data_quality_duplicate_detection_max_assets_positive_accepted(tmp_path)
     body = _yaml_with_duplicate_detection_max_assets(100000)
     cfg = load_config(write(tmp_path, body))
     assert cfg.thresholds.data_quality.duplicate_detection_max_assets == 100000
+
+
+def test_report_log_format_defaults_to_plain(tmp_path):
+    """When report.log_format is absent, default is 'plain'."""
+    cfg = load_config(write(tmp_path, VALID_YAML))
+    assert cfg.report.log_format == "plain"
+
+
+@pytest.mark.parametrize("value", ["plain", "cmtrace", "json"])
+def test_report_log_format_accepts_valid_values(tmp_path, value):
+    body = VALID_YAML.replace(
+        'title: "Rapid7 InsightVM Environment Health Check"',
+        f'title: "Rapid7 InsightVM Environment Health Check"\n  log_format: {value}',
+    )
+    cfg = load_config(write(tmp_path, body))
+    assert cfg.report.log_format == value
+
+
+def test_report_log_format_rejects_unknown_value(tmp_path):
+    body = VALID_YAML.replace(
+        'title: "Rapid7 InsightVM Environment Health Check"',
+        'title: "Rapid7 InsightVM Environment Health Check"\n  log_format: yaml',
+    )
+    with pytest.raises(ConfigError, match="report.log_format"):
+        load_config(write(tmp_path, body))

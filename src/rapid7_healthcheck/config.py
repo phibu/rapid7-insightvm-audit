@@ -35,6 +35,7 @@ class ReportConfig:
     filename_pattern: str
     title: str
     delta_max_age_days: int | None = 30
+    log_format: str = "plain"
 
 
 @dataclass(frozen=True)
@@ -498,7 +499,7 @@ def _build_report_config(data: Any) -> ReportConfig:
     """
     if not isinstance(data, dict):
         raise ConfigError(f"report: expected mapping, got {type(data).__name__}")
-    expected = {"output_dir", "filename_pattern", "title", "delta_max_age_days"}
+    expected = {"output_dir", "filename_pattern", "title", "delta_max_age_days", "log_format"}
     unknown = set(data.keys()) - expected
     if unknown:
         raise ConfigError(f"report: unknown key(s): {sorted(unknown)}")
@@ -512,11 +513,18 @@ def _build_report_config(data: Any) -> ReportConfig:
     delta = data.get("delta_max_age_days", 30)
     if delta is not None and (not isinstance(delta, int) or isinstance(delta, bool) or delta < 0):
         raise ConfigError("report.delta_max_age_days: expected non-negative int or null")
+    log_format = data.get("log_format", "plain")
+    if log_format not in ("plain", "cmtrace", "json"):
+        raise ConfigError(
+            f"report.log_format: invalid value {log_format!r}; "
+            f"must be one of: plain, cmtrace, json"
+        )
     return ReportConfig(
         output_dir=data["output_dir"],
         filename_pattern=data["filename_pattern"],
         title=data["title"],
         delta_max_age_days=delta,
+        log_format=log_format,
     )
 
 
