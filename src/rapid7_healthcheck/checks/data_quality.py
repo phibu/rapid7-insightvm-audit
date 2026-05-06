@@ -169,6 +169,137 @@ class StaleAssetsRule:
         )
 
 
+def _collect_duplicate_groups(client, t) -> tuple[list[dict], list[dict]]:
+    """Single paginate over /api/3/assets, returning host- and IP-keyed duplicate groups.
+
+    Returns ``(host_groups, ip_groups)`` where each list element is a dict with
+    ``key``, ``ids``, ``count`` keys. Groups with count <= 1 are dropped.
+    Either list may be empty if the corresponding flag (``flag_duplicate_hostnames``
+    / ``flag_duplicate_ips``) is False — the caller still receives an empty list,
+    not None.
+    """
+    by_host: dict[str, list[dict]] = defaultdict(list)
+    by_ip: dict[str, list[dict]] = defaultdict(list)
+    if not (t.flag_duplicate_hostnames or t.flag_duplicate_ips):
+        return [], []
+    for asset in client.paginate("/api/3/assets"):
+        if t.flag_duplicate_hostnames:
+            host = (asset.get("hostName") or "").strip().lower()
+            if host:
+                by_host[host].append(asset)
+        if t.flag_duplicate_ips:
+            ip = (asset.get("ip") or "").strip()
+            if ip:
+                by_ip[ip].append(asset)
+    host_groups = [
+        {"key": k, "ids": [a.get("id") for a in assets], "count": len(assets)}
+        for k, assets in by_host.items()
+        if len(assets) > 1
+    ] if t.flag_duplicate_hostnames else []
+    ip_groups = [
+        {"key": k, "ids": [a.get("id") for a in assets], "count": len(assets)}
+        for k, assets in by_ip.items()
+        if len(assets) > 1
+    ] if t.flag_duplicate_ips else []
+    return host_groups, ip_groups
+
+
+class DuplicateHostnamesRule:
+    RULE_ID = "op.data_quality.duplicate_hostnames"
+    RULE_NAME = "Duplicate hostnames"
+    DESCRIPTION = (
+        "Multiple asset records share the same hostname (case-insensitive). "
+        "Classic agent + scan-engine collision; can also indicate stale records."
+    )
+    DEFAULT_SEVERITY = "warn"
+    SOURCES = (_SRC_DUPLICATE_ASSETS,)
+
+    def run(self, groups: list[dict], t) -> RuleResult:
+        if not t.flag_duplicate_hostnames:
+            return skipped_rule(
+                rule_id=self.RULE_ID,
+                rule_name=self.RULE_NAME,
+                description=self.DESCRIPTION,
+                sources=self.SOURCES,
+            )
+        rule_start = time.monotonic()
+        findings: list[Finding] = []
+        if groups:
+            affected = sum(g["count"] for g in groups)
+            findings.append(Finding(
+                severity="warn",
+                message=(
+                    f"{len(groups)} hostname(s) shared by multiple assets "
+                    f"({affected} asset records affected)"
+                ),
+                details={
+                    "duplicate_groups": len(groups),
+                    "affected_assets": affected,
+                    "examples": [
+                        {"hostName": g["key"], "ids": g["ids"][:_EXAMPLES_LIMIT]}
+                        for g in groups[:_EXAMPLES_LIMIT]
+                    ],
+                },
+            ))
+        return make_rule_result(
+            rule_id=self.RULE_ID,
+            rule_name=self.RULE_NAME,
+            description=self.DESCRIPTION,
+            findings=findings,
+            sources=self.SOURCES,
+            summary={"duplicate_hostname_groups": len(groups)},
+            duration_ms=int((time.monotonic() - rule_start) * 1000),
+        )
+
+
+class DuplicateIpsRule:
+    RULE_ID = "op.data_quality.duplicate_ips"
+    RULE_NAME = "Duplicate IP addresses"
+    DESCRIPTION = (
+        "Multiple asset records share the same IP. "
+        "Often a DHCP-driven re-IPing where MAC tracking is incomplete."
+    )
+    DEFAULT_SEVERITY = "warn"
+    SOURCES = (_SRC_DUPLICATE_ASSETS,)
+
+    def run(self, groups: list[dict], t) -> RuleResult:
+        if not t.flag_duplicate_ips:
+            return skipped_rule(
+                rule_id=self.RULE_ID,
+                rule_name=self.RULE_NAME,
+                description=self.DESCRIPTION,
+                sources=self.SOURCES,
+            )
+        rule_start = time.monotonic()
+        findings: list[Finding] = []
+        if groups:
+            affected = sum(g["count"] for g in groups)
+            findings.append(Finding(
+                severity="warn",
+                message=(
+                    f"{len(groups)} IP address(es) shared by multiple assets "
+                    f"({affected} asset records affected)"
+                ),
+                details={
+                    "duplicate_groups": len(groups),
+                    "affected_assets": affected,
+                    "examples": [
+                        {"ip": g["key"], "ids": g["ids"][:_EXAMPLES_LIMIT]}
+                        for g in groups[:_EXAMPLES_LIMIT]
+                    ],
+                },
+            ))
+        return make_rule_result(
+            rule_id=self.RULE_ID,
+            rule_name=self.RULE_NAME,
+            description=self.DESCRIPTION,
+            findings=findings,
+            sources=self.SOURCES,
+            summary={"duplicate_ip_groups": len(groups)},
+            duration_ms=int((time.monotonic() - rule_start) * 1000),
+        )
+
+
 class DataQualityCheck:
     name = "Data Quality"
     description = (
@@ -194,25 +325,29 @@ class DataQualityCheck:
         # Duplicate detection — single paginate, two rules. If the paginate
         # itself fails, both rules surface as errors (the helper synthesizes
         # one error_rule per concept so the report still shows both rule cards).
+        host_rule = DuplicateHostnamesRule()
+        ip_rule = DuplicateIpsRule()
         try:
-            dup_rules = self._duplicates(client, t)
-            rule_results.extend(dup_rules)
+            host_groups, ip_groups = _collect_duplicate_groups(client, t)
         except Exception as e:
-            logger.exception("data_quality._duplicates raised")
+            logger.exception("data_quality._collect_duplicate_groups raised")
             rule_results.append(error_rule(
-                rule_id="op.data_quality.duplicate_hostnames",
-                rule_name="Duplicate hostnames",
-                description="Assets with the same hostName (case-insensitive) — likely duplicate records.",
-                sources=[_SRC_DUPLICATE_ASSETS],
+                rule_id=host_rule.RULE_ID,
+                rule_name=host_rule.RULE_NAME,
+                description=host_rule.DESCRIPTION,
+                sources=host_rule.SOURCES,
                 error=e,
             ))
             rule_results.append(error_rule(
-                rule_id="op.data_quality.duplicate_ips",
-                rule_name="Duplicate IPs",
-                description="Assets sharing an IP — usually two records for one host (re-imaged, agent + scan).",
-                sources=[_SRC_DUPLICATE_ASSETS],
+                rule_id=ip_rule.RULE_ID,
+                rule_name=ip_rule.RULE_NAME,
+                description=ip_rule.DESCRIPTION,
+                sources=ip_rule.SOURCES,
                 error=e,
             ))
+        else:
+            rule_results.append(safe_run_rule(host_rule, lambda: host_rule.run(host_groups, t)))
+            rule_results.append(safe_run_rule(ip_rule, lambda: ip_rule.run(ip_groups, t)))
 
         return CheckResult(
             name=self.name,
@@ -224,118 +359,3 @@ class DataQualityCheck:
             rule_results=rule_results,
         )
 
-    def _duplicates(self, client: Any, t) -> list[RuleResult]:
-        host_rid = "op.data_quality.duplicate_hostnames"
-        host_name = "Duplicate hostnames"
-        host_desc = (
-            "Multiple asset records share the same hostname (case-insensitive). "
-            "Classic agent + scan-engine collision; can also indicate stale records."
-        )
-        ip_rid = "op.data_quality.duplicate_ips"
-        ip_name = "Duplicate IP addresses"
-        ip_desc = (
-            "Multiple asset records share the same IP. "
-            "Often a DHCP-driven re-IPing where MAC tracking is incomplete."
-        )
-        sources = [_SRC_DUPLICATE_ASSETS]
-
-        # Fast path: both disabled — return two skipped rules, no paginate.
-        if not (t.flag_duplicate_hostnames or t.flag_duplicate_ips):
-            return [
-                skipped_rule(rule_id=host_rid, rule_name=host_name, description=host_desc, sources=sources),
-                skipped_rule(rule_id=ip_rid, rule_name=ip_name, description=ip_desc, sources=sources),
-            ]
-
-        rule_start = time.monotonic()
-        by_host: dict[str, list[dict]] = defaultdict(list)
-        by_ip: dict[str, list[dict]] = defaultdict(list)
-        for asset in client.paginate("/api/3/assets"):
-            if t.flag_duplicate_hostnames:
-                host = (asset.get("hostName") or "").strip().lower()
-                if host:
-                    by_host[host].append(asset)
-            if t.flag_duplicate_ips:
-                ip = (asset.get("ip") or "").strip()
-                if ip:
-                    by_ip[ip].append(asset)
-        elapsed_ms = int((time.monotonic() - rule_start) * 1000)
-
-        results: list[RuleResult] = []
-
-        if t.flag_duplicate_hostnames:
-            groups = [
-                {"key": k, "ids": [a.get("id") for a in assets], "count": len(assets)}
-                for k, assets in by_host.items()
-                if len(assets) > 1
-            ]
-            findings: list[Finding] = []
-            if groups:
-                affected = sum(g["count"] for g in groups)
-                findings.append(Finding(
-                    severity="warn",
-                    message=(
-                        f"{len(groups)} hostname(s) shared by multiple assets "
-                        f"({affected} asset records affected)"
-                    ),
-                    details={
-                        "duplicate_groups": len(groups),
-                        "affected_assets": affected,
-                        "examples": [
-                            {"hostName": g["key"], "ids": g["ids"][:_EXAMPLES_LIMIT]}
-                            for g in groups[:_EXAMPLES_LIMIT]
-                        ],
-                    },
-                ))
-            results.append(make_rule_result(
-                rule_id=host_rid,
-                rule_name=host_name,
-                description=host_desc,
-                findings=findings,
-                sources=sources,
-                summary={"duplicate_hostname_groups": len(groups)},
-                duration_ms=elapsed_ms,
-            ))
-        else:
-            results.append(skipped_rule(
-                rule_id=host_rid, rule_name=host_name, description=host_desc, sources=sources,
-            ))
-
-        if t.flag_duplicate_ips:
-            groups = [
-                {"key": k, "ids": [a.get("id") for a in assets], "count": len(assets)}
-                for k, assets in by_ip.items()
-                if len(assets) > 1
-            ]
-            findings = []
-            if groups:
-                affected = sum(g["count"] for g in groups)
-                findings.append(Finding(
-                    severity="warn",
-                    message=(
-                        f"{len(groups)} IP address(es) shared by multiple assets "
-                        f"({affected} asset records affected)"
-                    ),
-                    details={
-                        "duplicate_groups": len(groups),
-                        "affected_assets": affected,
-                        "examples": [
-                            {"ip": g["key"], "ids": g["ids"][:_EXAMPLES_LIMIT]}
-                            for g in groups[:_EXAMPLES_LIMIT]
-                        ],
-                    },
-                ))
-            results.append(make_rule_result(
-                rule_id=ip_rid,
-                rule_name=ip_name,
-                description=ip_desc,
-                findings=findings,
-                sources=sources,
-                summary={"duplicate_ip_groups": len(groups)},
-                duration_ms=elapsed_ms,
-            ))
-        else:
-            results.append(skipped_rule(
-                rule_id=ip_rid, rule_name=ip_name, description=ip_desc, sources=sources,
-            ))
-
-        return results
