@@ -164,3 +164,30 @@ def test_safe_run_rule_synthesizes_error_rule_on_exception():
     assert result.description == "A rule used by the safe_run_rule tests."
     assert result.severity == "warn"  # DEFAULT_SEVERITY
     assert "simulated failure" in (result.error or "")
+
+
+def test_op_check_rule_classes_declare_identity_constants():
+    """Every op-check rule class declares the five identity class attributes.
+
+    Class-level identity constants make rid/name/description drift between
+    call site and method body structurally impossible. This test verifies
+    every rule class in every op-check module has the full identity set.
+    """
+    from rapid7_healthcheck.checks import asset_coverage, data_quality, scan_engines, scan_activity
+
+    expected_attrs = ("RULE_ID", "RULE_NAME", "DESCRIPTION", "DEFAULT_SEVERITY", "SOURCES")
+    rule_classes_found = 0
+    for module in (asset_coverage, data_quality, scan_engines, scan_activity):
+        for name in dir(module):
+            obj = getattr(module, name)
+            if isinstance(obj, type) and name.endswith("Rule") and not name.startswith("_"):
+                for attr in expected_attrs:
+                    assert hasattr(obj, attr), f"{module.__name__}.{name} missing {attr}"
+                rule_classes_found += 1
+    # Sanity: we expect at least 19 op-check rule classes across the four modules.
+    # (4 in asset_coverage, 5 in data_quality, 4 in scan_engines, 6 in scan_activity = 19)
+    # If the count drops below 19, a rule class was deleted or renamed.
+    assert rule_classes_found >= 19, (
+        f"Expected >= 19 op-check rule classes, found {rule_classes_found}. "
+        "A rule class may have been deleted or renamed."
+    )
