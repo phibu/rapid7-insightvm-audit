@@ -59,14 +59,14 @@ def _oversize_skip_rule(rule, total_assets: int, threshold: int, *, kind: str) -
         msg = (
             f"Duplicate {kind} detection disabled "
             f"(duplicate_detection_max_assets=0). "
-            f"Review duplicate {label} in the Security Console UI."
+            f"Review duplicate {label} in the Security Console → Assets."
         )
     else:
         msg = (
             f"Skipped: {total_assets:,} assets exceed threshold "
             f"({threshold:,}). Walking the full inventory would take too long "
             f"on this console (v3 API has no group-by). Review duplicate "
-            f"{label} in the Security Console UI, or raise "
+            f"{label} in the Security Console → Assets, or raise "
             f"duplicate_detection_max_assets to override."
         )
     return make_rule_result(
