@@ -497,8 +497,16 @@
     <details id="rule-{{ rr.rule_id }}"
              data-severity="{{ rr.status }}"
              data-search-text="{{ (rr.rule_name|lower ~ ' ' ~ rr.findings|map(attribute='message')|join(' ')|lower)[:200] }}">
-      <summary><b>{{ rr.rule_name }}</b> <span class="badge {{ rr.status }}">{{ rr.status|upper }}</span></summary>
+      <summary><b>{{ rr.rule_name }}</b> <span class="badge {{ rr.status }}">{{ rr.status|upper }}</span>{% if rr.severity %} <span class="badge {{ rr.severity }}" title="Effective severity (config override or rule default)">sev: {{ rr.severity|upper }}</span>{% endif %}</summary>
       <p class="check-desc">{{ rr.description }}</p>
+
+      {% if rr.summary %}
+      <p class="check-desc rule-summary"><b>Summary:</b>
+        {% for k, v in rr.summary.items() %}
+          <code>{{ k }}={{ v }}</code>{% if not loop.last %} &middot; {% endif %}
+        {% endfor %}
+      </p>
+      {% endif %}
 
       {% if rr.status == "error" %}
         <div class="error-box"><b>Rule failed to run:</b> {{ rr.error }}

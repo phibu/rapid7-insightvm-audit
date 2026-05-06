@@ -221,6 +221,48 @@ See `docs/examples/config.yaml` for the full audit configuration block.
 - **No services detected** (retired in 0.2.8) — the `service-count` field does not exist in the v3 SearchCriteria reference. Asset listings expose a `services[]` array on each asset record, but no `/api/3/assets/search` filter for "service count = 0." Audit via the Security Console UI's Site → Discovery Settings or by sorting the asset list by Services column.
 - **Scan Engines on supported OS** — the v3 `ScanEngine` schema (`/api/3/scan_engines`) exposes only `id`, `name`, `address`, `port`, `status`, `productVersion`, `contentVersion`, `lastRefreshedDate`, `lastUpdatedDate`, `sites`, and `enginePools` — there is no engine-host operating system field. Audit engine OS currency in the Security Console UI under **Administration → Engines** or via your fleet-management / CMDB tooling.
 
+## Scan Engines
+
+Health and pairing status of all configured scan engines.
+
+| Rule ID | Description | Default severity |
+|---------|-------------|------------------|
+| `op.scan_engines.bad_status` | Engines whose status is `incompatible-version`, `not-responding`, `pending-authorization`, or `unknown`. | fail |
+| `op.scan_engines.last_contact` | Engines past the configured last-contact threshold (warn / fail tiers from `thresholds.scan_engines`). | warn |
+| `op.scan_engines.missing_last_refresh` | Engines whose `lastRefreshedDate` is missing — typically pairing in progress or degraded. | warn |
+| `op.scan_engines.unpaired` | Engines not paired with any sites (orphaned engine resource). | warn |
+
+Per-rule severity and enable/disable live in the `checks.scan_engines` block of `config.yaml`. Source URLs render on each rule card in the report.
+
+## Scan Activity
+
+Recent scan completion, stuck/failed scans, and overdue sites.
+
+| Rule ID | Description | Default severity |
+|---------|-------------|------------------|
+| `op.scan_activity.sites_never_scanned` | Sites that have no scans on record at all. | fail |
+| `op.scan_activity.sites_no_successful_scan` | Sites with scan history but no successful scan ever. | fail |
+| `op.scan_activity.stuck_scans` | Scans in `running` state past the `stuck_scan_hours` threshold. | fail |
+| `op.scan_activity.recent_failed_scans` | Scans that failed within `recent_window_days`. | warn |
+| `op.scan_activity.recent_unknown_scans` | Scans in unknown / aborted / paused state within `recent_window_days`. | warn |
+| `op.scan_activity.sites_overdue_scans` | Sites whose last scan completed more than `site_no_scan_days` ago. | warn |
+
+Per-rule severity and enable/disable live in the `checks.scan_activity` block of `config.yaml`. Source URLs render on each rule card in the report.
+
+## Data Quality
+
+Asset hygiene: missing OS fingerprints, empty sites, long-stale assets, and duplicate hostnames/IPs.
+
+| Rule ID | Description | Default severity |
+|---------|-------------|------------------|
+| `op.data_quality.missing_os` | Assets where the OS fingerprint field is empty. | warn |
+| `op.data_quality.empty_sites` | Sites whose include/exclude scope currently matches no assets. | warn |
+| `op.data_quality.stale_assets` | Long-stale assets per `thresholds.data_quality.stale_asset_days`. | warn |
+| `op.data_quality.duplicate_hostnames` | Hostnames mapped to multiple assets. Skipped above `duplicate_detection_max_assets` (info finding instead). | warn |
+| `op.data_quality.duplicate_ips` | IP addresses mapped to multiple assets. Skipped above `duplicate_detection_max_assets` (info finding instead). | warn |
+
+Per-rule severity and enable/disable live in the `checks.data_quality` block of `config.yaml`. Source URLs render on each rule card in the report.
+
 ## Asset Coverage
 
 An operational health check that detects blind spots in scanning coverage: stale assets, never-scanned assets, dead asset-groups, and Insight Agent assets outside scheduled scan scope.
