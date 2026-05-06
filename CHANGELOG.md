@@ -5,6 +5,27 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.12] - 2026-05-06
+
+### Fixed
+
+- **`op.scan_engines.bad_status` now matches the v3 `ScanEngine.status` enum.** Replaces the dead `inactive`/`unknown` branch with the four real non-active statuses: `incompatible-version` and `not-responding` flagged fail; `pending-authorization` and `unknown` flagged warn. Per-finding messages name the status and explain the cause.
+- **`op.scan_activity.recent_failed_scans` no longer matches the non-existent `"failed"` v3 status.** The rule's `_FAILED_STATUSES` now covers the real terminal failure values from the v3 `ScanStatus` enum: `aborted`, `stopped`, `error`.
+- **`single_engine_overload` and `local_engine_production_scope` audit rules now read the v3 `Site.scanEngine` field.** Both rules previously read `site.get("scanEngineId")`, which is not in the v3 spec, so on real consoles both rules always emitted zero findings. Tests masked the bug by using the same wrong key in fixtures; both rules and both fixtures are corrected together.
+
+### Added
+
+- **New rule `op.scan_activity.recent_unknown_scans`** (warn). Flags scans within the recent window whose status is reported as `unknown` — indeterminate scan state, likely needs operator inspection. Capped at `_MAX_FAILED_FINDINGS=20` matching the failed-scan pattern.
+
+### Changed
+
+- Internal: cap-with-rollup pattern in `asset_coverage.py` extracted to `_capped_findings_with_rollup`; three call sites (per-asset, dead asset-groups, agent-only outsiders) collapsed to one helper. Finding messages and `details` shapes are preserved byte-for-byte; delta-blob signatures unchanged.
+- Internal: `EnvSnapshot.asset_has_agent` removed (zero production callers since 0.2.7's `agent_unauth_collision` refactor).
+
+### Notes
+
+- **First post-upgrade run** will mark some engines and scans as "Changed" in the delta blob because (a) some `unknown`-status engines shift fail → warn, and (b) `unknown`-state scans newly appear in `recent_unknown_scans`. One-time only; mirrors the 0.2.10 R4-rule shift pattern.
+
 ## [0.2.11] - 2026-05-06
 
 ### Fixed
