@@ -100,3 +100,61 @@ def test_agents_zero_total_skips_pagination():
     assert total == 0
     # No pagination call when there's nothing to fetch.
     assert client.paginate.call_count == 0
+
+
+def test_agent_count_returns_total_from_head_request():
+    """agent_count() reads page.totalResources from /api/3/agents head."""
+    from rapid7_healthcheck.audit.snapshot import EnvSnapshot
+
+    class _FakeClient:
+        def __init__(self):
+            self.calls: list[tuple[str, dict]] = []
+
+        def get(self, path, params=None):
+            self.calls.append((path, params or {}))
+            return {"page": {"totalResources": 12345}, "resources": []}
+
+    client = _FakeClient()
+    snap = EnvSnapshot(client, full_scan=False, sample_size=100)
+
+    assert snap.agent_count() == 12345
+    head_calls = [(p, q) for p, q in client.calls if p == "/api/3/agents"]
+    assert len(head_calls) == 1
+    assert head_calls[0][1] == {"size": 1}
+
+
+def test_agent_count_returns_zero_and_sets_unavailable_on_404():
+    """agent_count() handles the 404 path and primes is_agents_unavailable()."""
+    from rapid7_healthcheck.audit.snapshot import EnvSnapshot
+    from rapid7_healthcheck.client import Rapid7ClientError
+
+    class _FailingClient:
+        def get(self, path, params=None):
+            err = Rapid7ClientError(f"404 from {path}")
+            err.status_code = 404
+            raise err
+
+    snap = EnvSnapshot(_FailingClient(), full_scan=False, sample_size=100)
+
+    assert snap.agent_count() == 0
+    assert snap.is_agents_unavailable() is True
+
+
+def test_agent_count_is_cached():
+    """Two calls to agent_count() produce one HTTP request."""
+    from rapid7_healthcheck.audit.snapshot import EnvSnapshot
+
+    class _FakeClient:
+        def __init__(self):
+            self.call_count = 0
+
+        def get(self, path, params=None):
+            self.call_count += 1
+            return {"page": {"totalResources": 7}, "resources": []}
+
+    client = _FakeClient()
+    snap = EnvSnapshot(client, full_scan=False, sample_size=100)
+
+    assert snap.agent_count() == 7
+    assert snap.agent_count() == 7
+    assert client.call_count == 1

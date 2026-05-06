@@ -135,6 +135,7 @@ class EnvSnapshot:
         self._total_asset_count: int | None = None
         self._agents_cache: tuple[list[dict], int] | None = None
         self._agents_unavailable: bool = False
+        self._agent_count_cache: int | None = None
         self._agent_asset_ids_cache: set[int] | None = None
         self._agent_asset_ids_sampled_cache: tuple[list[int], int] | None = None
         self._users: list[dict] | None = None
@@ -470,6 +471,28 @@ class EnvSnapshot:
         Callers should invoke `agents()` first to prime the flag.
         """
         return self._agents_unavailable
+
+    def agent_count(self) -> int:
+        """Return total Insight Agent count from /api/3/agents.
+
+        Returns 0 when the agents endpoint is unavailable (404). The
+        `_agents_unavailable` flag is set as a side effect of the head
+        request, so callers can use `is_agents_unavailable()` to distinguish
+        "no agents" from "endpoint missing". Cached on first call.
+        """
+        if self._agent_count_cache is not None:
+            return self._agent_count_cache
+        try:
+            head = self._client.get("/api/3/agents", params={"size": 1})
+        except Rapid7ClientError as e:
+            if e.status_code == 404:
+                logger.info("agents endpoint not available on this console")
+                self._agents_unavailable = True
+                self._agent_count_cache = 0
+                return 0
+            raise
+        self._agent_count_cache = int(head.get("page", {}).get("totalResources", 0))
+        return self._agent_count_cache
 
     def agent_asset_ids(self) -> set[int]:
         """Set of asset IDs that are correlated with an Insight Agent.
