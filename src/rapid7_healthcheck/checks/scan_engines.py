@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, NamedTuple
 
 from rapid7_healthcheck.audit import RuleResult
 from rapid7_healthcheck.checks import CheckResult, Finding
@@ -20,18 +20,28 @@ _SRC_ENGINE_STATUS = "https://docs.rapid7.com/insightvm/managing-scan-engines"
 
 # Per v3 ScanEngine.status enum: [active, incompatible-version, not-responding,
 # pending-authorization, unknown]. "active" is the only good state.
-_BAD_STATUS_SEVERITY: dict[str, str] = {
-    "incompatible-version": "fail",
-    "not-responding": "fail",
-    "pending-authorization": "warn",
-    "unknown": "warn",
-}
+class _BadStatus(NamedTuple):
+    severity: str
+    reason: str
 
-_BAD_STATUS_REASON: dict[str, str] = {
-    "incompatible-version": "engine code is incompatible with this console; cannot scan",
-    "not-responding": "console cannot reach engine; scans blocked",
-    "pending-authorization": "engine reachable but not yet authorized",
-    "unknown": "engine status is indeterminate",
+
+_BAD_STATUS: dict[str, _BadStatus] = {
+    "incompatible-version": _BadStatus(
+        "fail",
+        "engine code is incompatible with this console; cannot scan",
+    ),
+    "not-responding": _BadStatus(
+        "fail",
+        "console cannot reach engine; scans blocked",
+    ),
+    "pending-authorization": _BadStatus(
+        "warn",
+        "engine reachable but not yet authorized",
+    ),
+    "unknown": _BadStatus(
+        "warn",
+        "engine status is indeterminate",
+    ),
 }
 
 
@@ -68,9 +78,10 @@ class ScanEnginesCheck:
             last_refreshed = _parse_iso(engine.get("lastRefreshedDate"))
             sites = engine.get("sites") or []
 
-            if status in _BAD_STATUS_SEVERITY:
-                severity = _BAD_STATUS_SEVERITY[status]
-                reason = _BAD_STATUS_REASON[status]
+            if status in _BAD_STATUS:
+                bad = _BAD_STATUS[status]
+                severity = bad.severity
+                reason = bad.reason
                 bad_status_findings.append(Finding(
                     severity=severity,
                     message=f"Engine '{name}' status is '{status}' — {reason}",
