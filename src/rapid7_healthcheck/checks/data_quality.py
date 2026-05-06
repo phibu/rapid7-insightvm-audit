@@ -351,6 +351,76 @@ class DuplicateIpsRule:
         )
 
 
+def _run_duplicate_detection(
+    client: Any,
+    t,
+    host_rule: "DuplicateHostnamesRule",
+    ip_rule: "DuplicateIpsRule",
+) -> list[RuleResult]:
+    """Run the host+ip duplicate-detection pair through peek -> oversize check
+    -> full paginate. Returns the two RuleResults the orchestrator will
+    append. Errors at peek or paginate are converted to per-rule error
+    results so the rest of the check keeps running.
+
+    Caller has already verified at least one of `flag_duplicate_hostnames`
+    or `flag_duplicate_ips` is True; the both-off skip path stays inline in
+    DataQualityCheck.run.
+    """
+    try:
+        total_assets = _peek_total_assets(client)
+    except Exception as e:
+        logger.exception("data_quality._peek_total_assets raised")
+        return [
+            error_rule(
+                rule_id=host_rule.RULE_ID,
+                rule_name=host_rule.RULE_NAME,
+                description=host_rule.DESCRIPTION,
+                sources=host_rule.SOURCES,
+                error=e,
+            ),
+            error_rule(
+                rule_id=ip_rule.RULE_ID,
+                rule_name=ip_rule.RULE_NAME,
+                description=ip_rule.DESCRIPTION,
+                sources=ip_rule.SOURCES,
+                error=e,
+            ),
+        ]
+
+    cap = t.duplicate_detection_max_assets
+    if cap == 0 or total_assets > cap:
+        return [
+            _oversize_skip_rule(host_rule, total_assets, cap, kind="hostname"),
+            _oversize_skip_rule(ip_rule, total_assets, cap, kind="ip"),
+        ]
+
+    try:
+        host_groups, ip_groups = _collect_duplicate_groups(client, t)
+    except Exception as e:
+        logger.exception("data_quality._collect_duplicate_groups raised")
+        return [
+            error_rule(
+                rule_id=host_rule.RULE_ID,
+                rule_name=host_rule.RULE_NAME,
+                description=host_rule.DESCRIPTION,
+                sources=host_rule.SOURCES,
+                error=e,
+            ),
+            error_rule(
+                rule_id=ip_rule.RULE_ID,
+                rule_name=ip_rule.RULE_NAME,
+                description=ip_rule.DESCRIPTION,
+                sources=ip_rule.SOURCES,
+                error=e,
+            ),
+        ]
+
+    return [
+        safe_run_rule(host_rule, lambda: host_rule.run(host_groups, t)),
+        safe_run_rule(ip_rule, lambda: ip_rule.run(ip_groups, t)),
+    ]
+
+
 class DataQualityCheck:
     name = "Data Quality"
     description = (
@@ -387,51 +457,7 @@ class DataQualityCheck:
             rule_results.append(safe_run_rule(host_rule, lambda: host_rule.run([], t)))
             rule_results.append(safe_run_rule(ip_rule, lambda: ip_rule.run([], t)))
         else:
-            try:
-                total_assets = _peek_total_assets(client)
-            except Exception as e:
-                logger.exception("data_quality._peek_total_assets raised")
-                rule_results.append(error_rule(
-                    rule_id=host_rule.RULE_ID,
-                    rule_name=host_rule.RULE_NAME,
-                    description=host_rule.DESCRIPTION,
-                    sources=host_rule.SOURCES,
-                    error=e,
-                ))
-                rule_results.append(error_rule(
-                    rule_id=ip_rule.RULE_ID,
-                    rule_name=ip_rule.RULE_NAME,
-                    description=ip_rule.DESCRIPTION,
-                    sources=ip_rule.SOURCES,
-                    error=e,
-                ))
-            else:
-                cap = t.duplicate_detection_max_assets
-                if cap == 0 or total_assets > cap:
-                    rule_results.append(_oversize_skip_rule(host_rule, total_assets, cap, kind="hostname"))
-                    rule_results.append(_oversize_skip_rule(ip_rule, total_assets, cap, kind="ip"))
-                else:
-                    try:
-                        host_groups, ip_groups = _collect_duplicate_groups(client, t)
-                    except Exception as e:
-                        logger.exception("data_quality._collect_duplicate_groups raised")
-                        rule_results.append(error_rule(
-                            rule_id=host_rule.RULE_ID,
-                            rule_name=host_rule.RULE_NAME,
-                            description=host_rule.DESCRIPTION,
-                            sources=host_rule.SOURCES,
-                            error=e,
-                        ))
-                        rule_results.append(error_rule(
-                            rule_id=ip_rule.RULE_ID,
-                            rule_name=ip_rule.RULE_NAME,
-                            description=ip_rule.DESCRIPTION,
-                            sources=ip_rule.SOURCES,
-                            error=e,
-                        ))
-                    else:
-                        rule_results.append(safe_run_rule(host_rule, lambda: host_rule.run(host_groups, t)))
-                        rule_results.append(safe_run_rule(ip_rule, lambda: ip_rule.run(ip_groups, t)))
+            rule_results.extend(_run_duplicate_detection(client, t, host_rule, ip_rule))
 
         return CheckResult(
             name=self.name,
