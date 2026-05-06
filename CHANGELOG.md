@@ -5,6 +5,17 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.11] - 2026-05-06
+
+### Fixed
+
+- **`op.asset_coverage.dead_asset_groups`: groups whose listing-endpoint response omits the inline `assets` count are no longer falsely flagged as dead.** The rule now distinguishes *missing* count from *zero* members; missing-inline groups are resolved via `GET /api/3/asset_groups/{id}/assets` (read-only) up to a configurable cap.
+
+### Added
+
+- New threshold `asset_coverage.dead_groups_fallback_cap` (default `200`) bounds the worst-case extra HTTP calls per run; set to `0` to disable the fallback.
+- New summary fields on `op.asset_coverage.dead_asset_groups`: `groups_with_missing_count`, `fallback_calls_made`, `fallback_cap_reached`, `fallback_errors`.
+
 ## [0.2.10] - 2026-05-05
 
 ### Changed
