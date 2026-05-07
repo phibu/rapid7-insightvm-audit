@@ -129,37 +129,47 @@ class ConfigurationAuditCheck:
                     status="skipped",
                     sources=list(rule_cls.sources),
                 ))
+                if progress is not None:
+                    skipped_label = f"audit: {rule_id} (skipped)"
+                    progress.step(rule_idx, total_rules, skipped_label)
+                    progress.done(rule_idx, total_rules, skipped_label, duration_ms=0)
                 continue
+            label = f"audit: {rule_id}"
             if progress is not None:
-                progress.step(rule_idx, total_rules, f"audit: {rule_id}")
+                progress.step(rule_idx, total_rules, label)
             rule_start = time.monotonic()
             try:
-                result = rule_cls().run(
-                    snapshot,
-                    rule_cfg.severity,
-                    config.audit.full_scan,
-                    config.audit.sample_size,
-                    rule_cfg.knobs,
-                )
-                result.duration_ms = int((time.monotonic() - rule_start) * 1000)
-                rule_results.append(result)
-            except Exception as e:
-                logger.exception("audit rule %s raised", rule_id)
-                error_path, error_status_code = _extract_diagnostics(e)
-                rule_results.append(RuleResult(
-                    rule_id=rule_id,
-                    rule_name=rule_cls.rule_name,
-                    description=rule_cls.description,
-                    severity=rule_cfg.severity,
-                    status="error",
-                    sources=list(rule_cls.sources),
-                    error=str(e),
-                    duration_ms=int((time.monotonic() - rule_start) * 1000),
-                    error_path=error_path,
-                    error_status_code=error_status_code,
-                ))
-            if progress is not None:
-                progress.done(rule_idx, total_rules, f"audit: {rule_id}", duration_ms=int((time.monotonic() - rule_start) * 1000))
+                try:
+                    result = rule_cls().run(
+                        snapshot,
+                        rule_cfg.severity,
+                        config.audit.full_scan,
+                        config.audit.sample_size,
+                        rule_cfg.knobs,
+                    )
+                    result.duration_ms = int((time.monotonic() - rule_start) * 1000)
+                    rule_results.append(result)
+                except Exception as e:
+                    logger.exception("audit rule %s raised", rule_id)
+                    error_path, error_status_code = _extract_diagnostics(e)
+                    rule_results.append(RuleResult(
+                        rule_id=rule_id,
+                        rule_name=rule_cls.rule_name,
+                        description=rule_cls.description,
+                        severity=rule_cfg.severity,
+                        status="error",
+                        sources=list(rule_cls.sources),
+                        error=str(e),
+                        duration_ms=int((time.monotonic() - rule_start) * 1000),
+                        error_path=error_path,
+                        error_status_code=error_status_code,
+                    ))
+            finally:
+                if progress is not None:
+                    progress.done(
+                        rule_idx, total_rules, label,
+                        duration_ms=int((time.monotonic() - rule_start) * 1000),
+                    )
 
         return CheckResult(
             name=self.name,

@@ -169,42 +169,47 @@ def _run_checks(client: Any, cfg: AppConfig, progress: "ProgressReporter | None"
     total = len(_REGISTRY)
     for idx, (name, check_cls) in enumerate(_REGISTRY.items(), start=1):
         enabled = cfg.checks.get(name, False)
+        instance = check_cls()
         if not enabled:
-            instance = check_cls()
             results.append(CheckResult(
                 name=instance.name,
                 description=instance.description,
                 status="skipped",
             ))
+            if progress is not None:
+                skipped_label = f"{instance.name} (skipped)"
+                progress.step(idx, total, skipped_label)
+                progress.done(idx, total, skipped_label, duration_ms=0)
             continue
-        instance = check_cls()
         if progress is not None:
             progress.step(idx, total, instance.name)
         logger.info("running check: %s", instance.name)
         start = time.monotonic()
         try:
-            if name in ("configuration_audit", "user_permission_audit"):
-                # These checks build their own snapshot internally today.
-                # Threading the shared one is a future cleanup (see backlog).
-                results.append(instance.run(client, cfg, progress=progress))
-            else:
-                # Op-checks accept an optional snapshot; only asset_coverage
-                # uses it currently. Others tolerate it via **_kwargs.
-                results.append(instance.run(client, cfg, snapshot=snapshot))
-        except Exception as e:  # per-check isolation
-            duration_ms = int((time.monotonic() - start) * 1000)
-            logger.exception("check %s failed", instance.name)
-            results.append(CheckResult(
-                name=instance.name,
-                description=instance.description,
-                status="error",
-                error=str(e),
-                duration_ms=duration_ms,
-            ))
-        else:
-            duration_ms = int((time.monotonic() - start) * 1000)
-        if progress is not None:
-            progress.done(idx, total, instance.name, duration_ms=duration_ms)
+            try:
+                if name in ("configuration_audit", "user_permission_audit"):
+                    # These checks build their own snapshot internally today.
+                    # Threading the shared one is a future cleanup (see backlog).
+                    results.append(instance.run(client, cfg, progress=progress))
+                else:
+                    # Op-checks accept an optional snapshot; only asset_coverage
+                    # uses it currently. Others tolerate it via **_kwargs.
+                    results.append(instance.run(client, cfg, snapshot=snapshot))
+            except Exception as e:  # per-check isolation
+                logger.exception("check %s failed", instance.name)
+                results.append(CheckResult(
+                    name=instance.name,
+                    description=instance.description,
+                    status="error",
+                    error=str(e),
+                    duration_ms=int((time.monotonic() - start) * 1000),
+                ))
+        finally:
+            if progress is not None:
+                progress.done(
+                    idx, total, instance.name,
+                    duration_ms=int((time.monotonic() - start) * 1000),
+                )
     return results
 
 
