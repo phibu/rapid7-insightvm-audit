@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-05-07
+
+### Removed
+
+- **`insight_agent_version_currency` audit rule** removed and documented as a v3 API gap. Computing agent version drift requires full pagination of `GET /api/3/agents` (~794 pages on an ~80k-agent fleet, slow even with `parallel_pages=6`); the v3 API exposes no version filter on `/api/3/agents`, no `version`/`agentVersion` field on the `Agent` schema, and no `agent-version` filter on `POST /api/3/assets/search` (verified field-by-field against the canonical v3 OpenAPI spec). Audit version drift via the Security Console UI under **Administration → Agents** or via your own agent-management / CMDB tooling.
+
+  **Upgrade note (breaking config change):** users upgrading from 0.3.6 must remove the `insight_agent_version_currency:` block under `audit.rules:` in their `config.yaml` before running 0.4.0. Leaving the block in place will produce `ConfigError: audit.rules: unknown rule id 'insight_agent_version_currency'` at startup (exit code `3`).
+
+### Fixed
+
+- **`_setup_logging` routes the file-open warning through the new handlers.** Previously the WARNING about a failed `log_file` open was emitted *before* `logging.basicConfig(force=True)` ran, so on the second `_setup_logging` call in `run()` the warning travelled through the previous pass's handlers (about to be torn down). Two-line reorder; user-facing behavior unchanged (the warning still reaches stderr).
+
+### Internal
+
+- **Test infrastructure:** `tests/test_logging_setup.py` and `tests/test_log_flush.py` now strip `FlushingFileHandler` instances from the root logger after each test via small `autouse=True` fixtures. Pre-emptive cleanup against handler leaks across tests; no flake observed today (deterministic ordering, no xdist).
+
 ## [0.3.6] - 2026-05-07
 
 ### Added
