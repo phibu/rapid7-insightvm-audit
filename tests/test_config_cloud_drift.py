@@ -70,3 +70,56 @@ def test_invalid_severity_rejected():
 def test_unknown_top_level_key_rejected():
     with pytest.raises(ConfigError, match="unknown key"):
         _build_cloud_drift_config({"rules": {}, "wat": True})
+
+
+def _minimal_root_yaml() -> dict:
+    """Minimal YAML root that satisfies the required AppConfig fields."""
+    return {
+        "rapid7": {
+            "base_url": "https://console.example/",
+            "verify_tls": True,
+            "request_timeout_seconds": 30,
+            "max_retries": 3,
+        },
+        "report": {
+            "output_dir": "reports",
+            "filename_pattern": "r-{timestamp}.html",
+            "title": "t",
+        },
+        "thresholds": {
+            "scan_engines": {"last_contact_warn_hours": 4, "last_contact_fail_hours": 24},
+            "scan_activity": {"recent_window_days": 14, "stuck_scan_hours": 24, "site_no_scan_days": 30},
+            "asset_coverage": {"stale_asset_days": 30, "flag_unscanned_assets": True, "never_scanned_days": 90},
+            "data_quality": {"flag_missing_os": True, "flag_empty_sites": True},
+        },
+        "checks": {},
+    }
+
+
+def test_app_config_propagates_cloud_drift_through_build_app_config():
+    # Regression: cloud_drift was computed but not threaded into AppConfig(...).
+    # This test fails fast if the wiring breaks again.
+    from rapid7_healthcheck.config import _build_app_config
+
+    root = _minimal_root_yaml()
+    root["cloud_drift"] = {
+        "rules": {
+            "cd.console_asset_count_drift": {
+                "enabled": True,
+                "severity": "warn",
+                "tolerance_percent": 7,
+            },
+        },
+    }
+    cfg = _build_app_config(root)
+    assert "cd.console_asset_count_drift" in cfg.cloud_drift.rules
+    assert cfg.cloud_drift.rules["cd.console_asset_count_drift"].knobs["tolerance_percent"] == 7
+
+
+def test_app_config_default_cloud_drift_when_block_absent():
+    from rapid7_healthcheck.config import _build_app_config
+
+    cfg = _build_app_config(_minimal_root_yaml())
+    assert cfg.cloud_drift.rules == {}
+    # Default-on behavior for the cloud_drift_audit check entry too.
+    assert cfg.checks.get("cloud_drift_audit") is True

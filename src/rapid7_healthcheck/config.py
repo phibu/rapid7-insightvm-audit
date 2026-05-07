@@ -731,6 +731,7 @@ def _build_app_config(data: dict) -> AppConfig:
         audit=audit,
         user_audit=user_audit,
         cloud_integration=cloud_integration,
+        cloud_drift=cloud_drift,
     )
 
 
