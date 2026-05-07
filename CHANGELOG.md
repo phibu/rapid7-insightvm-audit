@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Internal — efficiency
+
+Three changes that reduce redundant HTTP requests in a full audit run, with no user-visible behavior change:
+
+- **Unified the `/api/3/agents` head probe** across `EnvSnapshot.agent_count()`, `agents()`, and `agent_asset_ids_sampled()`. Saves 2 redundant requests per run when more than one agent-related rule fires.
+- **Replaced `data_quality._peek_total_assets()`** with `EnvSnapshot.total_asset_count()`. Saves 1 request per run when duplicate detection runs.
+- **Threaded the orchestrator's shared `EnvSnapshot`** into `DataQualityCheck` and `ScanActivityCheck`, so `EmptySitesRule` and the scan-activity site walker stop re-paginating `/api/3/sites` and stop re-issuing per-site asset-count head requests already cached on the snapshot. Saves 1–2 site paginations + N per-site head requests per run.
+
 ## [0.3.4] - 2026-05-06
 
 ### Changed
