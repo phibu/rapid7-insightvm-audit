@@ -442,17 +442,11 @@ class EnvSnapshot:
         """
         if self._agents_cache is not None:
             return self._agents_cache
-        try:
-            head = self._client.get("/api/3/agents", params={"size": 1})
-        except Rapid7ClientError as e:
-            if e.status_code == 404:
-                logger.info("agents endpoint not available on this console")
-                self._agents_unavailable = True
-                self._agents_cache = ([], 0)
-                return self._agents_cache
-            raise
 
-        total = int(head.get("page", {}).get("totalResources", 0))
+        total = self.agent_count()
+        if self._agents_unavailable:
+            self._agents_cache = ([], 0)
+            return self._agents_cache
 
         sample: list[dict] = []
         if total > 0:
@@ -555,21 +549,10 @@ class EnvSnapshot:
         if self._agent_asset_ids_sampled_cache is not None:
             return self._agent_asset_ids_sampled_cache
 
+        total = self.agent_count()
         if self._agents_unavailable:
             self._agent_asset_ids_sampled_cache = ([], 0)
             return self._agent_asset_ids_sampled_cache
-
-        try:
-            head = self._client.get("/api/3/agents", params={"size": 1})
-        except Rapid7ClientError as e:
-            if e.status_code == 404:
-                logger.info("agents endpoint not available on this console")
-                self._agents_unavailable = True
-                self._agent_asset_ids_sampled_cache = ([], 0)
-                return self._agent_asset_ids_sampled_cache
-            raise
-
-        total = int(head.get("page", {}).get("totalResources", 0))
 
         sample_ids: list[int] = []
         if total > 0:

@@ -156,3 +156,33 @@ def test_agent_count_is_cached():
     assert snap.agent_count() == 7
     assert snap.agent_count() == 7
     assert client.call_count == 1
+
+
+def test_three_agent_accessors_share_one_head_request():
+    """agent_count(), agents(), and agent_asset_ids_sampled() must
+    collectively issue exactly one GET /api/3/agents?size=1 head request,
+    regardless of call order. Locks in the head-fetch unification."""
+    from rapid7_healthcheck.audit.snapshot import EnvSnapshot
+
+    head_calls: list[dict] = []
+
+    class _CountingClient:
+        def get(self, path, params=None):
+            if path == "/api/3/agents" and params == {"size": 1}:
+                head_calls.append(params)
+            return {"page": {"totalResources": 5}, "resources": []}
+
+        def paginate(self, path, **kwargs):
+            return iter([])
+
+    snap = EnvSnapshot(_CountingClient(), full_scan=False, sample_size=100)
+
+    snap.agent_count()
+    snap.agents()
+    snap.agent_asset_ids_sampled()
+    snap.agent_count()  # repeated — still cached
+
+    assert len(head_calls) == 1, (
+        f"expected exactly one /api/3/agents?size=1 head request across "
+        f"all three accessors, got {len(head_calls)}"
+    )
