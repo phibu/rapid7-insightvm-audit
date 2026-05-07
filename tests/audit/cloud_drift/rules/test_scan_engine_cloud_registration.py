@@ -103,3 +103,18 @@ def test_summary_counts():
 def test_rule_is_registered():
     from rapid7_healthcheck.audit.cloud_drift import _CLOUD_RULE_REGISTRY
     assert "cd.scan_engine_cloud_registration" in _CLOUD_RULE_REGISTRY
+
+
+def test_naive_last_seen_does_not_raise_type_error():
+    # Defense in depth: if a future v4 response ever omits the timezone
+    # offset, the naive datetime would otherwise raise TypeError when
+    # compared to the aware threshold. _parse_iso treats naive as UTC.
+    rule = ScanEngineCloudRegistrationRule()
+    snap = _snapshot(
+        console_engines=[{"id": 1, "name": "engine-a"}],
+        cloud_engines=[{"name": "engine-a", "last_seen": "2026-05-07T00:00:00"}],
+    )
+    # Should not raise; should classify as either fresh or stale based on
+    # the threshold, not crash.
+    result = rule.run(snap, "warn", False, 500, {"last_seen_max_age_hours": 24})
+    assert result.status in ("pass", "warn")

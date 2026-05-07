@@ -15,10 +15,16 @@ def _parse_iso(value: str | None) -> datetime | None:
         return None
     # v4 emits "YYYY-MM-DDTHH:MM:SSZ"; fromisoformat in Python 3.11 accepts
     # "+00:00" but not bare "Z" — handle both via the standard replace trick.
+    # If a future v4 response ever omits the offset entirely, treat the
+    # naive result as UTC so the downstream `last_seen < threshold`
+    # comparison cannot raise TypeError on a tz mismatch.
     try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError:
         return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
 
 
 @register_cloud_rule
