@@ -649,3 +649,24 @@ def test_audit_agents_timeout_seconds_rejects_bool():
             "enabled": True, "full_scan": False, "sample_size": 500,
             "agents_timeout_seconds": True, "rules": {},
         })
+
+
+def test_load_audit_rejects_removed_rule_id():
+    """Users upgrading from 0.3.6 with the old block must see a clear error.
+
+    Strict-mode validator behavior: any rule id not in _VALID_RULE_IDS raises
+    ConfigError at load time. Locks in the hard-break upgrade contract from
+    0.4.0 — operators removing the deprecated rule from config.yaml will see
+    this exact error string in their first 0.4.0 run.
+    """
+    from rapid7_healthcheck.config import _build_audit_config
+    with pytest.raises(ConfigError, match=r"audit\.rules: unknown rule id 'insight_agent_version_currency'"):
+        _build_audit_config({
+            "enabled": True,
+            "full_scan": False,
+            "sample_size": 500,
+            "agents_timeout_seconds": 180,
+            "rules": {
+                "insight_agent_version_currency": {"enabled": True, "severity": "warn"},
+            },
+        })

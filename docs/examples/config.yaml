@@ -168,19 +168,6 @@ audit:
     insight_agent_deployed:
       enabled: true
       severity: info
-    insight_agent_version_currency:
-      enabled: true
-      severity: warn
-      version_drift_minor: 1
-      # Pin to an exact version for change-control-managed fleets. When set,
-      # both behind-pin and ahead-of-pin agents are flagged. Mutually exclusive
-      # with use_latest_known (pinned wins).
-      # pinned_version: "4.1.0.2"
-
-      # Compare against the tool-maintained "current latest" Insight Agent
-      # version. Honors version_drift_minor as the tolerance.
-      # use_latest_known: false
-
 # User & Permission Audit — sibling to `audit:`, scoped to console user
 # accounts and authentication settings. Requires the API key to belong
 # to a Global Administrator (the underlying /api/3/users endpoint is

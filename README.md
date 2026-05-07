@@ -203,7 +203,6 @@ Rules:
 | Scan and report schedules overlap on shared scope | warn | Console Best Practices |
 | Scan engine version drift or stale content refresh | warn | Console Best Practices |
 | Insight Agent fleet presence | info | docs.rapid7.com Insight Agent overview |
-| Insight Agent version currency | warn | docs.rapid7.com Insight Agent overview. Three modes (in precedence): `pinned_version: "4.1.0.2"` for exact match (flags both behind and ahead), `use_latest_known: true` for tool-maintained latest-known reference, otherwise self-bootstrapping fleet-newest. |
 
 Per-rule severity and enable/disable live in the `audit:` block of `config.yaml`. Each finding in the report links back to the Rapid7 source documenting the rule.
 
@@ -222,6 +221,7 @@ See `docs/examples/config.yaml` for the full audit configuration block.
 - **Unauthenticated-only assets** (retired in 0.2.8) — the `vulnerability-assessed` search field accepts only date operators per the canonical v3 SearchCriteria reference (`is-on-or-before`, `is-on-or-after`, `is-between`, `is-earlier-than`, `is-within-the-last`). It does not accept boolean operators like `is`, so there is no `/api/3/assets/search` filter that means "asset has never been authenticated." Audit via the Security Console UI's Asset → Authentication tab.
 - **No services detected** (retired in 0.2.8) — the `service-count` field does not exist in the v3 SearchCriteria reference. Asset listings expose a `services[]` array on each asset record, but no `/api/3/assets/search` filter for "service count = 0." Audit via the Security Console UI's Site → Discovery Settings or by sorting the asset list by Services column.
 - **Scan Engines on supported OS** — the v3 `ScanEngine` schema (`/api/3/scan_engines`) exposes only `id`, `name`, `address`, `port`, `status`, `productVersion`, `contentVersion`, `lastRefreshedDate`, `lastUpdatedDate`, `sites`, and `enginePools` — there is no engine-host operating system field. Audit engine OS currency in the Security Console UI under **Administration → Engines** or via your fleet-management / CMDB tooling.
+- **Insight Agent version currency** — `GET /api/3/agents` accepts only `page`/`size`/`sort` parameters (no version filter), the `Agent` schema exposes no `version` or `agentVersion` field (the agent's running version is only derivable indirectly from per-record `software[]` entries), and `POST /api/3/assets/search` has no `agent-version` filter field (verified field-by-field against the canonical v3 OpenAPI spec). Computing version drift therefore requires full pagination of `/api/3/agents` — ~794 pages on an ~80k-agent fleet, which is too slow for a health-check pass even with `parallel_pages=6`. Audit version drift via the Security Console UI under **Administration → Agents**, or via your own agent-management / CMDB tooling.
 
 ## Scan Engines
 

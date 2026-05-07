@@ -16,7 +16,6 @@ import rapid7_healthcheck.audit.rules.dynamic_groups_and_nested_tags  # noqa: F4
 import rapid7_healthcheck.audit.rules.scan_report_schedule_overlap  # noqa: F401
 import rapid7_healthcheck.audit.rules.engine_version_drift  # noqa: F401
 import rapid7_healthcheck.audit.rules.insight_agent_deployed  # noqa: F401
-import rapid7_healthcheck.audit.rules.insight_agent_version_currency  # noqa: F401
 
 
 def test_all_rules_registered():
@@ -27,7 +26,7 @@ def test_all_rules_registered():
         "policy_and_vuln_in_same_template",
         "local_engine_production_scope", "dynamic_groups_and_nested_tags",
         "scan_report_schedule_overlap", "engine_version_drift",
-        "insight_agent_deployed", "insight_agent_version_currency",
+        "insight_agent_deployed",
     }
     assert set(_RULE_REGISTRY.keys()) == expected
 
