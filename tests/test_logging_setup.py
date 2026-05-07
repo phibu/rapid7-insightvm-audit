@@ -7,6 +7,32 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from rapid7_healthcheck._log import FlushingFileHandler
+
+
+@pytest.fixture(autouse=True)
+def _strip_flushing_file_handlers_after_test():
+    """Strip any FlushingFileHandler instances from the root logger after each
+    test in this file.
+
+    _setup_logging uses basicConfig(force=True), which installs handlers on the
+    root logger. Without this fixture, a FlushingFileHandler installed by one
+    test stays on root and may fire on subsequent tests, writing through a file
+    descriptor whose underlying tmp_path has already been torn down. No flake
+    has been observed in practice (deterministic ordering, no xdist), but this
+    is the surgical fix for the leak. Conservative isinstance() filter only —
+    leaves caplog's own root-logger handler and any default StreamHandler
+    untouched.
+    """
+    try:
+        yield
+    finally:
+        root = logging.getLogger()
+        for h in list(root.handlers):
+            if isinstance(h, FlushingFileHandler):
+                root.removeHandler(h)
+                h.close()
+
 
 def test_explicit_log_file_path_wins_over_auto():
     """--log-file <path> takes precedence over auto-resolution."""
@@ -259,4 +285,43 @@ def test_setup_logging_calls_basicconfig_before_file_open_warning(tmp_path, monk
     assert "warning" in calls, f"warning was not called: {calls}"
     assert calls.index("basicConfig") < calls.index("warning"), (
         f"basicConfig must precede warning in _setup_logging; got order {calls}"
+    )
+
+
+def test_zzz_a_installs_flushing_file_handler(tmp_path):
+    """First half of the fixture-verification pair.
+
+    Installs a FlushingFileHandler via _setup_logging, then asserts it is
+    present on the root logger. Naming convention: prefix 'zzz_a' / 'zzz_b'
+    forces these to run last in pytest's file-order collection so the second
+    test runs immediately after the first, with the autouse fixture cleanup
+    in between.
+    """
+    import logging
+    from rapid7_healthcheck import __main__ as main_mod
+    from rapid7_healthcheck._log import FlushingFileHandler
+
+    log_path = tmp_path / "out.log"
+    main_mod._setup_logging(verbose=False, log_file=str(log_path), log_format="plain")
+
+    flushing = [h for h in logging.getLogger().handlers if isinstance(h, FlushingFileHandler)]
+    assert len(flushing) == 1, (
+        f"expected exactly one FlushingFileHandler installed, got {len(flushing)}"
+    )
+
+
+def test_zzz_b_flushing_file_handler_was_cleaned_up():
+    """Second half of the fixture-verification pair.
+
+    After the previous test, the autouse fixture should have stripped the
+    FlushingFileHandler from the root logger. Asserts there are zero
+    FlushingFileHandler instances on root.
+    """
+    import logging
+    from rapid7_healthcheck._log import FlushingFileHandler
+
+    flushing = [h for h in logging.getLogger().handlers if isinstance(h, FlushingFileHandler)]
+    assert len(flushing) == 0, (
+        f"expected zero FlushingFileHandler instances after autouse cleanup, "
+        f"got {len(flushing)}: {flushing}"
     )

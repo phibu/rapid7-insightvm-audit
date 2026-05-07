@@ -3,7 +3,23 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+import pytest
+
 from rapid7_healthcheck._log import FlushingFileHandler
+
+
+@pytest.fixture(autouse=True)
+def _strip_flushing_file_handlers_after_test():
+    """Strip any FlushingFileHandler instances from the root logger after each
+    test in this file. See tests/test_logging_setup.py for the full rationale."""
+    try:
+        yield
+    finally:
+        root = logging.getLogger()
+        for h in list(root.handlers):
+            if isinstance(h, FlushingFileHandler):
+                root.removeHandler(h)
+                h.close()
 
 
 def test_flushing_file_handler_writes_to_disk_on_each_emit(tmp_path: Path):
@@ -67,3 +83,25 @@ def test_setup_logging_no_file_handler_when_log_file_none(tmp_path):
         if isinstance(h, _logging.FileHandler)
     ]
     assert file_handlers == []
+
+
+def test_zzz_a_installs_flushing_file_handler(tmp_path):
+    """First half of the fixture-verification pair (mirror of test_logging_setup.py)."""
+    from rapid7_healthcheck import __main__ as main_mod
+
+    log_path = tmp_path / "out.log"
+    main_mod._setup_logging(verbose=False, log_file=str(log_path), log_format="plain")
+
+    flushing = [h for h in logging.getLogger().handlers if isinstance(h, FlushingFileHandler)]
+    assert len(flushing) == 1, (
+        f"expected exactly one FlushingFileHandler installed, got {len(flushing)}"
+    )
+
+
+def test_zzz_b_flushing_file_handler_was_cleaned_up():
+    """Second half of the fixture-verification pair (mirror)."""
+    flushing = [h for h in logging.getLogger().handlers if isinstance(h, FlushingFileHandler)]
+    assert len(flushing) == 0, (
+        f"expected zero FlushingFileHandler instances after autouse cleanup, "
+        f"got {len(flushing)}: {flushing}"
+    )
