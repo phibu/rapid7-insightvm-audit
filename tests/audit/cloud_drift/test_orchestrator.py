@@ -106,7 +106,11 @@ def test_disabled_rules_appear_as_skipped(monkeypatch):
 
 def test_rule_exception_isolated(monkeypatch):
     from rapid7_healthcheck.audit.cloud_drift.snapshot import CloudSnapshot
-    monkeypatch.setattr(CloudSnapshot, "console_assets_total", lambda self: (_ for _ in ()).throw(RuntimeError("boom")))
+
+    def _raise_boom(self):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(CloudSnapshot, "console_assets_total", _raise_boom)
     monkeypatch.setattr(CloudSnapshot, "cloud_assets_total", lambda self: 0)
     monkeypatch.setattr(CloudSnapshot, "console_engines", lambda self: [])
     monkeypatch.setattr(CloudSnapshot, "cloud_engines", lambda self: [])
