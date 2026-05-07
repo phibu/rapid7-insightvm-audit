@@ -100,6 +100,7 @@ checks:
   data_quality: true
   configuration_audit: true
   user_permission_audit: true
+  cloud_drift_audit: true
 
 audit:
   enabled: true
@@ -211,3 +212,41 @@ user_audit:
     superuser_flag_outside_global_admin:
       enabled: true
       severity: fail
+
+# ---------------------------------------------------------------------------
+# Cloud Drift Audit (optional). Reconciles the on-prem Security Console
+# with the Insight Platform Cloud Integrations API (v4). Disabled by
+# default — requires a separate Insight Platform API key.
+# ---------------------------------------------------------------------------
+cloud_integration:
+  enabled: false
+  # Pick the region matching your Insight Platform tenant. See
+  # https://insight.help.rapid7.com/docs/api-overview for the region list.
+  base_url: "https://us.api.insight.rapid7.com/vm/"
+  api_key_env: "R7_CLOUD_API_KEY"
+  timeout_seconds: 30
+  max_retries: 3
+  parallel_pages: 1
+
+cloud_drift:
+  rules:
+    cd.console_asset_count_drift:
+      enabled: true
+      severity: warn
+      tolerance_percent: 5
+    cd.scan_engine_cloud_registration:
+      enabled: true
+      severity: warn
+      last_seen_max_age_hours: 24
+      ignore_engines: []
+    cd.stale_assessment_cohort:
+      enabled: true
+      severity: warn
+      stale_after_days: 30
+      max_stale_percent: 10
+      max_stale_count: null
+
+# Both blocks above are independently configurable. Cloud-drift rule
+# overrides can be authored before the connection is wired; the entire
+# audit category self-skips with a clear message when
+# cloud_integration.enabled is false or the env var is missing.
