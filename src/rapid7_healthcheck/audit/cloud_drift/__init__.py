@@ -10,3 +10,16 @@ Disabled by default — the entire category self-skips when the
 """
 
 from __future__ import annotations
+
+from rapid7_healthcheck.audit import Rule
+
+_CLOUD_RULE_REGISTRY: dict[str, type[Rule]] = {}
+
+
+def register_cloud_rule(rule_cls: type[Rule]) -> type[Rule]:
+    """Decorator: registers a cloud-drift rule. Mirror of
+    ``audit.register`` and ``audit.user_permission.register_user_rule``
+    but for the third audit category.
+    """
+    _CLOUD_RULE_REGISTRY[rule_cls.rule_id] = rule_cls
+    return rule_cls
