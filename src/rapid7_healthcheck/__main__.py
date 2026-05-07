@@ -139,6 +139,7 @@ def _run_checks(client: Any, cfg: AppConfig, progress: "ProgressReporter | None"
         client,
         full_scan=cfg.audit.full_scan,
         sample_size=cfg.audit.sample_size,
+        agents_timeout_seconds=cfg.audit.agents_timeout_seconds,
     )
 
     results: list[CheckResult] = []

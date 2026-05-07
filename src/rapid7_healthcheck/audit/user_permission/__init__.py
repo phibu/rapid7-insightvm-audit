@@ -60,6 +60,7 @@ class UserPermissionAuditCheck:
             client,
             full_scan=config.user_audit.full_scan,
             sample_size=config.user_audit.sample_size,
+            agents_timeout_seconds=180,
         )
 
         # Prime the users endpoint once; if it 404s the entire category

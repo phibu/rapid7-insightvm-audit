@@ -52,14 +52,14 @@ class FakeRapid7Client:
     def set_post_one(self, path: str, response: dict) -> None:
         self._post_one_responses[path] = response
 
-    def post_one(self, path: str, *, json_body: dict, params: dict | None = None) -> dict:
+    def post_one(self, path: str, *, json_body: dict, params: dict | None = None, timeout: int | None = None) -> dict:
         self.calls.append(("post_one", path, params, json_body))
         return self._post_one_responses.get(path, {"resources": [], "page": {"totalResources": 0}})
 
     def connect(self) -> None:
         return None
 
-    def get(self, path: str, params: dict | None = None) -> dict:
+    def get(self, path: str, params: dict | None = None, *, timeout: int | None = None) -> dict:
         self.calls.append(("get", path, params, None))
         if path in self._get_raises:
             raise self._get_raises[path]
@@ -67,13 +67,13 @@ class FakeRapid7Client:
             raise AssertionError(f"unexpected GET {path}")
         return self._get[path]
 
-    def post(self, path: str, json_body: dict, params: dict | None = None) -> dict:
+    def post(self, path: str, json_body: dict, params: dict | None = None, *, timeout: int | None = None) -> dict:
         self.calls.append(("post", path, params, json_body))
         if path not in self._post:
             raise AssertionError(f"unexpected POST {path}")
         return self._post[path]
 
-    def paginate(self, path: str, params: dict | None = None, page_size: int = 500) -> Iterator[dict]:
+    def paginate(self, path: str, params: dict | None = None, page_size: int = 500, *, timeout: int | None = None) -> Iterator[dict]:
         self.calls.append(("paginate", path, params, None))
         if path not in self._paginate:
             raise AssertionError(f"unexpected paginate {path}")
@@ -85,6 +85,8 @@ class FakeRapid7Client:
         json_body: dict,
         params: dict | None = None,
         page_size: int = 500,
+        *,
+        timeout: int | None = None,
     ) -> Iterator[dict]:
         self.calls.append(("paginate_post", path, params, json_body))
         if path not in self._paginate_post:

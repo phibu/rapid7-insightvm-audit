@@ -113,6 +113,7 @@ class ConfigurationAuditCheck:
             client,
             full_scan=config.audit.full_scan,
             sample_size=config.audit.sample_size,
+            agents_timeout_seconds=config.audit.agents_timeout_seconds,
         )
 
         rule_results: list[RuleResult] = []

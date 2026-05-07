@@ -110,7 +110,7 @@ def test_agent_count_returns_total_from_head_request():
         def __init__(self):
             self.calls: list[tuple[str, dict]] = []
 
-        def get(self, path, params=None):
+        def get(self, path, params=None, **_kwargs):
             self.calls.append((path, params or {}))
             return {"page": {"totalResources": 12345}, "resources": []}
 
@@ -129,7 +129,7 @@ def test_agent_count_returns_zero_and_sets_unavailable_on_404():
     from rapid7_healthcheck.client import Rapid7ClientError
 
     class _FailingClient:
-        def get(self, path, params=None):
+        def get(self, path, params=None, **_kwargs):
             raise Rapid7ClientError(f"404 from {path}", status_code=404)
 
     snap = EnvSnapshot(_FailingClient(), full_scan=False, sample_size=100)
@@ -146,7 +146,7 @@ def test_agent_count_is_cached():
         def __init__(self):
             self.call_count = 0
 
-        def get(self, path, params=None):
+        def get(self, path, params=None, **_kwargs):
             self.call_count += 1
             return {"page": {"totalResources": 7}, "resources": []}
 
@@ -167,7 +167,7 @@ def test_three_agent_accessors_share_one_head_request():
     head_calls: list[dict] = []
 
     class _CountingClient:
-        def get(self, path, params=None):
+        def get(self, path, params=None, **_kwargs):
             if path == "/api/3/agents" and params == {"size": 1}:
                 head_calls.append(params)
             return {"page": {"totalResources": 5}, "resources": []}
@@ -186,3 +186,39 @@ def test_three_agent_accessors_share_one_head_request():
         f"expected exactly one /api/3/agents?size=1 head request across "
         f"all three accessors, got {len(head_calls)}"
     )
+
+
+def test_agents_timeout_seconds_passed_to_every_agents_call_site():
+    """All four /api/3/agents call sites use the configured timeout."""
+    from rapid7_healthcheck.audit.snapshot import EnvSnapshot
+
+    calls: list = []
+
+    class _FakeClient:
+        def get(self, path, params=None, *, timeout=None):
+            calls.append(("get", path, timeout))
+            if path == "/api/3/agents":
+                return {"page": {"totalResources": 1, "totalPages": 1}, "resources": []}
+            return {"page": {"totalResources": 0, "totalPages": 0}, "resources": []}
+
+        def paginate(self, path, params=None, *, timeout=None):
+            calls.append(("paginate", path, timeout))
+            if path == "/api/3/agents":
+                yield {"id": 1}
+            return
+
+    snap = EnvSnapshot(
+        _FakeClient(),
+        full_scan=False,
+        sample_size=500,
+        agents_timeout_seconds=222,
+    )
+    snap.agent_count()
+    snap.agents()
+    snap.agent_asset_ids()
+    snap.agent_asset_ids_sampled()
+
+    agents_calls = [c for c in calls if c[1] == "/api/3/agents"]
+    assert agents_calls, "no /api/3/agents calls recorded"
+    for kind, path, timeout in agents_calls:
+        assert timeout == 222, f"expected timeout=222 on every /api/3/agents call, got {agents_calls}"

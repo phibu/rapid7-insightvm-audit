@@ -114,10 +114,18 @@ def _extract_agent_asset_id(agent: dict) -> int | None:
 
 
 class EnvSnapshot:
-    def __init__(self, client: Any, *, full_scan: bool, sample_size: int) -> None:
+    def __init__(
+        self,
+        client: Any,
+        *,
+        full_scan: bool,
+        sample_size: int,
+        agents_timeout_seconds: int = 180,
+    ) -> None:
         self._client = client
         self._full_scan = full_scan
         self._sample_size = sample_size
+        self._agents_timeout = agents_timeout_seconds
 
         self._sites: list[dict] | None = None
         self._scan_engines: list[dict] | None = None
@@ -450,7 +458,7 @@ class EnvSnapshot:
 
         sample: list[dict] = []
         if total > 0:
-            it = self._client.paginate("/api/3/agents")
+            it = self._client.paginate("/api/3/agents", timeout=self._agents_timeout)
             if self._full_scan:
                 sample = list(it)
             else:
@@ -483,7 +491,7 @@ class EnvSnapshot:
         if self._agent_count_cache is not None:
             return self._agent_count_cache
         try:
-            head = self._client.get("/api/3/agents", params={"size": 1})
+            head = self._client.get("/api/3/agents", params={"size": 1}, timeout=self._agents_timeout)
         except Rapid7ClientError as e:
             if e.status_code == 404:
                 logger.info("agents endpoint not available on this console")
@@ -528,7 +536,7 @@ class EnvSnapshot:
             return self._agent_asset_ids_cache
 
         ids: set[int] = set()
-        for a in self._client.paginate("/api/3/agents"):
+        for a in self._client.paginate("/api/3/agents", timeout=self._agents_timeout):
             aid = _extract_agent_asset_id(a)
             if aid is not None:
                 ids.add(aid)
@@ -571,7 +579,8 @@ class EnvSnapshot:
         sample_ids: list[int] = []
         if total > 0:
             for a in itertools.islice(
-                self._client.paginate("/api/3/agents"), self._sample_size
+                self._client.paginate("/api/3/agents", timeout=self._agents_timeout),
+                self._sample_size,
             ):
                 aid = _extract_agent_asset_id(a)
                 if aid is not None:

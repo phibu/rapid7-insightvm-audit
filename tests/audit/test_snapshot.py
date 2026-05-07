@@ -16,13 +16,13 @@ class _FakeClient:
 
     def set_paginate(self, path: str, items: list[dict]): self._paginate[path] = items
 
-    def get(self, path: str, params: dict | None = None) -> dict:
+    def get(self, path: str, params: dict | None = None, *, timeout: int | None = None) -> dict:
         self.get_calls.append((path, params))
         if path not in self._get:
             raise AssertionError(f"unexpected GET {path}")
         return self._get[path]
 
-    def paginate(self, path: str, params: dict | None = None, page_size: int = 500):
+    def paginate(self, path: str, params: dict | None = None, page_size: int = 500, *, timeout: int | None = None):
         self.paginate_calls.append((path, params))
         if path not in self._paginate:
             raise AssertionError(f"unexpected paginate {path}")
@@ -85,7 +85,7 @@ def test_users_endpoint_404_marks_unavailable():
     from rapid7_healthcheck.client import Rapid7ClientError
 
     class _Client404(_FakeClient):
-        def paginate(self, path, params=None, page_size=500):
+        def paginate(self, path, params=None, page_size=500, **_kwargs):
             if path == "/api/3/users":
                 raise Rapid7ClientError(
                     "HTTP 404 from GET /api/3/users: not found",
@@ -104,7 +104,7 @@ def test_users_endpoint_500_propagates():
     from rapid7_healthcheck.client import Rapid7ClientError
 
     class _Client500(_FakeClient):
-        def paginate(self, path, params=None, page_size=500):
+        def paginate(self, path, params=None, page_size=500, **_kwargs):
             if path == "/api/3/users":
                 raise Rapid7ClientError(
                     "HTTP 500 from GET /api/3/users: oops",
@@ -123,7 +123,7 @@ def test_user_2fa_tristate():
     from rapid7_healthcheck.client import Rapid7ClientError
 
     class _Client2FA(_FakeClient):
-        def get(self, path, params=None):
+        def get(self, path, params=None, **_kwargs):
             if path == "/api/3/users/1/2FA":
                 return {"key": "ABC123"}
             if path == "/api/3/users/2/2FA":
@@ -147,7 +147,7 @@ def test_authentication_sources_404_returns_empty():
     from rapid7_healthcheck.client import Rapid7ClientError
 
     class _Client404(_FakeClient):
-        def get(self, path, params=None):
+        def get(self, path, params=None, **_kwargs):
             if path == "/api/3/authentication_sources":
                 raise Rapid7ClientError(
                     "HTTP 404 from GET /api/3/authentication_sources: not found",
@@ -262,7 +262,7 @@ class _FakeAgentsClient:
         self.paginate_calls: list[str] = []
         self.paginate_yields = 0
 
-    def get(self, path: str, params: dict | None = None) -> dict:
+    def get(self, path: str, params: dict | None = None, *, timeout: int | None = None) -> dict:
         self.get_calls.append((path, params))
         if path == "/api/3/agents" and self.head_raises is not None:
             raise self.head_raises
@@ -270,7 +270,7 @@ class _FakeAgentsClient:
             return {"page": {"totalResources": self.total}, "resources": []}
         raise AssertionError(f"unexpected get({path!r})")
 
-    def paginate(self, path: str):
+    def paginate(self, path: str, **_kwargs):
         self.paginate_calls.append(path)
         for a in self._agents:
             self.paginate_yields += 1
@@ -466,7 +466,7 @@ def test_asset_group_member_count_returns_none_on_client_error():
     from rapid7_healthcheck.client import Rapid7ClientError
 
     class _Client404(_FakeClient):
-        def get(self, path, params=None):
+        def get(self, path, params=None, **_kwargs):
             if path == "/api/3/asset_groups/9/assets":
                 self.get_calls.append((path, params))
                 raise Rapid7ClientError(
@@ -493,7 +493,7 @@ def test_asset_group_member_count_500_also_returns_none():
     from rapid7_healthcheck.client import Rapid7ClientError
 
     class _Client500(_FakeClient):
-        def get(self, path, params=None):
+        def get(self, path, params=None, **_kwargs):
             if path == "/api/3/asset_groups/11/assets":
                 self.get_calls.append((path, params))
                 raise Rapid7ClientError(
