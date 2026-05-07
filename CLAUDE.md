@@ -13,6 +13,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Before committing anything that touches `client.py`, `audit/rules/*.py`, `audit/snapshot.py`, or any new module that issues HTTP**, do the equivalent of: `grep -nE 'PUT|PATCH|DELETE|client\.(put|patch|delete)' src/` and confirm zero matches. If the diff introduces any such call — stop and reconsider; the answer is almost certainly to find a read-only equivalent or document the rule as "cannot be implemented" (see the existing "Rules NOT implemented" sections in README).
 - The read-only contract is described in [SECURITY.md](SECURITY.md) and surfaces to users; do not weaken it without updating both files and getting explicit user approval.
 
+**Cloud client (v4):** `cloud_client.py` is a peer to `client.py` for
+the InsightVM Cloud Integrations API. Same allowlist discipline:
+`_ALLOWED_VERBS = {"GET", "POST"}` and `_ALLOWED_POST_PATHS` is
+`{"/v4/integration/assets"}`. **Never** add the v4 mutator paths
+(`/v4/integration/scan`, `/v4/integration/scan/{id}/stop`,
+`/v4/integration/scan/engine/{id}/configuration`) to the allowlist.
+The pre-commit grep extends to this file: any `client.put`, `client.patch`,
+`client.delete`, or new path in `_ALLOWED_POST_PATHS` requires a deliberate
+review and a CHANGELOG entry.
+
 If a feature genuinely cannot be implemented read-only, document it as a v3 API gap (in the README's "Rules NOT implemented" section) and direct users to audit it via the Security Console UI. **Never** introduce write/delete capability to "make a feature work."
 
 ## API reference (cross-check before using)
@@ -25,6 +35,12 @@ When in doubt about an endpoint:
 2. Confirm the verb is `GET` (or `POST` to `/api/3/assets/search`) — anything else violates the read-only contract regardless of what the spec allows.
 3. Confirm parameter names, types, and required-ness match what `client.py` / the snapshot accessor sends.
 4. Confirm the response shape matches what the rule/check parses (especially nested `resources` arrays and `page` metadata for paginated endpoints).
+
+The v4 Cloud Integrations API spec is committed at [docs/research/api-v4.json](docs/research/api-v4.json).
+Cross-check v4 calls against this file the same way you cross-check v3.
+The v4 base path is `/vm/v4/integration/...` and the response envelope
+is `{data, metadata, links}` — note `data` (not `resources`) and
+`metadata.totalResources` (not `page.totalResources`).
 
 ## Common commands
 

@@ -40,6 +40,26 @@ state.
 Adding a new `POST` endpoint requires editing `_ALLOWED_POST_PATHS` in
 `client.py`. That edit is a deliberate, reviewed change.
 
+### Cloud Drift Audit (v4 client)
+
+When the Cloud Drift audit is enabled, a second HTTP client (`CloudClient`)
+talks to the InsightVM Cloud Integrations API at
+`https://{region}.api.insight.rapid7.com/vm/`. The same read-only contract
+applies, with a separate, equally explicit allowlist:
+
+- Verbs: `GET` and `POST` only.
+- POST paths: `/v4/integration/assets` only (search endpoint with filter
+  criteria in the request body).
+- Endpoints deliberately excluded from the allowlist:
+  - `POST /v4/integration/scan` (starts a scan)
+  - `POST /v4/integration/scan/{id}/stop` (stops a running scan)
+  - `POST /v4/integration/scan/engine/{id}/configuration` (mutates engine config)
+  - `DELETE /v4/integration/scan/engine/{id}/configuration` (removes engine config)
+  - `POST /v4/integration/sites` and `POST /v4/integration/vulnerabilities` (read-safe but unused; YAGNI)
+
+Mutator endpoints are unreachable from the tool: invoking them raises
+`ReadOnlyViolationError` before any HTTP request is sent.
+
 ## Supported Versions
 
 Only the latest minor release receives security updates.

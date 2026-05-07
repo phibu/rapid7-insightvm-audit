@@ -302,6 +302,39 @@ A sibling audit category to the configuration audit, scoped to console user acco
 
 Per-rule severity and enable/disable live in the `user_audit:` block of `config.yaml`. See `docs/examples/config.yaml` for the full block.
 
+## Cloud Drift Audit
+
+The Cloud Drift Audit reconciles your on-prem Security Console against the
+[InsightVM Cloud Integrations API](https://insight.help.rapid7.com/docs/api-overview)
+(v4). It catches drift between what the console knows and what Insight
+Platform sees — broken sync, scan engines that never registered with the
+cloud, and assets the platform hasn't reassessed recently.
+
+This category is **disabled by default**. It requires a separate
+Insight Platform API key in addition to your existing console
+`R7_API_KEY`.
+
+### Cloud Drift Audit rules
+
+| Rule ID | What it checks | Default severity |
+|---|---|---|
+| `cd.console_asset_count_drift` | Console asset count vs. cloud asset count, flagged when divergence exceeds `tolerance_percent` (default 5%). One side at zero with the other non-zero upgrades to fail. | warn |
+| `cd.scan_engine_cloud_registration` | Console-known engines that are missing from the Insight Platform engine list (fail) or have stale `last_seen` (warn, default 24 h). | warn |
+| `cd.stale_assessment_cohort` | Cloud assets with `last_assessed_for_vulnerabilities` older than `stale_after_days` (default 30), flagged when the cohort exceeds `max_stale_percent` or `max_stale_count`. | warn |
+
+### Enabling Cloud Drift Audit
+
+1. Generate an Insight Platform API key on the [Insight Platform key management page](https://insight.rapid7.com).
+2. Set `R7_CLOUD_API_KEY` in your environment (or `.env` file).
+3. In `config.yaml`, set `cloud_integration.enabled: true` and pick the right `base_url` for your region (see [region list](https://insight.help.rapid7.com/docs/api-overview)).
+4. Optionally tune `cloud_drift.rules.*` thresholds.
+
+When `cloud_integration.enabled` is `false` (the default) or the env var is
+missing, the entire category produces a single `skipped` `CheckResult` with
+a clear configuration hint and the run continues normally. When enabled
+without the env var, the run exits `3` (startup error) — same exit code
+as the existing `R7_API_KEY` missing case.
+
 ## Scheduling
 
 **Windows Task Scheduler (PowerShell):**
