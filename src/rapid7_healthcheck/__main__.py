@@ -59,7 +59,30 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         default=None,
         help="File log format. Overrides report.log_format. Stderr stays plain.",
     )
+    progress_group = p.add_mutually_exclusive_group()
+    progress_group.add_argument(
+        "--progress",
+        action="store_true",
+        help="Force progress output on (overrides TTY auto-detect).",
+    )
+    progress_group.add_argument(
+        "--no-progress",
+        action="store_true",
+        help="Suppress progress output (overrides TTY auto-detect).",
+    )
     return p.parse_args(argv)
+
+
+def _resolve_progress_enabled(*, progress: bool, no_progress: bool) -> bool | None:
+    """Map CLI flags to the ProgressReporter `enabled` value.
+
+    --no-progress wins (False), then --progress (True), else None (auto-detect).
+    """
+    if no_progress:
+        return False
+    if progress:
+        return True
+    return None
 
 
 def _setup_logging(verbose: bool, log_file: str | None, log_format: str = "plain") -> None:
@@ -250,7 +273,12 @@ def run(argv: list[str] | None = None) -> int:
         return EXIT_STARTUP
 
     from rapid7_healthcheck.progress import ProgressReporter
-    progress = ProgressReporter()
+    progress = ProgressReporter(
+        enabled=_resolve_progress_enabled(
+            progress=args.progress,
+            no_progress=args.no_progress,
+        )
+    )
 
     results = _run_checks(client, cfg, progress=progress)
 

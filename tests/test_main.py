@@ -458,3 +458,25 @@ def test_cli_log_format_falls_back_to_config(tmp_path, monkeypatch):
 
     assert code == EXIT_STARTUP
     assert captured["log_format"] == "cmtrace"
+
+
+def test_progress_and_no_progress_are_mutually_exclusive():
+    """Passing both flags exits via argparse."""
+    from rapid7_healthcheck.__main__ import _parse_args
+    with pytest.raises(SystemExit):
+        _parse_args(["--progress", "--no-progress"])
+
+
+def test_progress_flag_sets_enabled_true():
+    from rapid7_healthcheck.__main__ import _resolve_progress_enabled
+    assert _resolve_progress_enabled(progress=True, no_progress=False) is True
+
+
+def test_no_progress_flag_sets_enabled_false():
+    from rapid7_healthcheck.__main__ import _resolve_progress_enabled
+    assert _resolve_progress_enabled(progress=False, no_progress=True) is False
+
+
+def test_neither_flag_returns_none_for_auto_detect():
+    from rapid7_healthcheck.__main__ import _resolve_progress_enabled
+    assert _resolve_progress_enabled(progress=False, no_progress=False) is None

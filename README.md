@@ -169,6 +169,8 @@ Optional flags:
   DEBUG level — showing the exact API call in flight, the HTTP status
   and elapsed time on the way back, and a WARNING line for any
   non-retried 4xx/5xx response.
+- `--progress` — force progress output on (overrides TTY auto-detect; useful in CI / piped logs).
+- `--no-progress` — suppress per-check / per-rule progress output.
 
 The CLI prints the absolute path of the written report on success.
 
