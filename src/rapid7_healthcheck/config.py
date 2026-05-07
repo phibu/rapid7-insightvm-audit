@@ -105,6 +105,12 @@ _VALID_USER_AUDIT_RULE_IDS = {
     "superuser_flag_outside_global_admin",
 }
 
+_VALID_CLOUD_DRIFT_RULE_IDS = {
+    "cd.console_asset_count_drift",
+    "cd.scan_engine_cloud_registration",
+    "cd.stale_assessment_cohort",
+}
+
 
 @dataclass(frozen=True)
 class RuleConfig:
@@ -168,6 +174,22 @@ def _default_cloud_integration() -> CloudIntegrationConfig:
 
 
 @dataclass(frozen=True)
+class CloudDriftConfig:
+    """Rule-bearing config for the Cloud Drift audit category.
+
+    Independent of `cloud_integration:` so users can author rule
+    overrides before wiring the connection. The `CloudDriftAuditCheck`
+    self-skips when `cloud_integration` is disabled regardless of what
+    this block contains.
+    """
+    rules: dict  # str -> RuleConfig
+
+
+def _default_cloud_drift() -> CloudDriftConfig:
+    return CloudDriftConfig(rules={})
+
+
+@dataclass(frozen=True)
 class AppConfig:
     rapid7: Rapid7Config
     report: ReportConfig
@@ -176,6 +198,7 @@ class AppConfig:
     audit: AuditConfig = field(default_factory=_default_audit)
     user_audit: UserAuditConfig = field(default_factory=_default_user_audit)
     cloud_integration: CloudIntegrationConfig = field(default_factory=_default_cloud_integration)
+    cloud_drift: CloudDriftConfig = field(default_factory=_default_cloud_drift)
 
 
 def _check_scalar(field_name: str, value: Any, expected: type, path: str) -> None:
@@ -581,6 +604,44 @@ def _build_cloud_integration_config(data: dict | None) -> CloudIntegrationConfig
     )
 
 
+def _build_cloud_drift_config(data: dict | None) -> CloudDriftConfig:
+    """Validator for the optional `cloud_drift:` block.
+
+    Mirrors `_build_user_audit_config` rule-validation logic against
+    `_VALID_CLOUD_DRIFT_RULE_IDS`. Has no top-level `enabled`/`full_scan`/
+    `sample_size` keys — sampling does not apply to cloud-drift rules
+    (they read aggregate counts) and the category-level enable lives in
+    `checks.cloud_drift_audit` like every other check.
+    """
+    if data is None:
+        return _default_cloud_drift()
+    _validate_dict_schema(
+        data,
+        expected={"rules"},
+        required=set(),
+        name="cloud_drift",
+    )
+    raw_rules = data.get("rules") or {}
+    if not isinstance(raw_rules, dict):
+        raise ConfigError("cloud_drift.rules: expected mapping")
+    rules: dict[str, RuleConfig] = {}
+    for rule_id, rule_body in raw_rules.items():
+        if rule_id not in _VALID_CLOUD_DRIFT_RULE_IDS:
+            raise ConfigError(f"cloud_drift.rules: unknown rule id '{rule_id}'")
+        if not isinstance(rule_body, dict):
+            raise ConfigError(f"cloud_drift.rules.{rule_id}: expected mapping")
+        if not isinstance(rule_body.get("enabled"), bool):
+            raise ConfigError(f"cloud_drift.rules.{rule_id}.enabled: expected bool")
+        sev = rule_body.get("severity")
+        if sev not in _VALID_SEVERITIES:
+            raise ConfigError(
+                f"cloud_drift.rules.{rule_id}.severity: must be one of {sorted(_VALID_SEVERITIES)}"
+            )
+        knobs = {k: v for k, v in rule_body.items() if k not in ("enabled", "severity")}
+        rules[rule_id] = RuleConfig(enabled=rule_body["enabled"], severity=sev, knobs=knobs)
+    return CloudDriftConfig(rules=rules)
+
+
 def _build_report_config(data: Any) -> ReportConfig:
     """Validate the `report:` block, allowing `delta_max_age_days` to be absent.
 
@@ -626,11 +687,11 @@ def _build_report_config(data: Any) -> ReportConfig:
 
 
 def _build_app_config(data: dict) -> AppConfig:
-    expected_root = {"rapid7", "report", "thresholds", "checks", "audit", "user_audit", "cloud_integration"}
+    expected_root = {"rapid7", "report", "thresholds", "checks", "audit", "user_audit", "cloud_integration", "cloud_drift"}
     unknown = set(data.keys()) - expected_root
     if unknown:
         raise ConfigError(f"unknown root key(s): {sorted(unknown)}")
-    required_root = expected_root - {"audit", "user_audit", "cloud_integration"}  # all three are optional
+    required_root = expected_root - {"audit", "user_audit", "cloud_integration", "cloud_drift"}  # all four are optional
     missing = required_root - set(data.keys())
     if missing:
         raise ConfigError(f"missing required root key(s): {sorted(missing)}")
@@ -654,10 +715,14 @@ def _build_app_config(data: dict) -> AppConfig:
     if "user_permission_audit" not in checks:
         checks = dict(checks)
         checks["user_permission_audit"] = True
+    if "cloud_drift_audit" not in checks:
+        checks = dict(checks)
+        checks["cloud_drift_audit"] = True
 
     audit = _build_audit_config(data.get("audit"))
     user_audit = _build_user_audit_config(data.get("user_audit"))
     cloud_integration = _build_cloud_integration_config(data.get("cloud_integration"))
+    cloud_drift = _build_cloud_drift_config(data.get("cloud_drift"))
     return AppConfig(
         rapid7=rapid7,
         report=report,
