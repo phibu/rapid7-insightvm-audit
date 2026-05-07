@@ -6,6 +6,7 @@ from collections import defaultdict
 from typing import Any
 
 from rapid7_healthcheck.audit import RuleResult
+from rapid7_healthcheck.audit.snapshot import EnvSnapshot
 from rapid7_healthcheck.checks import CheckResult, Finding
 from rapid7_healthcheck.checks._op_rule import (
     error_rule,
@@ -33,17 +34,6 @@ _KIND_LABEL = {"hostname": "hostnames", "ip": "IP addresses"}
 def _example_hostnames(assets: list[dict]) -> list[str]:
     return [a.get("hostName") or a.get("ip") or f"id={a.get('id')}" for a in assets[:_EXAMPLES_LIMIT]]
 
-
-def _peek_total_assets(client: Any) -> int:
-    """One-shot GET /api/3/assets?page=0&size=1 to read page.totalResources cheaply.
-
-    Used by DataQualityCheck.run to decide whether duplicate detection is
-    feasible at this inventory size before walking the full asset list. The
-    v3 API has no group-by, so duplicate detection requires paginating every
-    asset; on large consoles (~500k assets, ~45s/page) that is infeasible.
-    """
-    body = client.get("/api/3/assets", params={"page": 0, "size": 1})
-    return int(body.get("page", {}).get("totalResources", 0))
 
 
 def _oversize_skip_rule(rule, total_assets: int, threshold: int, *, kind: str) -> RuleResult:
@@ -356,6 +346,7 @@ def _run_duplicate_detection(
     t,
     host_rule: "DuplicateHostnamesRule",
     ip_rule: "DuplicateIpsRule",
+    snapshot: "EnvSnapshot",
 ) -> list[RuleResult]:
     """Run the host+ip duplicate-detection pair through peek -> oversize check
     -> full paginate. Returns the two RuleResults the orchestrator will
@@ -367,9 +358,9 @@ def _run_duplicate_detection(
     DataQualityCheck.run.
     """
     try:
-        total_assets = _peek_total_assets(client)
+        total_assets = snapshot.total_asset_count()
     except Exception as e:
-        logger.exception("data_quality._peek_total_assets raised")
+        logger.exception("snapshot.total_asset_count raised")
         return [
             error_rule(
                 rule_id=host_rule.RULE_ID,
@@ -428,7 +419,16 @@ class DataQualityCheck:
         "long-stale assets, and duplicate hostnames/IPs."
     )
 
-    def run(self, client: Any, config: AppConfig, **_kwargs: object) -> CheckResult:
+    def run(
+        self,
+        client: Any,
+        config: AppConfig,
+        *,
+        snapshot: "EnvSnapshot | None" = None,
+        **_kwargs: object,
+    ) -> CheckResult:
+        if snapshot is None:
+            snapshot = EnvSnapshot(client, full_scan=False, sample_size=500)
         start = time.monotonic()
         t = config.thresholds.data_quality
         rule_results: list[RuleResult] = []
@@ -457,7 +457,7 @@ class DataQualityCheck:
             rule_results.append(safe_run_rule(host_rule, lambda: host_rule.run([], t)))
             rule_results.append(safe_run_rule(ip_rule, lambda: ip_rule.run([], t)))
         else:
-            rule_results.extend(_run_duplicate_detection(client, t, host_rule, ip_rule))
+            rule_results.extend(_run_duplicate_detection(client, t, host_rule, ip_rule, snapshot))
 
         return CheckResult(
             name=self.name,

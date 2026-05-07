@@ -2,8 +2,16 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+from rapid7_healthcheck.audit.snapshot import EnvSnapshot
 from rapid7_healthcheck.checks.data_quality import DataQualityCheck
 from rapid7_healthcheck.config import DataQualityThresholds
+
+
+def _snap(fake_client) -> EnvSnapshot:
+    """Build a real EnvSnapshot over the test's fake client. The snapshot's
+    lazy accessors hit fake_client transparently — same fake-URL maps tests
+    already use continue to work without modification."""
+    return EnvSnapshot(fake_client, full_scan=False, sample_size=500)
 
 
 def _all_off_except(app_config, **kwargs):
@@ -470,3 +478,36 @@ def test_duplicate_detection_skipped_when_both_flags_off_does_not_peek(fake_clie
     assert host.status == "skipped"
     assert ip.status == "skipped"
     assert not any(c[0] == "get" and c[1] == "/api/3/assets" for c in fake_client.calls)
+
+
+def test_duplicate_detection_uses_snapshot_total_not_peek(fake_client, app_config):
+    """When duplicate detection runs, total_asset_count comes from the
+    shared snapshot — not from a separate _peek_total_assets call. Locks in
+    the head-fetch consolidation: at most one GET /api/3/assets?size=1
+    across the op-check, regardless of how many duplicate-detection paths
+    execute."""
+    cfg = _all_off_except(
+        app_config,
+        flag_duplicate_hostnames=True,
+        flag_duplicate_ips=True,
+        duplicate_detection_max_assets=50000,
+    )
+    fake_client.set_get(
+        "/api/3/assets",
+        {"resources": [{"id": 1}], "page": {"totalResources": 1000, "size": 1}},
+    )
+    fake_client.set_paginate("/api/3/assets", [
+        {"id": 1, "hostName": "dup", "ip": "10.0.0.1"},
+        {"id": 2, "hostName": "dup", "ip": "10.0.0.1"},
+    ])
+
+    snap = _snap(fake_client)
+    DataQualityCheck().run(fake_client, cfg, snapshot=snap)
+
+    head_calls = [
+        c for c in fake_client.calls
+        if c[0] == "get" and c[1] == "/api/3/assets"
+    ]
+    assert len(head_calls) <= 1, (
+        f"expected at most one /api/3/assets head request, got {len(head_calls)}: {head_calls}"
+    )
