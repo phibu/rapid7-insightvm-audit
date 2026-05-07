@@ -511,3 +511,42 @@ def test_duplicate_detection_uses_snapshot_total_not_peek(fake_client, app_confi
     assert len(head_calls) <= 1, (
         f"expected at most one /api/3/assets head request, got {len(head_calls)}: {head_calls}"
     )
+
+
+def test_data_quality_uses_snapshot_sites_not_paginate(fake_client, app_config):
+    """When a snapshot is passed in, EmptySitesRule must NOT call
+    client.paginate('/api/3/sites') directly. Locks in the snapshot
+    threading."""
+    cfg = _all_off_except(
+        app_config,
+        flag_empty_sites=True,
+    )
+    fake_client.set_paginate("/api/3/sites", [
+        {"id": 1, "name": "site-a"},
+        {"id": 2, "name": "site-b"},
+    ])
+    fake_client.set_get("/api/3/sites/1/assets", {
+        "page": {"totalResources": 0, "size": 1},
+        "resources": [],
+    })
+    fake_client.set_get("/api/3/sites/2/assets", {
+        "page": {"totalResources": 5, "size": 1},
+        "resources": [],
+    })
+
+    snap = _snap(fake_client)
+    snap.sites()  # prime cache
+
+    paginate_before = sum(
+        1 for c in fake_client.calls if c[0] == "paginate" and c[1] == "/api/3/sites"
+    )
+
+    DataQualityCheck().run(fake_client, cfg, snapshot=snap)
+
+    paginate_after = sum(
+        1 for c in fake_client.calls if c[0] == "paginate" and c[1] == "/api/3/sites"
+    )
+    assert paginate_after == paginate_before, (
+        f"DataQualityCheck issued {paginate_after - paginate_before} "
+        f"additional /api/3/sites paginations after snapshot was primed"
+    )

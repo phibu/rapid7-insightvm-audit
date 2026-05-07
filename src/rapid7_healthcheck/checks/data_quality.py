@@ -120,17 +120,16 @@ class EmptySitesRule:
     DEFAULT_SEVERITY = "warn"
     SOURCES = (_SRC_SITES,)
 
-    def run(self, client: Any, t) -> RuleResult:
+    def run(self, snapshot: "EnvSnapshot", t) -> RuleResult:
         if not t.flag_empty_sites:
             return skipped_rule(rule_id=self.RULE_ID, rule_name=self.RULE_NAME, description=self.DESCRIPTION, sources=self.SOURCES)
 
         rule_start = time.monotonic()
         empty_sites: list[dict] = []
-        for site in client.paginate("/api/3/sites"):
+        for site in snapshot.sites():
             site_id = site.get("id")
-            body = client.get(f"/api/3/sites/{site_id}/assets", params={"size": 1})
-            total = int(body.get("page", {}).get("totalResources", 0))
-            if total == 0:
+            count = snapshot.site_asset_count(site_id)
+            if count == 0:
                 empty_sites.append(site)
         findings: list[Finding] = []
         if empty_sites:
@@ -440,7 +439,7 @@ class DataQualityCheck:
         empty_sites = EmptySitesRule()
         stale = StaleAssetsRule()
         rule_results.append(safe_run_rule(missing_os, lambda: missing_os.run(client, t)))
-        rule_results.append(safe_run_rule(empty_sites, lambda: empty_sites.run(client, t)))
+        rule_results.append(safe_run_rule(empty_sites, lambda: empty_sites.run(snapshot, t)))
         rule_results.append(safe_run_rule(stale, lambda: stale.run(client, t)))
 
         # Duplicate detection — single paginate, two rules. On large consoles
