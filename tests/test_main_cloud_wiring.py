@@ -1,10 +1,5 @@
 from __future__ import annotations
 
-import os
-from unittest.mock import patch
-
-import pytest
-
 from rapid7_healthcheck.__main__ import _build_cloud_client_or_none
 from rapid7_healthcheck.cloud_client import CloudClient
 from rapid7_healthcheck.config import CloudIntegrationConfig

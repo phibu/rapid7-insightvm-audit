@@ -29,7 +29,7 @@ from rapid7_healthcheck._log import (
 )
 from rapid7_healthcheck.client import Rapid7AuthError, Rapid7Client, Rapid7ClientError
 from rapid7_healthcheck.cloud_client import CloudClient
-from rapid7_healthcheck.config import AppConfig, ConfigError, load_config
+from rapid7_healthcheck.config import AppConfig, CloudIntegrationConfig, ConfigError, load_config
 from rapid7_healthcheck.report import ReportContext, write_report
 
 
@@ -115,8 +115,8 @@ def _setup_logging(verbose: bool, log_file: str | None, log_format: str = "plain
 
 
 def _build_cloud_client_or_none(
-    cloud_integration,
-) -> tuple["CloudClient | None", str | None]:
+    cloud_integration: CloudIntegrationConfig,
+) -> tuple[CloudClient | None, str | None]:
     """Construct a CloudClient if cloud_integration is enabled and the
     env var holds a key; otherwise return ``(None, error_or_None)``.
 
