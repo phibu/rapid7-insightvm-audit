@@ -140,6 +140,34 @@ def _default_user_audit() -> UserAuditConfig:
 
 
 @dataclass(frozen=True)
+class CloudIntegrationConfig:
+    """Connection settings for the InsightVM Cloud Integrations API (v4).
+
+    Disabled-by-default; when enabled, the env var named in `api_key_env`
+    must hold a valid Insight Platform API key (separate from the console
+    key used for v3). The `cloud_drift` audit category self-skips when
+    `enabled` is False or the env var is missing.
+    """
+    enabled: bool
+    base_url: str
+    api_key_env: str
+    timeout_seconds: int
+    max_retries: int
+    parallel_pages: int
+
+
+def _default_cloud_integration() -> CloudIntegrationConfig:
+    return CloudIntegrationConfig(
+        enabled=False,
+        base_url="",
+        api_key_env="R7_CLOUD_API_KEY",
+        timeout_seconds=30,
+        max_retries=3,
+        parallel_pages=1,
+    )
+
+
+@dataclass(frozen=True)
 class AppConfig:
     rapid7: Rapid7Config
     report: ReportConfig
@@ -147,6 +175,7 @@ class AppConfig:
     checks: dict
     audit: AuditConfig = field(default_factory=_default_audit)
     user_audit: UserAuditConfig = field(default_factory=_default_user_audit)
+    cloud_integration: CloudIntegrationConfig = field(default_factory=_default_cloud_integration)
 
 
 def _check_scalar(field_name: str, value: Any, expected: type, path: str) -> None:
@@ -493,6 +522,66 @@ def _build_user_audit_config(data: dict | None) -> UserAuditConfig:
     )
 
 
+def _build_cloud_integration_config(data: dict | None) -> CloudIntegrationConfig:
+    """Validator for the optional `cloud_integration:` block.
+
+    Mirrors `_build_audit_config` semantics: missing block = defaults
+    (disabled), unknown keys reject, type checks per field. When
+    `enabled: true`, `base_url` becomes required and must be HTTPS.
+    """
+    if data is None:
+        return _default_cloud_integration()
+    _validate_dict_schema(
+        data,
+        expected={
+            "enabled", "base_url", "api_key_env",
+            "timeout_seconds", "max_retries", "parallel_pages",
+        },
+        required=set(),
+        name="cloud_integration",
+    )
+    if not isinstance(data.get("enabled"), bool):
+        raise ConfigError("cloud_integration.enabled: expected bool")
+    enabled = data["enabled"]
+
+    base_url = data.get("base_url", "")
+    if enabled:
+        if not isinstance(base_url, str) or not base_url:
+            raise ConfigError(
+                "cloud_integration.base_url: required when enabled is true"
+            )
+        if not base_url.startswith("https://"):
+            raise ConfigError("cloud_integration.base_url must start with https://")
+    elif not isinstance(base_url, str):
+        raise ConfigError("cloud_integration.base_url: expected str")
+
+    api_key_env = data.get("api_key_env", "R7_CLOUD_API_KEY")
+    if not isinstance(api_key_env, str) or not api_key_env:
+        raise ConfigError("cloud_integration.api_key_env: expected non-empty str")
+
+    timeout_seconds = data.get("timeout_seconds", 30)
+    _check_scalar("timeout_seconds", timeout_seconds, int, "cloud_integration")
+
+    max_retries = data.get("max_retries", 3)
+    _check_scalar("max_retries", max_retries, int, "cloud_integration")
+
+    parallel_pages = data.get("parallel_pages", 1)
+    _check_scalar("parallel_pages", parallel_pages, int, "cloud_integration")
+    if not (1 <= parallel_pages <= 16):
+        raise ConfigError(
+            f"cloud_integration.parallel_pages must be in range [1, 16]; got {parallel_pages}"
+        )
+
+    return CloudIntegrationConfig(
+        enabled=enabled,
+        base_url=base_url,
+        api_key_env=api_key_env,
+        timeout_seconds=timeout_seconds,
+        max_retries=max_retries,
+        parallel_pages=parallel_pages,
+    )
+
+
 def _build_report_config(data: Any) -> ReportConfig:
     """Validate the `report:` block, allowing `delta_max_age_days` to be absent.
 
@@ -538,11 +627,11 @@ def _build_report_config(data: Any) -> ReportConfig:
 
 
 def _build_app_config(data: dict) -> AppConfig:
-    expected_root = {"rapid7", "report", "thresholds", "checks", "audit", "user_audit"}
+    expected_root = {"rapid7", "report", "thresholds", "checks", "audit", "user_audit", "cloud_integration"}
     unknown = set(data.keys()) - expected_root
     if unknown:
         raise ConfigError(f"unknown root key(s): {sorted(unknown)}")
-    required_root = expected_root - {"audit", "user_audit"}  # both audits are optional
+    required_root = expected_root - {"audit", "user_audit", "cloud_integration"}  # all three are optional
     missing = required_root - set(data.keys())
     if missing:
         raise ConfigError(f"missing required root key(s): {sorted(missing)}")
@@ -569,6 +658,7 @@ def _build_app_config(data: dict) -> AppConfig:
 
     audit = _build_audit_config(data.get("audit"))
     user_audit = _build_user_audit_config(data.get("user_audit"))
+    cloud_integration = _build_cloud_integration_config(data.get("cloud_integration"))
     return AppConfig(
         rapid7=rapid7,
         report=report,
@@ -576,6 +666,7 @@ def _build_app_config(data: dict) -> AppConfig:
         checks=checks,
         audit=audit,
         user_audit=user_audit,
+        cloud_integration=cloud_integration,
     )
 
 
