@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.6] - 2026-05-07
+
+### Added
+
+- **`audit.agents_timeout_seconds` config knob (default `180`).** Per-HTTP-request timeout for `/api/3/agents` calls, plumbed through `EnvSnapshot` to all four agent call sites (`agent_count`, `agents`, `agent_asset_ids`, `agent_asset_ids_sampled`). Replaces the implicit 60s ceiling that was prone to spurious timeouts on slow on-prem consoles with large agent fleets (the 0.3.5 incident). The existing "agents endpoint unavailable → skip dependent rules" safety net is preserved when the larger ceiling is also exceeded.
+- **`Rapid7Client.get` / `paginate` / `paginate_post` / `post_one` / `_paginate` / `_request` accept an optional keyword-only `timeout=` kwarg.** When provided, the value overrides `Rapid7Client._timeout` for that single request (or every page in a paginated call). Default behavior is bit-for-bit unchanged when no kwarg is passed. Used by the snapshot today; available for future per-endpoint tuning. Read-only verb allowlist (`_ALLOWED_VERBS`, `_ALLOWED_POST_PATHS`) is unchanged.
+- **`--progress` / `--no-progress` CLI flags (mutually exclusive).** Override the `ProgressReporter`'s TTY auto-detect. `--progress` forces output on (useful in CI / piped logs); `--no-progress` suppresses it. Neither passed → auto-detect from `sys.stderr.isatty()` (existing behavior).
+- **Visible `(skipped)` progress lines for config-disabled rules and checks.** Previously a disabled rule produced no progress event, so the operator could not see which rules were considered. Now each disabled rule (configuration-audit + user-permission orchestrators) and each disabled check (`_run_checks` loop) emits a `step` + `done` pair with a `(skipped)` suffix and `duration_ms=0`.
+
+### Changed
+
+- **`ProgressReporter` gains an optional `enabled: bool | None = None` constructor arg and a broken-pipe latch.** `enabled=None` preserves the existing TTY auto-detect (overwrite-in-place on a TTY, one line per call on a non-TTY). `enabled=True` forces output on for non-TTY streams (line-per-call format — never blasts ANSI into a redirected file). `enabled=False` makes every public method a silent no-op. The first `OSError` on `stream.write`/`flush` latches the reporter off so a broken pager pipe cannot abort an audit run.
+- **Try/finally discipline in all three orchestrators.** `_run_checks` (operational checks), `ConfigurationAuditCheck`, and `UserPermissionAuditCheck` now wrap each `instance.run` / `rule.run` call in `try/finally` so the closing `progress.done(...)` line fires even on a `BaseException` (e.g. `KeyboardInterrupt`, `SystemExit`).
+- **`'paginating'` log line in `client.py` demoted from INFO to DEBUG.** It was the only INFO log in `client.py` and dominated default-run stderr output, obscuring the per-check progress story now told by the `ProgressReporter`. Still visible at `--verbose` / DEBUG for post-mortem.
+
+### Internal
+
+- **Test fakes (`FakeRapid7Client` in `tests/conftest.py`, plus inline fakes in `tests/audit/test_snapshot.py` and `tests/audit/test_snapshot_agents.py`) accept `timeout=`** so the new kwarg passes through without `TypeError`. No behavior changes — purely signature compatibility.
+
 ## [0.3.5] - 2026-05-06
 
 ### Internal — efficiency
