@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-05-07
+
+### Added
+
+- **Cloud Drift Audit — new audit category, sibling to Configuration Audit and User & Permission Audit.** Reconciles the on-prem InsightVM Security Console (v3) against the InsightVM Cloud Integrations API (v4). Disabled by default; opts in via a new `cloud_integration:` config block requiring a separate Insight Platform API key (`R7_CLOUD_API_KEY` by default). When `cloud_integration.enabled` is `false` (the default) or the env var is missing, the entire category produces a single `skipped` `CheckResult` with a configuration hint and the run continues normally. When enabled without the env var, the run exits `3` (startup) — same exit code as the existing `R7_API_KEY` missing case.
+
+  Three v0 rules:
+
+  - **`cd.console_asset_count_drift`** — compares the asset count visible to the on-prem console (`/api/3/assets`) against the count visible to Insight Platform (`/v4/integration/assets`). Flagged when divergence exceeds `tolerance_percent` (default 5%). Exactly one side reporting 0 with the other reporting any non-zero count escalates the per-finding severity to `fail` — that's a broken sync, not a skew.
+  - **`cd.scan_engine_cloud_registration`** — every console-known engine should also be cloud-registered with a recent `last_seen`. Engines missing from the Insight Platform engine list are flagged `fail` (cannot service Insight Agent assessment / Cloud Risk Insights). Engines present but with `last_seen` older than `last_seen_max_age_hours` (default 24) are flagged at the configured rule severity. `ignore_engines` is a per-rule allowlist for deliberately on-prem-only scanners.
+  - **`cd.stale_assessment_cohort`** — uses the v4 search-criteria DSL filter pushdown (`last_assessed_for_vulnerabilities < '<iso>'`) to count cloud assets not assessed in `stale_after_days` (default 30). Flagged when the cohort exceeds `max_stale_percent` of total cloud assets or `max_stale_count`. Stale count is capped at total to avoid `>100%` reports during inventory shifts between the two queries.
+
+- **`CloudClient` — peer to `Rapid7Client` for v4 Cloud Integrations API.** Same exception types reused (`Rapid7ClientError`, `Rapid7AuthError`, `ReadOnlyViolationError`) plus a new `CloudClientError` subclass so the existing `_extract_diagnostics` helper continues to work. Verb allowlist `{GET, POST}`, POST-path allowlist `{/v4/integration/assets}` only — every mutator endpoint (`POST /v4/integration/scan`, `POST /v4/integration/scan/{id}/stop`, `POST /v4/integration/scan/engine/{id}/configuration`, `DELETE` on the same) raises `ReadOnlyViolationError` before any network I/O. `paginate()` reads the v4 envelope (`{data, metadata, links}` — note: `data` not `resources`, `metadata.totalResources` not `page.totalResources`).
+
+- **`CloudSnapshot` — lazy data container holding both v3 and v4 clients** for cross-API reconciliation. Five accessors: `cloud_assets_total`, `console_assets_total`, `cloud_assets_stale(since)`, `cloud_engines`, `console_engines`. Aggregate counts only — sampling does not apply (`audit.sample_size` and `full_scan` are deliberately ignored). `console_engines()` paginates the v3 endpoint to avoid silent first-page truncation that would manifest as false "missing from cloud" findings on consoles with >250 engines.
+
+- **New config dataclasses `CloudIntegrationConfig` and `CloudDriftConfig`** with their validators (`_build_cloud_integration_config`, `_build_cloud_drift_config`). Both root keys are optional; missing-block defaults preserve the disabled-by-default contract. `cloud_integration.parallel_pages` is range-checked against the same `[1, 16]` bound as `rapid7.parallel_pages`. `_build_app_config` adds `cloud_drift_audit` to the default-on checks dict alongside `configuration_audit` and `user_permission_audit`.
+
+- **`docs/research/api-v4.json`** — canonical v4 Cloud Integrations API OpenAPI spec, committed for the same cross-check workflow as v3 (CLAUDE.md "API reference" section now documents both).
+
+### Changed
+
+- **`__main__._run_checks` learned a third dispatch shape** for `cloud_drift_audit`. Existing op-checks still receive `snapshot=`; `configuration_audit` / `user_permission_audit` still receive `progress=` only; the new `cloud_drift_audit` branch additionally threads `cloud_client=`. The new helper `_build_cloud_client_or_none(cloud_integration)` constructs the v4 client when enabled-and-keyed, returns `(None, None)` when disabled (default), and returns `(None, error_string)` when enabled-without-key (logged + exits `3`).
+
+- **`_REGISTRY` gains `cloud_drift_audit`** as the seventh and final entry. Reports render checks in registry order, so the new category appears at the bottom of the report.
+
+### Internal
+
+- 80 new tests (553 → 633 total). Coverage spans the read-only allowlist (verb/path enforcement plus direct-`_request` rejection of PUT/PATCH/DELETE), v4 envelope pagination contract, config schema (independent `cloud_integration` / `cloud_drift` blocks plus end-to-end `_build_app_config` regression tests), `CloudSnapshot` accessors (including the multi-page pagination defense), all three rules, the orchestrator (skip path, three-rule pass path, exception isolation), and `__main__` wiring.
+
+- Rules declare `sources: tuple[str, ...] = ()` (immutable empty tuple) instead of a class-level mutable list. URLs land in 0.5.1 backlog. The orchestrator's `list(rule_cls.sources)` copy on every `RuleResult` build accommodates either type going forward.
+
 ## [0.4.2] - 2026-05-07
 
 ### Fixed
