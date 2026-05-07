@@ -68,3 +68,37 @@ def test_parallel_pages_range_enforced():
             "base_url": "https://us.api.insight.rapid7.com/vm/",
             "parallel_pages": 99,
         })
+
+
+def test_enabled_non_bool_rejected():
+    with pytest.raises(ConfigError, match="enabled"):
+        _build_cloud_integration_config({"enabled": 1})
+
+
+def test_timeout_seconds_zero_rejected():
+    # _check_scalar rejects value <= 0 for int; pin this implicit behavior.
+    with pytest.raises(ConfigError, match="timeout_seconds"):
+        _build_cloud_integration_config({
+            "enabled": True,
+            "base_url": "https://us.api.insight.rapid7.com/vm/",
+            "timeout_seconds": 0,
+        })
+
+
+def test_api_key_env_empty_string_rejected():
+    with pytest.raises(ConfigError, match="api_key_env"):
+        _build_cloud_integration_config({
+            "enabled": True,
+            "base_url": "https://us.api.insight.rapid7.com/vm/",
+            "api_key_env": "",
+        })
+
+
+def test_enabled_with_non_string_base_url_gives_correct_error():
+    # Regression test for issue where wrong-type base_url with enabled=True
+    # produced "required when enabled is true" instead of "expected str".
+    with pytest.raises(ConfigError, match="expected str"):
+        _build_cloud_integration_config({
+            "enabled": True,
+            "base_url": 1234,
+        })

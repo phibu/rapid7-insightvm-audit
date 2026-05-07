@@ -545,15 +545,14 @@ def _build_cloud_integration_config(data: dict | None) -> CloudIntegrationConfig
     enabled = data["enabled"]
 
     base_url = data.get("base_url", "")
-    if enabled:
-        if not isinstance(base_url, str) or not base_url:
-            raise ConfigError(
-                "cloud_integration.base_url: required when enabled is true"
-            )
-        if not base_url.startswith("https://"):
-            raise ConfigError("cloud_integration.base_url must start with https://")
-    elif not isinstance(base_url, str):
+    if not isinstance(base_url, str):
         raise ConfigError("cloud_integration.base_url: expected str")
+    if enabled and not base_url:
+        raise ConfigError(
+            "cloud_integration.base_url: required when enabled is true"
+        )
+    if enabled and not base_url.startswith("https://"):
+        raise ConfigError("cloud_integration.base_url must start with https://")
 
     api_key_env = data.get("api_key_env", "R7_CLOUD_API_KEY")
     if not isinstance(api_key_env, str) or not api_key_env:
