@@ -21,7 +21,11 @@ from rapid7_healthcheck.checks.asset_coverage import AssetCoverageCheck
 from rapid7_healthcheck.checks.data_quality import DataQualityCheck
 from rapid7_healthcheck.checks.scan_activity import ScanActivityCheck
 from rapid7_healthcheck.checks.scan_engines import ScanEnginesCheck
-from rapid7_healthcheck._log import FlushingFileHandler, make_file_formatter
+from rapid7_healthcheck._log import (
+    FlushingFileHandler,
+    ProgressAwareStreamHandler,
+    make_file_formatter,
+)
 from rapid7_healthcheck.client import Rapid7AuthError, Rapid7Client, Rapid7ClientError
 from rapid7_healthcheck.config import AppConfig, ConfigError, load_config
 from rapid7_healthcheck.report import ReportContext, write_report
@@ -87,7 +91,7 @@ def _resolve_progress_enabled(*, progress: bool, no_progress: bool) -> bool | No
 
 def _setup_logging(verbose: bool, log_file: str | None, log_format: str = "plain") -> None:
     level = logging.DEBUG if verbose else logging.INFO
-    handlers: list[logging.Handler] = [logging.StreamHandler(sys.stderr)]
+    handlers: list[logging.Handler] = [ProgressAwareStreamHandler(sys.stderr)]
     file_open_error: str | None = None
     if log_file:
         try:

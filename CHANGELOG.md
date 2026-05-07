@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-05-07
+
+### Fixed
+
+- **Console output — log records no longer collide with the progress status line.** On a TTY, `ProgressReporter.step()` writes its status line via `\r\x1b[K` with no trailing newline, leaving the cursor parked at end-of-line. When a check emitted a log record mid-run (e.g. `agent_only_assets: skipping asset 4421 due to error: timeout`), the vanilla `StreamHandler` wrote the timestamped record onto the same line, producing garbled output like `[3/6] Asset Coverage2026-05-07 14:23:48,884 WARNING ...`. Replaced the stderr handler with a new `ProgressAwareStreamHandler` that prefixes `\r\x1b[K` to each emit on a TTY (wiping the in-progress status line before rendering the record). The next `step()` call already starts with `\r\x1b[K` and redraws cleanly. Non-TTY output (file redirect, CI) is unaffected — no escape sequences leak into log files.
+
 ## [0.4.1] - 2026-05-07
 
 ### Fixed

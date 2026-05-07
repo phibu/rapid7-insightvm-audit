@@ -4,6 +4,9 @@ Public surface:
     FlushingFileHandler — drop-in for logging.FileHandler that flushes the
         underlying stream after every emit, so a tailed log file shows live
         progress during long-running audits.
+    ProgressAwareStreamHandler — stderr StreamHandler that clears the
+        current TTY line before emitting, so log records don't collide with
+        the in-place progress status line written by ProgressReporter.
     PlainFormatter — current default file format; mirrors the legacy
         basicConfig format string exactly.
     CMTraceFormatter — SCCM/MECM CMTrace viewer format. Lets Windows ops
@@ -19,6 +22,35 @@ from __future__ import annotations
 import json as _json
 import logging
 from datetime import datetime, timezone
+
+
+_CLEAR_LINE = "\r\x1b[K"
+
+
+class ProgressAwareStreamHandler(logging.StreamHandler):
+    """StreamHandler that wipes the current TTY line before each emit.
+
+    ProgressReporter writes its status line in-place via ``\\r\\x1b[K`` and
+    leaves the cursor parked at the end of the line with no trailing newline.
+    A vanilla StreamHandler would then write its record starting at that
+    cursor position — gluing the log message onto the status label
+    (e.g. ``[2/6] Scan Activity2026-05-07 14:23:45,375 INFO ...``).
+
+    This handler prefixes ``\\r\\x1b[K`` to each record on TTY streams so the
+    status line is cleared before the log is rendered. Progress.step()'s next
+    call also starts with ``\\r\\x1b[K`` and redraws cleanly on the now-empty
+    line below. On non-TTY streams (file redirect, CI), the prefix is omitted
+    so log files stay free of escape sequences.
+    """
+
+    def emit(self, record: logging.LogRecord) -> None:
+        is_tty = bool(getattr(self.stream, "isatty", lambda: False)())
+        if is_tty:
+            try:
+                self.stream.write(_CLEAR_LINE)
+            except Exception:  # noqa: BLE001 - mirror StreamHandler.emit's tolerance
+                pass
+        super().emit(record)
 
 
 class FlushingFileHandler(logging.FileHandler):
