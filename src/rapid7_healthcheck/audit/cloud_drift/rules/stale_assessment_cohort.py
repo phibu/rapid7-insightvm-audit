@@ -34,8 +34,12 @@ class StaleAssessmentCohortRule:
         max_stale_count = rule_config.get("max_stale_count", None)
 
         threshold = datetime.now(timezone.utc) - timedelta(days=stale_after_days)
-        stale_count = snapshot.cloud_assets_stale(threshold)
+        # Cap stale_count at total_count: the two calls aren't atomic, and an
+        # inventory shift between them could otherwise produce
+        # stale_percent > 100% in the report. Total first also lets us bound
+        # the stale query (still issued for symmetry with the cache layout).
         total_count = snapshot.cloud_assets_total()
+        stale_count = min(snapshot.cloud_assets_stale(threshold), total_count)
 
         stale_percent = (stale_count * 100.0 / total_count) if total_count > 0 else 0.0
 

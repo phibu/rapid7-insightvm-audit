@@ -35,7 +35,9 @@ def test_above_percent_threshold_warns():
     snap = _snapshot(total=1000, stale=200)  # 20%
     result = rule.run(snap, "warn", False, 500, {"stale_after_days": 30, "max_stale_percent": 10})
     assert result.status == "warn"
-    assert "20" in result.findings[0].message  # the percent shows up in the message
+    # Pin the f"{stale_percent:.2f}%" format so a future format tweak
+    # (e.g. "20%" vs "20.00%") fails loudly instead of silently.
+    assert "20.00%" in result.findings[0].message
 
 
 def test_above_count_threshold_warns():
@@ -86,6 +88,17 @@ def test_threshold_datetime_passed_to_snapshot():
     from datetime import datetime, timezone, timedelta
     expected = datetime.now(timezone.utc) - timedelta(days=30)
     assert abs((threshold - expected).total_seconds()) < 60
+
+
+def test_stale_count_capped_at_total_count():
+    # The two snapshot calls aren't atomic; an inventory shift between
+    # them can produce stale > total. The rule caps at total so the
+    # report can't display "1050 of 1000 cloud assets (105.00%)".
+    rule = StaleAssessmentCohortRule()
+    snap = _snapshot(total=1000, stale=1050)
+    result = rule.run(snap, "warn", False, 500, {"stale_after_days": 30})
+    assert result.summary["stale_count"] == 1000
+    assert result.summary["stale_percent"] == 100.0
 
 
 def test_rule_is_registered():
