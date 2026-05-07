@@ -64,3 +64,24 @@ def test_client_has_no_patch_method(client):
 
 def test_client_has_no_delete_method(client):
     assert not hasattr(client, "delete")
+
+
+def test_request_with_put_verb_raises_before_network(client):
+    # The real guard: _ALLOWED_VERBS rejects PUT inside _request, before any
+    # session.request() call. Proves the invariant holds against any caller
+    # who reaches into the internal API.
+    with pytest.raises(ReadOnlyViolationError) as exc:
+        client._request("PUT", "/v4/integration/assets")
+    assert "PUT" in str(exc.value)
+
+
+def test_request_with_delete_verb_raises_before_network(client):
+    with pytest.raises(ReadOnlyViolationError) as exc:
+        client._request("DELETE", "/v4/integration/assets")
+    assert "DELETE" in str(exc.value)
+
+
+def test_request_with_patch_verb_raises_before_network(client):
+    with pytest.raises(ReadOnlyViolationError) as exc:
+        client._request("PATCH", "/v4/integration/assets")
+    assert "PATCH" in str(exc.value)

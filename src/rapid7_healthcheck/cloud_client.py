@@ -70,6 +70,10 @@ class CloudClient:
             raise ValueError(
                 f"default_page_size must be in range [1, 500]; got {default_page_size}"
             )
+        if max_retries < 0:
+            raise ValueError(
+                f"max_retries must be non-negative; got {max_retries}"
+            )
         self._base_url = base_url.rstrip("/")
         self._verify = verify_tls
         self._timeout = timeout_seconds
