@@ -66,8 +66,14 @@ def test_auto_resolves_from_config_when_no_output():
     assert "reports" in s.replace("\\", "/")
 
 
-def test_setup_logging_degrades_gracefully_on_permission_error(monkeypatch, caplog):
-    """If the log file can't be opened, log a warning and continue."""
+def test_setup_logging_degrades_gracefully_on_permission_error(monkeypatch, capfd):
+    """If the log file can't be opened, log a warning and continue.
+
+    Uses capfd (file-descriptor capture on stderr) rather than caplog because
+    _setup_logging calls basicConfig(force=True) which tears down any existing
+    root-logger handlers — including caplog's. The warning still reaches stderr
+    via the new StreamHandler installed by basicConfig, so capfd sees it.
+    """
     from rapid7_healthcheck.__main__ import _setup_logging
 
     class _FailingFileHandler:
@@ -77,10 +83,10 @@ def test_setup_logging_degrades_gracefully_on_permission_error(monkeypatch, capl
     monkeypatch.setattr("rapid7_healthcheck.__main__.FlushingFileHandler", _FailingFileHandler)
 
     # Should not raise.
-    with caplog.at_level(logging.WARNING):
-        _setup_logging(verbose=False, log_file="/cannot/write/here.log")
+    _setup_logging(verbose=False, log_file="/cannot/write/here.log")
 
-    assert any("log file unavailable" in r.message.lower() for r in caplog.records)
+    captured = capfd.readouterr()
+    assert "log file unavailable" in captured.err.lower()
 
 
 def test_setup_logging_creates_parent_dir_when_missing(tmp_path, caplog):
@@ -209,3 +215,48 @@ def test_output_derived_log_path_not_rewritten_for_json():
     cfg.report.filename_pattern = "report-{timestamp}.html"
     resolved = _resolve_log_file(args, cfg, log_format="json")
     assert str(resolved).endswith("myreport.log")
+
+
+def test_setup_logging_calls_basicconfig_before_file_open_warning(tmp_path, monkeypatch):
+    """When log_file open fails, basicConfig must run BEFORE the warning is
+    emitted, so the warning travels through the new handlers (not the old
+    ones from the previous _setup_logging call that are about to be torn down).
+
+    Verified by mocking both logging.basicConfig and the module-level warning
+    call site, then asserting the recorded call order.
+    """
+    import logging
+    from rapid7_healthcheck import __main__ as main_mod
+
+    calls: list[str] = []
+
+    real_basic_config = logging.basicConfig
+
+    def fake_basic_config(*args, **kwargs):
+        calls.append("basicConfig")
+        return real_basic_config(*args, **kwargs)
+
+    monkeypatch.setattr(logging, "basicConfig", fake_basic_config)
+
+    module_logger = logging.getLogger("rapid7_healthcheck.__main__")
+    real_warning = module_logger.warning
+
+    def fake_warning(msg, *args, **kwargs):
+        calls.append("warning")
+        return real_warning(msg, *args, **kwargs)
+
+    monkeypatch.setattr(module_logger, "warning", fake_warning)
+
+    # Force file-open failure: log_file path nested inside a regular file.
+    # mkdir(parents=True) on a path whose parent is a file raises OSError.
+    parent_file = tmp_path / "iam_a_file"
+    parent_file.write_text("x")
+    bad_log_path = str(parent_file / "subdir" / "out.log")
+
+    main_mod._setup_logging(verbose=False, log_file=bad_log_path, log_format="plain")
+
+    assert "basicConfig" in calls, f"basicConfig was not called: {calls}"
+    assert "warning" in calls, f"warning was not called: {calls}"
+    assert calls.index("basicConfig") < calls.index("warning"), (
+        f"basicConfig must precede warning in _setup_logging; got order {calls}"
+    )

@@ -97,14 +97,14 @@ def _setup_logging(verbose: bool, log_file: str | None, log_format: str = "plain
             handlers.append(file_handler)
         except OSError as e:
             file_open_error = f"log file unavailable ({log_file}); continuing without file logging: {e}"
-    if file_open_error:
-        logging.getLogger(__name__).warning(file_open_error)
     logging.basicConfig(
         level=level,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
         handlers=handlers,
         force=True,
     )
+    if file_open_error:
+        logging.getLogger(__name__).warning(file_open_error)
 
 
 def _resolve_log_file(args: argparse.Namespace, cfg: AppConfig, log_format: str) -> Path | None:
