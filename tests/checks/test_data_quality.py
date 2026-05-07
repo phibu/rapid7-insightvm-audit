@@ -508,8 +508,9 @@ def test_duplicate_detection_uses_snapshot_total_not_peek(fake_client, app_confi
         c for c in fake_client.calls
         if c[0] == "get" and c[1] == "/api/3/assets"
     ]
-    assert len(head_calls) <= 1, (
-        f"expected at most one /api/3/assets head request, got {len(head_calls)}: {head_calls}"
+    assert len(head_calls) == 1, (
+        f"expected exactly one /api/3/assets head request (via snapshot.total_asset_count), "
+        f"got {len(head_calls)}: {head_calls}"
     )
 
 
