@@ -133,8 +133,8 @@ class Rapid7Client:
 
     # --- Public HTTP helpers ---
 
-    def get(self, path: str, params: dict | None = None) -> dict:
-        return self._request("GET", path, params=params)
+    def get(self, path: str, params: dict | None = None, *, timeout: int | None = None) -> dict:
+        return self._request("GET", path, params=params, timeout=timeout)
 
     def post(self, path: str, json_body: dict, params: dict | None = None) -> dict:
         return self._request("POST", path, params=params, json_body=json_body)
@@ -145,12 +145,15 @@ class Rapid7Client:
         params: dict | None = None,
         page_size: int | None = None,
         parallel_pages: int | None = None,
+        *,
+        timeout: int | None = None,
     ) -> Iterator[dict]:
         yield from self._paginate(
             "GET", path,
             params=params,
             page_size=page_size if page_size is not None else self._default_page_size,
             parallel_pages=parallel_pages if parallel_pages is not None else self._parallel_pages,
+            timeout=timeout,
         )
 
     def paginate_post(
@@ -160,6 +163,8 @@ class Rapid7Client:
         params: dict | None = None,
         page_size: int | None = None,
         parallel_pages: int | None = None,
+        *,
+        timeout: int | None = None,
     ) -> Iterator[dict]:
         yield from self._paginate(
             "POST", path,
@@ -167,6 +172,7 @@ class Rapid7Client:
             page_size=page_size if page_size is not None else self._default_page_size,
             json_body=json_body,
             parallel_pages=parallel_pages if parallel_pages is not None else self._parallel_pages,
+            timeout=timeout,
         )
 
     def post_one(
@@ -175,6 +181,7 @@ class Rapid7Client:
         *,
         json_body: dict,
         params: dict | None = None,
+        timeout: int | None = None,
     ) -> dict:
         """Issue a single POST to a search endpoint and return the parsed response.
 
@@ -183,7 +190,7 @@ class Rapid7Client:
         (e.g. for count-with-examples summaries). The path must be in the
         read-only POST allowlist (`_ALLOWED_POST_PATHS`).
         """
-        return self._request("POST", path, params=params, json_body=json_body)
+        return self._request("POST", path, params=params, json_body=json_body, timeout=timeout)
 
     # --- Internals ---
 
@@ -196,13 +203,14 @@ class Rapid7Client:
         page_size: int,
         parallel_pages: int = 1,
         json_body: dict | None = None,
+        timeout: int | None = None,
     ) -> Iterator[dict]:
         # Phase 1: probe page 0 sequentially. We need totalPages before
         # we can dispatch any parallel work.
         page0_params = dict(params or {})
         page0_params["page"] = 0
         page0_params["size"] = page_size
-        body0 = self._request(method, path, params=page0_params, json_body=json_body)
+        body0 = self._request(method, path, params=page0_params, json_body=json_body, timeout=timeout)
         for resource in body0.get("resources", []):
             yield resource
 
@@ -218,7 +226,7 @@ class Rapid7Client:
                 page_params = dict(params or {})
                 page_params["page"] = page_num
                 page_params["size"] = page_size
-                body = self._request(method, path, params=page_params, json_body=json_body)
+                body = self._request(method, path, params=page_params, json_body=json_body, timeout=timeout)
                 for resource in body.get("resources", []):
                     yield resource
             return
@@ -241,7 +249,7 @@ class Rapid7Client:
                         page_params["size"] = page_size
                         fut = executor.submit(
                             self._request, method, path,
-                            params=page_params, json_body=json_body,
+                            params=page_params, json_body=json_body, timeout=timeout,
                         )
                         futures[page_num] = fut
 
@@ -272,6 +280,7 @@ class Rapid7Client:
         *,
         params: dict | None = None,
         json_body: dict | None = None,
+        timeout: int | None = None,
     ) -> dict:
         # Read-only enforcement. Runs before any network I/O so a violation
         # never reaches the customer's console.
@@ -299,7 +308,7 @@ class Rapid7Client:
                     json=json_body,
                     headers=self._headers,
                     auth=self._basic_auth,
-                    timeout=self._timeout,
+                    timeout=timeout if timeout is not None else self._timeout,
                     verify=self._verify,
                 )
                 elapsed_ms = int((time.monotonic() - start) * 1000)

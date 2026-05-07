@@ -628,3 +628,65 @@ def test_paginate_explicit_page_size_overrides_default(session):
     c = make_client(session)
     list(c.paginate("/api/3/sites", page_size=100))
     assert session.request.call_args.kwargs["params"]["size"] == 100
+
+
+def test_get_uses_per_call_timeout_when_provided(monkeypatch):
+    """Per-call timeout overrides the client default for that request only."""
+    from rapid7_healthcheck.client import Rapid7Client
+    captured: dict = {}
+
+    class _FakeSession:
+        def request(self, **kwargs):
+            captured.update(kwargs)
+            class _R:
+                status_code = 200
+                def json(self): return {}
+                @property
+                def text(self): return ""
+            return _R()
+
+    c = Rapid7Client(
+        base_url="https://r7.example",
+        api_key="k",
+        timeout_seconds=60,
+        session=_FakeSession(),
+    )
+    c.get("/api/3", timeout=180)
+    assert captured["timeout"] == 180
+
+    c.get("/api/3")
+    assert captured["timeout"] == 60
+
+
+def test_paginate_propagates_timeout_to_every_page(monkeypatch):
+    """Per-call timeout reaches every _request call inside paginate."""
+    from rapid7_healthcheck.client import Rapid7Client
+    timeouts: list = []
+
+    class _FakeSession:
+        def __init__(self):
+            self._page = 0
+        def request(self, **kwargs):
+            timeouts.append(kwargs["timeout"])
+            page = self._page
+            self._page += 1
+            class _R:
+                status_code = 200
+                def json(self):
+                    return {
+                        "resources": [{"id": page}],
+                        "page": {"totalPages": 3},
+                    }
+                @property
+                def text(self): return ""
+            return _R()
+
+    c = Rapid7Client(
+        base_url="https://r7.example",
+        api_key="k",
+        timeout_seconds=60,
+        parallel_pages=1,
+        session=_FakeSession(),
+    )
+    list(c.paginate("/api/3/agents", timeout=180))
+    assert timeouts == [180, 180, 180]
