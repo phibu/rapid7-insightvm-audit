@@ -94,11 +94,13 @@ def _fetch_parsed_sites(client, snapshot: "EnvSnapshot") -> list[_ParsedSiteScan
 
     The result is consumed by every rule class in this module — each rule
     iterates the list and applies its own concept-specific predicate.
-    Site list comes from the shared snapshot (no per-check site
-    pagination); per-site scans are fetched directly here because no
+    Site list comes from the shared snapshot (potentially pre-cached by
+    the audit); per-site scans are fetched directly here because no
     second consumer exists today.
-    API call cost: one paginate over /api/3/sites (shared with audit) +
-    one GET per site for /api/3/sites/{id}/scans?sort=startTime,DESC&size=20.
+    API call cost from this function: one GET per site for
+    /api/3/sites/{id}/scans?sort=startTime,DESC&size=20. The /api/3/sites
+    pagination is owned by the snapshot — issued at most once across the
+    whole run, regardless of how many checks consume it.
     """
     parsed: list[_ParsedSiteScans] = []
     for site in snapshot.sites():
