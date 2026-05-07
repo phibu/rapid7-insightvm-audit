@@ -46,7 +46,7 @@ def test_audit_skips_disabled_rules(app_config, fake_client, monkeypatch):
         for rid in _RULE_REGISTRY.keys()
     }
     cfg = replace(app_config, audit=AuditConfig(
-        enabled=True, full_scan=False, sample_size=500, rules=rules,
+        enabled=True, full_scan=False, sample_size=500, agents_timeout_seconds=180, rules=rules,
     ))
     fake_client.set_paginate("/api/3/sites", [])
     fake_client.set_paginate("/api/3/asset_groups", [])
@@ -65,7 +65,7 @@ def test_one_rule_raising_does_not_break_others(app_config, fake_client, monkeyp
         for rid in _RULE_REGISTRY.keys()
     }
     cfg = replace(app_config, audit=AuditConfig(
-        enabled=True, full_scan=False, sample_size=500, rules=rules,
+        enabled=True, full_scan=False, sample_size=500, agents_timeout_seconds=180, rules=rules,
     ))
     fake_client.set_paginate("/api/3/sites", [])
     fake_client.set_get("/api/3/scan_engines", {"resources": []})

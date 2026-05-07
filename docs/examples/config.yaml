@@ -105,6 +105,13 @@ audit:
   enabled: true
   full_scan: false
   sample_size: 500
+  # Per-HTTP-request timeout for /api/3/agents calls (seconds).
+  # /api/3/agents is well-known to be slow on consoles with large agent
+  # fleets even at size=1; the default 60s timeout used elsewhere can
+  # bite. Increase if your console legitimately needs more time, or
+  # leave at default. When the call still times out, agent-aware audit
+  # rules self-skip rather than aborting the run.
+  agents_timeout_seconds: 180
   rules:
     agent_unauth_collision:
       # Note: in fast mode (audit.full_scan: false), this rule's per-site

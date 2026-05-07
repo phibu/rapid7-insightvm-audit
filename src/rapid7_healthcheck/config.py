@@ -119,6 +119,7 @@ class AuditConfig:
     enabled: bool
     full_scan: bool
     sample_size: int
+    agents_timeout_seconds: int
     rules: dict  # str -> RuleConfig
 
 
@@ -132,7 +133,7 @@ class UserAuditConfig:
 
 
 def _default_audit() -> AuditConfig:
-    return AuditConfig(enabled=False, full_scan=False, sample_size=500, rules={})
+    return AuditConfig(enabled=False, full_scan=False, sample_size=500, agents_timeout_seconds=180, rules={})
 
 
 def _default_user_audit() -> UserAuditConfig:
@@ -389,10 +390,10 @@ def _build_thresholds(data: Any) -> Thresholds:
 
 def _build_audit_config(data: dict | None) -> AuditConfig:
     if data is None:
-        return AuditConfig(enabled=False, full_scan=False, sample_size=500, rules={})
+        return AuditConfig(enabled=False, full_scan=False, sample_size=500, agents_timeout_seconds=180, rules={})
     _validate_dict_schema(
         data,
-        expected={"enabled", "full_scan", "sample_size", "rules"},
+        expected={"enabled", "full_scan", "sample_size", "agents_timeout_seconds", "rules"},
         required=set(),  # legacy: only `unknown` was checked here, missing
                          # keys fall through to the field checks below
         name="audit",
@@ -407,6 +408,14 @@ def _build_audit_config(data: dict | None) -> AuditConfig:
         or data["sample_size"] <= 0
     ):
         raise ConfigError("audit.sample_size: expected positive int")
+
+    agents_timeout_seconds = data.get("agents_timeout_seconds", 180)
+    if (
+        not isinstance(agents_timeout_seconds, int)
+        or isinstance(agents_timeout_seconds, bool)
+        or agents_timeout_seconds <= 0
+    ):
+        raise ConfigError("audit.agents_timeout_seconds: expected positive int")
 
     raw_rules = data.get("rules") or {}
     if not isinstance(raw_rules, dict):
@@ -431,6 +440,7 @@ def _build_audit_config(data: dict | None) -> AuditConfig:
         enabled=data["enabled"],
         full_scan=data["full_scan"],
         sample_size=data["sample_size"],
+        agents_timeout_seconds=agents_timeout_seconds,
         rules=rules,
     )
 

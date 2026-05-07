@@ -43,7 +43,7 @@ def _build_minimal_app_config(*, audit_enabled=False, user_audit_enabled=False, 
             data_quality=DataQualityThresholds(flag_missing_os=True, flag_empty_sites=True),
         ),
         checks={"configuration_audit": audit_enabled, "user_permission_audit": user_audit_enabled},
-        audit=AuditConfig(enabled=audit_enabled, full_scan=False, sample_size=10, rules=rules or {}),
+        audit=AuditConfig(enabled=audit_enabled, full_scan=False, sample_size=10, agents_timeout_seconds=180, rules=rules or {}),
         user_audit=UserAuditConfig(enabled=user_audit_enabled, full_scan=False, sample_size=10, rules=user_rules or {}),
     )
 

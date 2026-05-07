@@ -587,3 +587,65 @@ def test_report_log_format_rejects_unknown_value(tmp_path):
     )
     with pytest.raises(ConfigError, match="report.log_format"):
         load_config(write(tmp_path, body))
+
+
+def test_audit_agents_timeout_seconds_defaults_to_180():
+    """audit.agents_timeout_seconds defaults to 180 when omitted."""
+    from rapid7_healthcheck.config import _build_audit_config
+    cfg = _build_audit_config({
+        "enabled": True,
+        "full_scan": False,
+        "sample_size": 500,
+        "rules": {},
+    })
+    assert cfg.agents_timeout_seconds == 180
+
+
+def test_audit_agents_timeout_seconds_custom_value():
+    """audit.agents_timeout_seconds accepts a positive int."""
+    from rapid7_healthcheck.config import _build_audit_config
+    cfg = _build_audit_config({
+        "enabled": True,
+        "full_scan": False,
+        "sample_size": 500,
+        "agents_timeout_seconds": 300,
+        "rules": {},
+    })
+    assert cfg.agents_timeout_seconds == 300
+
+
+def test_audit_agents_timeout_seconds_rejects_zero():
+    from rapid7_healthcheck.config import _build_audit_config
+    with pytest.raises(ConfigError, match="agents_timeout_seconds"):
+        _build_audit_config({
+            "enabled": True, "full_scan": False, "sample_size": 500,
+            "agents_timeout_seconds": 0, "rules": {},
+        })
+
+
+def test_audit_agents_timeout_seconds_rejects_negative():
+    from rapid7_healthcheck.config import _build_audit_config
+    with pytest.raises(ConfigError, match="agents_timeout_seconds"):
+        _build_audit_config({
+            "enabled": True, "full_scan": False, "sample_size": 500,
+            "agents_timeout_seconds": -5, "rules": {},
+        })
+
+
+def test_audit_agents_timeout_seconds_rejects_non_int():
+    from rapid7_healthcheck.config import _build_audit_config
+    with pytest.raises(ConfigError, match="agents_timeout_seconds"):
+        _build_audit_config({
+            "enabled": True, "full_scan": False, "sample_size": 500,
+            "agents_timeout_seconds": "180", "rules": {},
+        })
+
+
+def test_audit_agents_timeout_seconds_rejects_bool():
+    """bool is a subclass of int; reject it explicitly like sample_size does."""
+    from rapid7_healthcheck.config import _build_audit_config
+    with pytest.raises(ConfigError, match="agents_timeout_seconds"):
+        _build_audit_config({
+            "enabled": True, "full_scan": False, "sample_size": 500,
+            "agents_timeout_seconds": True, "rules": {},
+        })
