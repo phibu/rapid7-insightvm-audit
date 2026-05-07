@@ -32,7 +32,10 @@ class ConsoleAssetCountDriftRule:
         cloud_total = snapshot.cloud_assets_total()
 
         findings: list[Finding] = []
-        drift_percent = 0.0
+        # None when the percentage is not meaningful (both-zero or broken-sync
+        # path); a real number only on the normal comparison path. Surfaces
+        # honestly in the summary instead of misleadingly reporting 0.0.
+        drift_percent: float | None = None
 
         if console_total == 0 and cloud_total == 0:
             # No assets on either side — vacuously consistent.
@@ -87,7 +90,7 @@ class ConsoleAssetCountDriftRule:
             summary={
                 "console_total": console_total,
                 "cloud_total": cloud_total,
-                "drift_percent": round(drift_percent, 2),
+                "drift_percent": round(drift_percent, 2) if drift_percent is not None else None,
                 "tolerance_percent": tolerance,
             },
             sources=list(self.sources),

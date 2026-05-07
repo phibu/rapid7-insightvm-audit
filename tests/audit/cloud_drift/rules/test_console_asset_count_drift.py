@@ -73,8 +73,25 @@ def test_summary_includes_drift_percent():
     rule = ConsoleAssetCountDriftRule()
     snap = _snapshot(console_total=1000, cloud_total=1500)
     result = rule.run(snap, "warn", False, 500, {"tolerance_percent": 5})
-    # 500 / 1500 = 33.33%
+    # |1000 - 1500| / max(1000, 1500) * 100 = 33.33%
     assert pytest.approx(result.summary["drift_percent"], abs=0.01) == 33.33
+
+
+def test_summary_drift_percent_none_when_both_zero():
+    # drift_percent is meaningless when there are no assets on either side;
+    # the summary surfaces None rather than misleadingly reporting 0.0.
+    rule = ConsoleAssetCountDriftRule()
+    snap = _snapshot(console_total=0, cloud_total=0)
+    result = rule.run(snap, "warn", False, 500, {})
+    assert result.summary["drift_percent"] is None
+
+
+def test_summary_drift_percent_none_on_broken_sync():
+    # Same: the broken-sync path's "drift" is undefined, not 0.0.
+    rule = ConsoleAssetCountDriftRule()
+    snap = _snapshot(console_total=500, cloud_total=0)
+    result = rule.run(snap, "warn", False, 500, {})
+    assert result.summary["drift_percent"] is None
 
 
 def test_rule_is_registered():
