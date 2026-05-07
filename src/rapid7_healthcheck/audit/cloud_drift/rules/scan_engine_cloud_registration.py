@@ -44,7 +44,9 @@ class ScanEngineCloudRegistrationRule:
     )
     default_severity = "warn"
     expensive = False
-    sources: list[str] = []  # filled during implementation; see backlog
+    # Tuple, not list — class-level mutable defaults are a footgun even
+    # when nothing currently mutates them. URLs land in 0.5.1 backlog.
+    sources: tuple[str, ...] = ()
 
     def run(self, snapshot, severity, full_scan, sample_size, rule_config) -> RuleResult:
         max_age_hours = int(rule_config.get(

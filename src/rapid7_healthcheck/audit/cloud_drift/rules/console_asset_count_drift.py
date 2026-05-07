@@ -24,7 +24,9 @@ class ConsoleAssetCountDriftRule:
     )
     default_severity = "warn"
     expensive = False
-    sources: list[str] = []  # populated during implementation, see backlog
+    # Tuple, not list — class-level mutable defaults are a footgun even
+    # when nothing currently mutates them. URLs land in 0.5.1 backlog.
+    sources: tuple[str, ...] = ()
 
     def run(self, snapshot, severity, full_scan, sample_size, rule_config) -> RuleResult:
         tolerance = float(rule_config.get("tolerance_percent", _DEFAULT_TOLERANCE_PERCENT))
