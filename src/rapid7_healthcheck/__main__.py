@@ -15,6 +15,7 @@ from dotenv import load_dotenv
 
 from rapid7_healthcheck import __version__
 from rapid7_healthcheck.audit import ConfigurationAuditCheck
+from rapid7_healthcheck.audit.cloud_drift import CloudDriftAuditCheck
 from rapid7_healthcheck.audit.user_permission import UserPermissionAuditCheck
 from rapid7_healthcheck.checks import Check, CheckResult
 from rapid7_healthcheck.checks.asset_coverage import AssetCoverageCheck
@@ -27,6 +28,7 @@ from rapid7_healthcheck._log import (
     make_file_formatter,
 )
 from rapid7_healthcheck.client import Rapid7AuthError, Rapid7Client, Rapid7ClientError
+from rapid7_healthcheck.cloud_client import CloudClient
 from rapid7_healthcheck.config import AppConfig, ConfigError, load_config
 from rapid7_healthcheck.report import ReportContext, write_report
 
@@ -47,6 +49,7 @@ _REGISTRY: dict[str, type[Check]] = {
     "data_quality": DataQualityCheck,
     "configuration_audit": ConfigurationAuditCheck,
     "user_permission_audit": UserPermissionAuditCheck,
+    "cloud_drift_audit": CloudDriftAuditCheck,
 }
 
 
@@ -111,6 +114,35 @@ def _setup_logging(verbose: bool, log_file: str | None, log_format: str = "plain
         logging.getLogger(__name__).warning(file_open_error)
 
 
+def _build_cloud_client_or_none(
+    cloud_integration,
+) -> tuple["CloudClient | None", str | None]:
+    """Construct a CloudClient if cloud_integration is enabled and the
+    env var holds a key; otherwise return ``(None, error_or_None)``.
+
+    The ``error`` string (when non-None) is logged and surfaced to the
+    user as a startup error: enabling cloud integration without the key
+    is a config mistake, so we exit 3 in __main__ rather than silently
+    skipping the audit category.
+    """
+    if not cloud_integration.enabled:
+        return None, None
+    key = os.environ.get(cloud_integration.api_key_env)
+    if not key:
+        return None, (
+            f"cloud_integration.enabled=true but env var "
+            f"{cloud_integration.api_key_env} is not set"
+        )
+    client = CloudClient(
+        base_url=cloud_integration.base_url,
+        api_key=key,
+        timeout_seconds=cloud_integration.timeout_seconds,
+        max_retries=cloud_integration.max_retries,
+        parallel_pages=cloud_integration.parallel_pages,
+    )
+    return client, None
+
+
 def _resolve_log_file(args: argparse.Namespace, cfg: AppConfig, log_format: str) -> Path | None:
     """Resolve which path (if any) the run-log FileHandler should write to.
 
@@ -156,7 +188,13 @@ def pick_exit_code(results: list[CheckResult]) -> int:
     return EXIT_HEALTHY
 
 
-def _run_checks(client: Any, cfg: AppConfig, progress: "ProgressReporter | None" = None) -> list[CheckResult]:
+def _run_checks(
+    client: Any,
+    cfg: AppConfig,
+    progress: "ProgressReporter | None" = None,
+    *,
+    cloud_client: Any = None,
+) -> list[CheckResult]:
     from rapid7_healthcheck.audit.snapshot import EnvSnapshot
 
     # Single snapshot shared with op-checks. Lazy-loads on first access; methods
@@ -195,6 +233,8 @@ def _run_checks(client: Any, cfg: AppConfig, progress: "ProgressReporter | None"
                     # These checks build their own snapshot internally today.
                     # Threading the shared one is a future cleanup (see backlog).
                     results.append(instance.run(client, cfg, progress=progress))
+                elif name == "cloud_drift_audit":
+                    results.append(instance.run(client, cfg, progress=progress, cloud_client=cloud_client))
                 else:
                     # Op-checks accept an optional snapshot; only asset_coverage
                     # uses it currently. Others tolerate it via **_kwargs.
@@ -281,6 +321,11 @@ def run(argv: list[str] | None = None) -> int:
         logger.error("could not reach Rapid7 (%s); check base_url and network", e)
         return EXIT_STARTUP
 
+    cloud_client, cloud_error = _build_cloud_client_or_none(cfg.cloud_integration)
+    if cloud_error is not None:
+        logger.error("config error: %s", cloud_error)
+        return EXIT_STARTUP
+
     from rapid7_healthcheck.progress import ProgressReporter
     progress = ProgressReporter(
         enabled=_resolve_progress_enabled(
@@ -289,7 +334,7 @@ def run(argv: list[str] | None = None) -> int:
         )
     )
 
-    results = _run_checks(client, cfg, progress=progress)
+    results = _run_checks(client, cfg, progress=progress, cloud_client=cloud_client)
 
     progress.newline_if_needed()
     ctx = ReportContext(
