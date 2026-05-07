@@ -328,6 +328,27 @@ class TestAgentAssetIdsSampled:
         with pytest.raises(Rapid7ClientError):
             snap.agent_asset_ids_sampled()
 
+    def test_endpoint_timeout_marks_unavailable(self):
+        # Network errors (timeouts, connection resets) carry status_code=None
+        # because no HTTP response was ever received. /api/3/agents is well-known
+        # to be slow on consoles with large fleets even at size=1, so a timeout
+        # on this endpoint must skip agent rules cleanly rather than abort the
+        # whole audit.
+        from rapid7_healthcheck.client import Rapid7ClientError
+        c = _FakeAgentsClient(
+            head_raises=Rapid7ClientError(
+                "network error after 4 attempt(s) on GET /api/3/agents: "
+                "HTTPSConnectionPool: read operation timed out",
+                status_code=None,
+            )
+        )
+        snap = EnvSnapshot(c, full_scan=False, sample_size=100)
+
+        sample_ids, total = snap.agent_asset_ids_sampled()
+
+        assert (sample_ids, total) == ([], 0)
+        assert snap.is_agents_unavailable() is True
+
     def test_caches_second_call(self):
         agents = [{"id": i} for i in range(10)]
         c = _FakeAgentsClient(total=10, agents=agents)

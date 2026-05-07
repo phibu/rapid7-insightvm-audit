@@ -471,10 +471,14 @@ class EnvSnapshot:
     def agent_count(self) -> int:
         """Return total Insight Agent count from /api/3/agents.
 
-        Returns 0 when the agents endpoint is unavailable (404). The
-        `_agents_unavailable` flag is set as a side effect of the head
-        request, so callers can use `is_agents_unavailable()` to distinguish
-        "no agents" from "endpoint missing". Cached on first call.
+        Returns 0 when the agents endpoint is unavailable. "Unavailable"
+        is treated broadly: a 404 (older console / non-GA key), or any
+        non-HTTP-status failure like a read timeout or network error
+        (status_code is None) — /api/3/agents is well-known to be slow
+        on consoles with large agent fleets even at size=1, and a single
+        slow endpoint should not abort the whole audit run. The
+        `_agents_unavailable` flag is set so dependent rules self-skip
+        cleanly via `is_agents_unavailable()`. Cached on first call.
         """
         if self._agent_count_cache is not None:
             return self._agent_count_cache
@@ -483,6 +487,14 @@ class EnvSnapshot:
         except Rapid7ClientError as e:
             if e.status_code == 404:
                 logger.info("agents endpoint not available on this console")
+                self._agents_unavailable = True
+                self._agent_count_cache = 0
+                return 0
+            if e.status_code is None:
+                logger.warning(
+                    "agents endpoint unreachable (timeout or network error); "
+                    "agent-aware rules will skip: %s", e,
+                )
                 self._agents_unavailable = True
                 self._agent_count_cache = 0
                 return 0

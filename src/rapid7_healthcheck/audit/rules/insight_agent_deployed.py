@@ -34,9 +34,11 @@ class InsightAgentDeployedRule:
                 findings=[Finding(
                     severity="info",
                     message=(
-                        "/api/3/agents returned 404 — this console does not expose "
-                        "the Insight Agent fleet via API. Audit agent deployment "
-                        "via the Security Console UI."
+                        "/api/3/agents could not be enumerated (returned 404, or "
+                        "timed out / network-errored). Either this console does "
+                        "not expose the Insight Agent fleet via API, or the "
+                        "endpoint is too slow on this environment. Audit agent "
+                        "deployment via the Security Console UI."
                     ),
                     details={"reason": "agents endpoint unavailable"},
                 )],
