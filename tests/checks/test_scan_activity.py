@@ -2,7 +2,13 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
+from rapid7_healthcheck.audit.snapshot import EnvSnapshot
 from rapid7_healthcheck.checks.scan_activity import ScanActivityCheck
+
+
+def _snap(fake_client) -> EnvSnapshot:
+    """Build a real EnvSnapshot over the test's fake client."""
+    return EnvSnapshot(fake_client, full_scan=False, sample_size=500)
 
 
 def _iso(days_ago: float = 0, hours_ago: float = 0) -> str:
@@ -110,4 +116,35 @@ def test_unknown_status_scan_in_recent_window_warns(fake_client, app_config):
     assert any(
         f.severity == "warn" and "unknown" in f.message.lower()
         for f in unknown_rule.findings
+    )
+
+
+def test_scan_activity_uses_snapshot_sites_not_paginate(fake_client, app_config):
+    """When a snapshot is passed in, _fetch_parsed_sites must NOT call
+    client.paginate('/api/3/sites') directly. Locks in the snapshot
+    threading."""
+    cfg = app_config
+    fake_client.set_paginate("/api/3/sites", [
+        {"id": 1, "name": "site-a"},
+    ])
+    fake_client.set_get(
+        "/api/3/sites/1/scans",
+        {"resources": []},
+    )
+
+    snap = _snap(fake_client)
+    snap.sites()  # prime cache
+
+    paginate_before = sum(
+        1 for c in fake_client.calls if c[0] == "paginate" and c[1] == "/api/3/sites"
+    )
+
+    ScanActivityCheck().run(fake_client, cfg, snapshot=snap)
+
+    paginate_after = sum(
+        1 for c in fake_client.calls if c[0] == "paginate" and c[1] == "/api/3/sites"
+    )
+    assert paginate_after == paginate_before, (
+        f"ScanActivityCheck issued {paginate_after - paginate_before} "
+        f"additional /api/3/sites paginations after snapshot was primed"
     )

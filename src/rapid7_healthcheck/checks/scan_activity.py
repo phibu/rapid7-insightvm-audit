@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, NamedTuple
 
 from rapid7_healthcheck.audit import RuleResult
+from rapid7_healthcheck.audit.snapshot import EnvSnapshot
 from rapid7_healthcheck.checks import CheckResult, Finding
 from rapid7_healthcheck.checks._op_rule import (
     flatten_findings,
@@ -88,17 +89,19 @@ class _ParsedSiteScans:
     has_any_scans: bool
 
 
-def _fetch_parsed_sites(client) -> list[_ParsedSiteScans]:
-    """Single I/O pass: paginate sites, fetch each site's recent scans, parse once.
+def _fetch_parsed_sites(client, snapshot: "EnvSnapshot") -> list[_ParsedSiteScans]:
+    """Single I/O pass: fetch each site's recent scans, parse once.
 
     The result is consumed by every rule class in this module — each rule
-    iterates the list and applies its own concept-specific predicate. API
-    call cost: one paginate over /api/3/sites + one GET per site for
-    /api/3/sites/{id}/scans?sort=startTime,DESC&size=20 — identical to
-    pre-0.3.0.
+    iterates the list and applies its own concept-specific predicate.
+    Site list comes from the shared snapshot (no per-check site
+    pagination); per-site scans are fetched directly here because no
+    second consumer exists today.
+    API call cost: one paginate over /api/3/sites (shared with audit) +
+    one GET per site for /api/3/sites/{id}/scans?sort=startTime,DESC&size=20.
     """
     parsed: list[_ParsedSiteScans] = []
-    for site in client.paginate("/api/3/sites"):
+    for site in snapshot.sites():
         site_id = site.get("id")
         site_name = site.get("name", f"id={site_id}")
         body = client.get(
@@ -401,12 +404,21 @@ class ScanActivityCheck:
     name = "Scan Activity"
     description = "Recent scan success/failure, sites with no recent scans, and stuck scans."
 
-    def run(self, client: Any, config: AppConfig, **_kwargs: object) -> CheckResult:
+    def run(
+        self,
+        client: Any,
+        config: AppConfig,
+        *,
+        snapshot: "EnvSnapshot | None" = None,
+        **_kwargs: object,
+    ) -> CheckResult:
+        if snapshot is None:
+            snapshot = EnvSnapshot(client, full_scan=False, sample_size=500)
         start = time.monotonic()
         t = config.thresholds.scan_activity
         now = datetime.now(timezone.utc)
 
-        parsed_sites = _fetch_parsed_sites(client)
+        parsed_sites = _fetch_parsed_sites(client, snapshot)
 
         never_scanned = SitesNeverScannedRule()
         no_success = SitesNoSuccessfulScanRule()
