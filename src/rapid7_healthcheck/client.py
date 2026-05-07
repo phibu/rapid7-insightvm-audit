@@ -232,7 +232,7 @@ class Rapid7Client:
             return
 
         # Phase 2: parallel batches of size `parallel_pages`.
-        logger.info(
+        logger.debug(
             "paginating %s with %d pages, parallel=%d",
             path, total_pages, parallel_pages,
         )

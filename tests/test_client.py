@@ -690,3 +690,50 @@ def test_paginate_propagates_timeout_to_every_page(monkeypatch):
     )
     list(c.paginate("/api/3/agents", timeout=180))
     assert timeouts == [180, 180, 180]
+
+
+def test_paginate_log_is_at_debug_level(caplog):
+    """The 'paginating' log line must be at DEBUG so default-run output
+    isn't dominated by per-call pagination chatter. The new ProgressReporter
+    handles the user-facing progress story; this log is for post-mortem."""
+    from rapid7_healthcheck.client import Rapid7Client
+
+    class _FakeSession:
+        def __init__(self):
+            self._page = 0
+        def request(self, **kwargs):
+            page = self._page
+            self._page += 1
+            class _R:
+                status_code = 200
+                def json(self):
+                    # Force the parallel-batch branch:
+                    # totalPages > 1 and parallel_pages > 1.
+                    return {
+                        "resources": [{"id": page}],
+                        "page": {"totalPages": 4},
+                    }
+                @property
+                def text(self): return ""
+            return _R()
+
+    c = Rapid7Client(
+        base_url="https://r7.example",
+        api_key="k",
+        timeout_seconds=60,
+        parallel_pages=2,
+        session=_FakeSession(),
+    )
+    import logging
+    with caplog.at_level(logging.DEBUG, logger="rapid7_healthcheck.client"):
+        list(c.paginate("/api/3/agents"))
+
+    paginating_records = [
+        r for r in caplog.records
+        if "paginating" in r.getMessage().lower()
+    ]
+    assert paginating_records, "no 'paginating' log emitted"
+    for r in paginating_records:
+        assert r.levelno == logging.DEBUG, (
+            f"'paginating' log expected at DEBUG, got {r.levelname}: {r.getMessage()}"
+        )
