@@ -3,17 +3,21 @@ from __future__ import annotations
 from rapid7_healthcheck.audit import RuleResult, register
 from rapid7_healthcheck.checks import Finding
 
+_DEFAULT_WARN_BELOW_PERCENT = 70
+
 
 @register
 class InsightAgentDeployedRule:
     rule_id = "insight_agent_deployed"
-    rule_name = "Insight Agent Fleet Presence"
+    rule_name = "Insight Agent Fleet Coverage"
     description = (
-        "Reports whether any Insight Agents are deployed in the environment. "
-        "If zero agents are detected, agent-aware rules in this audit can't "
-        "run and credentialed assessment relies entirely on network-credential "
-        "scans. Severity is configurable; default 'info' because some "
-        "environments are intentionally agentless."
+        "Measures Insight Agent coverage across the asset inventory. "
+        "Zero agents means agent-aware rules in this audit can't run and "
+        "credentialed assessment relies entirely on network-credential scans. "
+        "Partial coverage (some agents but well below the asset count) is the "
+        "riskiest state: agent-aware rules under-report because they only see "
+        "the covered slice. Coverage at or above the configured threshold "
+        "passes; below threshold warns."
     )
     default_severity = "info"
     expensive = False
@@ -22,7 +26,7 @@ class InsightAgentDeployedRule:
     ]
 
     def run(self, snapshot, severity, full_scan, sample_size, rule_config) -> RuleResult:
-        agents, total = snapshot.agents()
+        agents, agents_total = snapshot.agents()
 
         if snapshot.is_agents_unavailable():
             return RuleResult(
@@ -31,27 +35,52 @@ class InsightAgentDeployedRule:
                 description=self.description,
                 severity=severity,
                 status="skipped",
-                findings=[Finding(
-                    severity="info",
-                    message=(
-                        "/api/3/agents could not be enumerated (returned 404, or "
-                        "timed out / network-errored). Either this console does "
-                        "not expose the Insight Agent fleet via API, or the "
-                        "endpoint is too slow on this environment. Audit agent "
-                        "deployment via the Security Console UI."
+                findings=[],
+                summary={
+                    "reason": (
+                        "/api/3/agents could not be enumerated (404, gateway "
+                        "timeout 502/503/504, or network error). Audit agent "
+                        "deployment and coverage via the Security Console UI."
                     ),
-                    details={"reason": "agents endpoint unavailable"},
-                )],
-                summary={"agents_total": 0, "endpoint_available": False},
+                    "endpoint_available": False,
+                },
                 sources=list(self.sources),
             )
 
+        warn_below = int((rule_config or {}).get("warn_below_percent", _DEFAULT_WARN_BELOW_PERCENT))
+        try:
+            assets_total = int(snapshot.total_asset_count())
+        except Exception:
+            assets_total = 0
+
+        coverage_pct: float | None
+        if assets_total > 0:
+            coverage_pct = round(agents_total / assets_total * 100, 1)
+        else:
+            coverage_pct = None
+
         findings: list[Finding] = []
-        if total == 0:
+        if agents_total == 0:
             findings.append(Finding(
                 severity=severity,
                 message="No Insight Agents deployed in this environment.",
-                details={"agents_total": 0},
+                details={"agents_total": 0, "assets_total": assets_total},
+            ))
+        elif coverage_pct is not None and coverage_pct < warn_below:
+            findings.append(Finding(
+                severity="warn",
+                message=(
+                    f"Insight Agent coverage is {coverage_pct}% "
+                    f"({agents_total:,} agents / {assets_total:,} assets). "
+                    f"Below the {warn_below}% threshold — agent-aware audit "
+                    f"rules will under-report on the uncovered slice."
+                ),
+                details={
+                    "agents_total": agents_total,
+                    "assets_total": assets_total,
+                    "coverage_percent": coverage_pct,
+                    "warn_below_percent": warn_below,
+                },
             ))
 
         if any(f.severity == "fail" for f in findings):
@@ -61,6 +90,14 @@ class InsightAgentDeployedRule:
         else:
             status = "pass"
 
+        summary: dict = {
+            "agents_total": agents_total,
+            "assets_total": assets_total,
+            "warn_below_percent": warn_below,
+        }
+        if coverage_pct is not None:
+            summary["coverage_percent"] = coverage_pct
+
         return RuleResult(
             rule_id=self.rule_id,
             rule_name=self.rule_name,
@@ -68,6 +105,6 @@ class InsightAgentDeployedRule:
             severity=severity,
             status=status,
             findings=findings,
-            summary={"agents_total": total},
+            summary=summary,
             sources=list(self.sources),
         )

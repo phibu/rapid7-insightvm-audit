@@ -37,39 +37,44 @@ def _example_hostnames(assets: list[dict]) -> list[str]:
 
 
 def _oversize_skip_rule(rule, total_assets: int, threshold: int, *, kind: str) -> RuleResult:
-    """Build a pass-status RuleResult with a single info finding explaining
-    why duplicate detection was skipped at this inventory size.
+    """Build a skipped RuleResult explaining why duplicate detection was bypassed
+    at this inventory size. The skipped status is honest — at this scale we
+    cannot detect duplicates at all via v3 (no group-by), so reporting "pass"
+    would imply we checked and found nothing.
 
     `rule` is a DuplicateHostnamesRule or DuplicateIpsRule instance — used only
     to read RULE_ID / RULE_NAME / DESCRIPTION / SOURCES. `kind` is "hostname"
-    or "ip" and is interpolated into the user-visible message.
+    or "ip" and is interpolated into the user-visible reason.
     """
     label = _KIND_LABEL[kind]
     if threshold == 0:
-        msg = (
+        reason = (
             f"Duplicate {kind} detection disabled "
             f"(duplicate_detection_max_assets=0). "
             f"Review duplicate {label} in the Security Console → Assets."
         )
     else:
-        msg = (
-            f"Skipped: {total_assets:,} assets exceed threshold "
+        reason = (
+            f"{total_assets:,} assets exceed detection ceiling "
             f"({threshold:,}). Walking the full inventory would take too long "
             f"on this console (v3 API has no group-by). Review duplicate "
             f"{label} in the Security Console → Assets, or raise "
             f"duplicate_detection_max_assets to override."
         )
-    return make_rule_result(
+    return RuleResult(
         rule_id=rule.RULE_ID,
         rule_name=rule.RULE_NAME,
         description=rule.DESCRIPTION,
-        findings=[Finding(
-            severity="info",
-            message=msg,
-            details={"total_assets": total_assets, "threshold": threshold},
-        )],
-        sources=rule.SOURCES,
-        summary={f"duplicate_{kind}_detection_skipped": True, "total_assets": total_assets},
+        severity="info",
+        status="skipped",
+        findings=[],
+        summary={
+            f"duplicate_{kind}_detection_skipped": True,
+            "total_assets": total_assets,
+            "threshold": threshold,
+            "reason": reason,
+        },
+        sources=list(rule.SOURCES),
     )
 
 

@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-05-07
+
+### Fixed
+
+- **Report UX — duplicate severity label removed.** The per-rule `<summary>` no longer shows a redundant `sev: WARN` badge alongside the status badge. Effective severity still drives status; the badge that conveys it stays. Sampled rules now get a small `sampled` badge in the same row, and per-rule duration moved into the summary line so the rules-table column wasn't carrying it twice.
+- **Report UX — duplicate per-check rules table removed.** The in-check rules table (which linked to `<details>` cards rendered below it) was duplicating information already in the rule cards' tile strip + card headers. Clicking a rule from the top-level Summary table now jumps directly to the expandable card with no intermediate table, no scroll-past-the-table jump.
+- **Report UX — sticky filter bar no longer obscures jumped-to rules.** Added `scroll-margin-top: 80px` to anchored rule cards so the browser stops scrolling once the card lands below the sticky bar.
+- **Report UX — humanized rule summary box.** The per-rule summary that used to render as `<code>missing_os_count=43</code>` is now a proper info box (label/value pills, sentence-case keys, comma-separated thousands). Two small Jinja filters (`humanize_key`, `humanize_value`) registered alongside the existing `duration` filter.
+- **Detection-ceiling skips render as `skipped`, not `pass`.** When `op.data_quality.duplicate_hostnames` and `op.data_quality.duplicate_ips` bypass detection because the asset count exceeds `duplicate_detection_max_assets` (or the threshold is `0`), the rule now emits `status="skipped"` with the explanatory reason in `summary["reason"]` (rendered in the skipped-box). Previously these cases reported `pass` with an info finding, which incorrectly implied "we checked and found nothing." The template's skipped-box now honors `summary.reason` when present so the detail message still surfaces.
+- **`/api/3/agents` 502/503/504 handled gracefully.** The InsightAgent fleet-presence rule was rendering as a red `error` when a proxy in front of the console returned a gateway timeout. The snapshot's `agent_count()` now treats 502/503/504 the same as a local timeout (mark agents unavailable → dependent rules self-skip). Previously only `404` and `status_code is None` were handled. 500 still raises (real server errors should not be silently masked).
+
+### Changed
+
+- **`insight_agent_deployed` rule expanded into a coverage rule.** Renamed to "Insight Agent Fleet Coverage." Previously a binary "are any agents deployed?" signal — now compares `agent_count` against `total_asset_count` and warns when coverage falls below a configurable threshold (`warn_below_percent`, default `70`). Partial coverage is the riskiest state because agent-aware audit rules under-report on the uncovered slice; full coverage and intentional zero-agents (info finding) keep their existing behavior. Summary always reports `agents_total`, `assets_total`, `coverage_percent` so the new info box shows real numbers. New config key under `audit.rules.insight_agent_deployed.warn_below_percent`; existing `enabled` / `severity` semantics unchanged.
+
 ## [0.4.0] - 2026-05-07
 
 ### Removed

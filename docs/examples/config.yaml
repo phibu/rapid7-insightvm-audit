@@ -168,6 +168,12 @@ audit:
     insight_agent_deployed:
       enabled: true
       severity: info
+      # Warn when Insight Agent coverage falls below this percentage of the
+      # total asset inventory. Partial coverage is the riskiest state — agent-
+      # aware audit rules under-report on the uncovered slice. Set to 0 to
+      # disable the coverage warning (rule will only flag a fully agentless
+      # environment at the configured severity).
+      warn_below_percent: 70
 # User & Permission Audit — sibling to `audit:`, scoped to console user
 # accounts and authentication settings. Requires the API key to belong
 # to a Global Administrator (the underlying /api/3/users endpoint is

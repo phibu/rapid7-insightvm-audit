@@ -327,7 +327,8 @@ def test_duplicates_paginate_failure_emits_two_error_rules(fake_client, app_conf
 
 
 def test_duplicate_detection_skipped_when_total_exceeds_threshold(fake_client, app_config):
-    """Above threshold: both rules emit pass+info findings; paginate is NOT called."""
+    """Above threshold: both rules emit skipped status with the reason in
+    summary; no findings; paginate is NOT called."""
     cfg = _all_off_except(
         app_config,
         flag_duplicate_hostnames=True,
@@ -345,14 +346,16 @@ def test_duplicate_detection_skipped_when_total_exceeds_threshold(fake_client, a
 
     host = _rule(result, "op.data_quality.duplicate_hostnames")
     ip = _rule(result, "op.data_quality.duplicate_ips")
-    assert host.status == "pass"
-    assert ip.status == "pass"
-    assert len(host.findings) == 1
-    assert host.findings[0].severity == "info"
-    assert "100,000" in host.findings[0].message
-    assert "50,000" in host.findings[0].message
-    assert host.findings[0].details["total_assets"] == 100000
-    assert host.findings[0].details["threshold"] == 50000
+    assert host.status == "skipped"
+    assert ip.status == "skipped"
+    assert host.findings == []
+    assert ip.findings == []
+    assert "100,000" in host.summary["reason"]
+    assert "50,000" in host.summary["reason"]
+    assert host.summary["total_assets"] == 100000
+    assert host.summary["threshold"] == 50000
+    assert host.summary["duplicate_hostname_detection_skipped"] is True
+    assert ip.summary["duplicate_ip_detection_skipped"] is True
     # Confirm paginate was never called.
     assert not any(c[0] == "paginate" and c[1] == "/api/3/assets" for c in fake_client.calls)
 
@@ -427,8 +430,10 @@ def test_duplicate_detection_threshold_zero_always_skips(fake_client, app_config
     result = DataQualityCheck().run(fake_client, cfg)
 
     host = _rule(result, "op.data_quality.duplicate_hostnames")
-    assert host.status == "pass"
-    assert "disabled" in host.findings[0].message
+    assert host.status == "skipped"
+    assert host.findings == []
+    assert "disabled" in host.summary["reason"]
+    assert host.summary["threshold"] == 0
     assert not any(c[0] == "paginate" for c in fake_client.calls)
 
 

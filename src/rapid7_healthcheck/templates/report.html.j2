@@ -197,6 +197,47 @@
   details summary {
     cursor: pointer; padding: 0.4rem 0; font-weight: 600;
   }
+  /* Jump-target offset so the sticky filter bar doesn't cover anchored rules. */
+  details[id^="rule-"] { scroll-margin-top: 80px; }
+  .rule-duration {
+    margin-left: auto;
+    color: var(--neutral-muted);
+    font-weight: 400;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+  }
+  details summary { display: flex; align-items: center; gap: 0.5rem; }
+  details summary::-webkit-details-marker { display: none; }
+  details summary::before {
+    content: "▸"; color: var(--neutral-muted); font-size: 11px;
+    transition: transform 150ms;
+  }
+  details[open] summary::before { content: "▾"; }
+  /* Humanized rule summary box — replaces the old code-format key=value list. */
+  dl.rule-summary {
+    display: flex; flex-wrap: wrap; gap: 0.4rem;
+    margin: 0.5rem 0 0.75rem 0;
+    padding: 0.6rem 0.75rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 13px;
+  }
+  dl.rule-summary .rs-item {
+    display: inline-flex; align-items: baseline; gap: 0.35rem;
+    padding-right: 0.75rem;
+    border-right: 1px solid var(--border);
+  }
+  dl.rule-summary .rs-item:last-child { border-right: none; padding-right: 0; }
+  dl.rule-summary dt {
+    color: var(--neutral-muted); font-size: 12px;
+    text-transform: uppercase; letter-spacing: 0.03em;
+    margin: 0;
+  }
+  dl.rule-summary dd {
+    margin: 0; font-weight: 600; color: var(--neutral-fg);
+    font-variant-numeric: tabular-nums;
+  }
   pre {
     background: var(--surface); padding: 0.5rem 0.75rem; border-radius: 4px;
     overflow-x: auto; font-size: 12px; max-height: 240px; overflow-y: auto;
@@ -478,34 +519,19 @@
       <div class="tile"><b>{{ r.summary.rules_skipped }}</b> skipped</div>
     </div>
 
-    <table>
-      <thead><tr><th>Rule</th><th>Status</th><th>Findings</th><th>Notes</th><th style="text-align:right">Duration</th></tr></thead>
-      <tbody>
-      {% for rr in r.rule_results %}
-        <tr>
-          <td><a href="#rule-{{ rr.rule_id }}">{{ rr.rule_name }}</a></td>
-          <td><span class="badge {{ rr.status }}">{{ rr.status|upper }}</span></td>
-          <td>{{ rr.findings|length }}</td>
-          <td>{% if rr.sampled %}sampled{% endif %}</td>
-          <td style="text-align:right">{{ rr.duration_ms | duration }}</td>
-        </tr>
-      {% endfor %}
-      </tbody>
-    </table>
-
     {% for rr in r.rule_results %}
     <details id="rule-{{ rr.rule_id }}"
              data-severity="{{ rr.status }}"
              data-search-text="{{ (rr.rule_name|lower ~ ' ' ~ rr.findings|map(attribute='message')|join(' ')|lower)[:200] }}">
-      <summary><b>{{ rr.rule_name }}</b> <span class="badge {{ rr.status }}">{{ rr.status|upper }}</span>{% if rr.severity %} <span class="badge {{ rr.severity }}" title="Effective severity (config override or rule default)">sev: {{ rr.severity|upper }}</span>{% endif %}</summary>
+      <summary><b>{{ rr.rule_name }}</b> <span class="badge {{ rr.status }}">{{ rr.status|upper }}</span>{% if rr.sampled %} <span class="badge info" title="Rule ran on a sample">sampled</span>{% endif %} <span class="rule-duration">{{ rr.duration_ms | duration }}</span></summary>
       <p class="check-desc">{{ rr.description }}</p>
 
       {% if rr.summary %}
-      <p class="check-desc rule-summary"><b>Summary:</b>
+      <dl class="rule-summary">
         {% for k, v in rr.summary.items() %}
-          <code>{{ k }}={{ v }}</code>{% if not loop.last %} &middot; {% endif %}
+          <div class="rs-item"><dt>{{ k | humanize_key }}</dt><dd>{{ v | humanize_value }}</dd></div>
         {% endfor %}
-      </p>
+      </dl>
       {% endif %}
 
       {% if rr.status == "error" %}
@@ -517,7 +543,13 @@
           {% endif %}
         </div>
       {% elif rr.status == "skipped" %}
-        <div class="skipped-box">This rule is disabled in <code>config.yaml</code>.</div>
+        <div class="skipped-box">
+          {% if rr.summary and rr.summary.reason %}
+            {{ rr.summary.reason }}
+          {% else %}
+            This rule is disabled in <code>config.yaml</code>.
+          {% endif %}
+        </div>
       {% else %}
         {% if rr.sampled %}
           <p class="check-desc"><i>Note: {{ rr.sample_info }}</i></p>

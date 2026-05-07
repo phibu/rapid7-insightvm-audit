@@ -328,6 +328,33 @@ class TestAgentAssetIdsSampled:
         with pytest.raises(Rapid7ClientError):
             snap.agent_asset_ids_sampled()
 
+    def test_endpoint_504_marks_unavailable(self):
+        # 502/503/504 are gateway-level timeouts/overload responses from a
+        # proxy in front of the console. /api/3/agents is well-known to be
+        # slow on consoles with large fleets — these must skip agent rules
+        # cleanly rather than render as red errors.
+        from rapid7_healthcheck.client import Rapid7ClientError
+        c = _FakeAgentsClient(
+            head_raises=Rapid7ClientError(
+                "504 Gateway Timeout from GET /api/3/agents", status_code=504
+            )
+        )
+        snap = EnvSnapshot(c, full_scan=False, sample_size=100)
+
+        sample_ids, total = snap.agent_asset_ids_sampled()
+
+        assert (sample_ids, total) == ([], 0)
+        assert snap.is_agents_unavailable() is True
+
+    def test_endpoint_502_marks_unavailable(self):
+        from rapid7_healthcheck.client import Rapid7ClientError
+        c = _FakeAgentsClient(
+            head_raises=Rapid7ClientError("502 Bad Gateway", status_code=502)
+        )
+        snap = EnvSnapshot(c, full_scan=False, sample_size=100)
+        snap.agent_asset_ids_sampled()
+        assert snap.is_agents_unavailable() is True
+
     def test_endpoint_timeout_marks_unavailable(self):
         # Network errors (timeouts, connection resets) carry status_code=None
         # because no HTTP response was ever received. /api/3/agents is well-known

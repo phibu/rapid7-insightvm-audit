@@ -38,6 +38,32 @@ def _format_duration(ms: int | None) -> str:
     return f"{hours}h {mins}m"
 
 
+def _humanize_key(key: str) -> str:
+    """Turn a snake_case rule-summary key into a sentence-case label.
+
+    `stale_assets_count` → "Stale assets count"
+    `coverage_percent`   → "Coverage percent"
+    `duplicate_ip_groups` → "Duplicate ip groups"
+    """
+    if not isinstance(key, str):
+        return str(key)
+    return key.replace("_", " ").strip().capitalize()
+
+
+def _humanize_value(value) -> str:
+    """Render a rule-summary value for the info-box, formatting numbers and
+    booleans in a way that reads well in the UI. Strings are passed through
+    so callers (e.g. the duplicate-detection skip reason) can supply a
+    pre-formatted user-visible message."""
+    if isinstance(value, bool):
+        return "Yes" if value else "No"
+    if isinstance(value, int):
+        return f"{value:,}"
+    if isinstance(value, float):
+        return f"{value:,.1f}"
+    return str(value)
+
+
 def _finding_signature(rule_id: str, finding: Finding) -> str:
     """Stable 16-char hex hash of (rule_id, message, details).
 
@@ -376,6 +402,8 @@ def render_report(ctx: ReportContext, *, prior_state: dict | None = None) -> str
         lstrip_blocks=False,
     )
     env.filters["duration"] = _format_duration
+    env.filters["humanize_key"] = _humanize_key
+    env.filters["humanize_value"] = _humanize_value
     template = env.get_template("report.html.j2")
     _annotate_findings(ctx.results)
     verdict_class, verdict_label = _verdict(ctx.results)

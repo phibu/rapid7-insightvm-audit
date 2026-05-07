@@ -498,10 +498,15 @@ class EnvSnapshot:
                 self._agents_unavailable = True
                 self._agent_count_cache = 0
                 return 0
-            if e.status_code is None:
+            # 502/503/504 are gateway-level timeouts/overload responses from a
+            # proxy in front of the console. /api/3/agents is well-known to be
+            # slow on consoles with large fleets; treat these the same as a
+            # local timeout (status_code is None) — mark unavailable so
+            # dependent rules self-skip rather than render as red errors.
+            if e.status_code is None or e.status_code in (502, 503, 504):
                 logger.warning(
-                    "agents endpoint unreachable (timeout or network error); "
-                    "agent-aware rules will skip: %s", e,
+                    "agents endpoint unreachable (timeout, gateway error, or "
+                    "network error); agent-aware rules will skip: %s", e,
                 )
                 self._agents_unavailable = True
                 self._agent_count_cache = 0
