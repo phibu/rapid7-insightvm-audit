@@ -462,7 +462,9 @@ class EnvSnapshot:
     def is_agents_unavailable(self) -> bool:
         """True if /api/3/agents returned 404 — pure read of the cached flag.
 
-        Callers should invoke `agents()` first to prime the flag.
+        The flag is primed as a side effect of any agent accessor:
+        `agent_count()`, `agents()`, or `agent_asset_ids_sampled()`. Callers
+        should invoke at least one of those first.
         """
         return self._agents_unavailable
 
