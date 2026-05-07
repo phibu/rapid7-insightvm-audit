@@ -75,6 +75,10 @@ class CloudSnapshot:
 
     def console_engines(self) -> list[dict]:
         if self._console_engines is None:
-            body = self._v3.get("/api/3/scan_engines")
-            self._console_engines = list(body.get("resources", []))
+            # Paginate explicitly: rules cross-reference this list against
+            # cloud_engines() which paginates; a silent first-page-only
+            # truncation here would make every engine past page 1 look
+            # "missing from cloud" — a false positive that gets worse on
+            # bigger deployments.
+            self._console_engines = list(self._v3.paginate("/api/3/scan_engines"))
         return self._console_engines

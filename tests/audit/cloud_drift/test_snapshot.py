@@ -77,9 +77,24 @@ def test_cloud_engines_paginates_get():
     v4.paginate.assert_called_once_with("/v4/integration/scan/engine")
 
 
-def test_console_engines_returns_v3_resources_list():
+def test_console_engines_paginates_v3():
     v3 = MagicMock()
-    v3.get.return_value = {"resources": [{"id": 1, "name": "console-a"}]}
+    v3.paginate.return_value = iter([{"id": 1, "name": "console-a"}])
     snap = CloudSnapshot(v3_client=v3, cloud_client=MagicMock())
     engines = snap.console_engines()
     assert engines == [{"id": 1, "name": "console-a"}]
+    v3.paginate.assert_called_once_with("/api/3/scan_engines")
+
+
+def test_console_engines_handles_multi_page_response():
+    # Regression: rules cross-reference console_engines() with the v4
+    # cloud_engines() list. If the v3 side silently truncated to one
+    # page, every engine past page 1 would appear "missing from cloud" —
+    # false positives that scale with deployment size.
+    v3 = MagicMock()
+    v3.paginate.return_value = iter([
+        {"id": i, "name": f"engine-{i}"} for i in range(300)
+    ])
+    snap = CloudSnapshot(v3_client=v3, cloud_client=MagicMock())
+    engines = snap.console_engines()
+    assert len(engines) == 300
