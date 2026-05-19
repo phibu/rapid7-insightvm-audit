@@ -24,12 +24,11 @@ class CloudClientError(Rapid7ClientError):
     Integrations API (v4).
 
     Subclass of `Rapid7ClientError` so the existing `_extract_diagnostics`
-    helper in `audit/__init__.py` can pull `status_code` off the same
-    exception type without code changes. Path extraction in
-    `_extract_diagnostics` won't match v4 paths (its regex is
-    `/api/3/...`-only); error_path on cloud-rule failures will be `None`,
-    which is acceptable — error_status_code carries the same diagnostic
-    weight.
+    helper in `audit/__init__.py` pulls `status_code` and `error_path`
+    off the same exception type without code changes. Since 0.6.0 the
+    `_ERROR_PATH_RE` regex matches both `/api/3/...` and
+    `/v4/integration/...` path shapes; cloud-rule failure findings
+    carry the same `error_path` diagnostic as v3 failures.
     """
 
 

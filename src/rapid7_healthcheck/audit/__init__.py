@@ -13,10 +13,14 @@ from rapid7_healthcheck.config import AppConfig
 
 logger = logging.getLogger(__name__)
 
+# Match both v3 (/api/3/...) and v4 (/v4/integration/...) paths. The
+# alternation `(?:/api/3|/v4/integration)` keeps the existing capture-
+# group structure intact (3 groups, one per error-message form) so
+# `m.group(1) or m.group(2) or m.group(3)` still works downstream.
 _ERROR_PATH_RE = re.compile(
-    r' on \w+ (/api/3/[^\s:]+)'        # "network error after N attempt(s) on GET /api/3/..."
-    r'|(?: at )(/api/3/[^\s:]+)'       # "401 at /api/3/..."
-    r'|(?: from \w+ )(/api/3/[^\s:]+)' # "HTTP 500 from POST /api/3/..."
+    r' on \w+ ((?:/api/3|/v4/integration)/[^\s:]+)'        # "...on GET /api/3/..." or "...on POST /v4/integration/..."
+    r'|(?: at )((?:/api/3|/v4/integration)/[^\s:]+)'       # "...at /api/3/..." or "...at /v4/integration/..."
+    r'|(?: from \w+ )((?:/api/3|/v4/integration)/[^\s:]+)' # "...from GET /api/3/..." or "...from POST /v4/integration/..."
 )
 
 
