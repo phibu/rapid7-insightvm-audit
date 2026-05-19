@@ -30,13 +30,6 @@ from rapid7_healthcheck.config import AppConfig
 logger = logging.getLogger(__name__)
 
 
-# full_scan / sample_size are part of the Rule.run protocol but cloud-drift
-# rules read aggregate counts and never sample. The constants below name the
-# values we pass through unchanged so a future reader doesn't mistake them
-# for tunable knobs.
-_CLOUD_FULL_SCAN = False
-_CLOUD_SAMPLE_SIZE = 500
-
 _CLOUD_RULE_REGISTRY: dict[str, type[Rule]] = {}
 
 
@@ -115,11 +108,14 @@ class CloudDriftAuditCheck:
             rule_start = time.monotonic()
             try:
                 try:
+                    # full_scan + sample_size are part of the Rule.run protocol
+                    # but cloud-drift rules read aggregate counts (never sample),
+                    # so we pass the protocol defaults: full_scan=False, sample_size=500.
                     result = rule_cls().run(
                         snapshot,
                         rule_cfg.severity,
-                        _CLOUD_FULL_SCAN,
-                        _CLOUD_SAMPLE_SIZE,
+                        False,
+                        500,
                         rule_cfg.knobs,
                     )
                     result.duration_ms = int((time.monotonic() - rule_start) * 1000)
