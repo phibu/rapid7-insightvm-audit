@@ -169,6 +169,20 @@ class EnvSnapshot:
         return self._sites
 
     def scan_engines(self) -> list[dict]:
+        """Return all scan engines from /api/3/scan_engines.
+
+        Single GET, no pagination. The v3 OpenAPI spec
+        (``docs/research/api-v3.json``) shows this endpoint accepts no
+        ``page``/``size`` parameters and its response schema
+        (``CollectionModelScanEngine``) has no ``page`` envelope — it
+        returns the full collection in one response. If a future console
+        ever returns a paginated envelope (response includes a ``page``
+        key with ``totalPages``), this accessor will silently truncate to
+        the first page and rules that call it (`local_engine_production_scope`,
+        `single_engine_overload`, `engine_version_drift`) will see only a
+        subset. The fix at that point is to switch to ``self._client.paginate(...)``.
+        Detection signal: ``body.get("page")`` becomes non-empty.
+        """
         if self._scan_engines is None:
             body = self._client.get("/api/3/scan_engines")
             self._scan_engines = list(body.get("resources", []))

@@ -85,10 +85,14 @@ class CloudSnapshot:
 
     def console_engines(self) -> list[dict]:
         if self._console_engines is None:
-            # Paginate explicitly: rules cross-reference this list against
-            # cloud_engines() which paginates; a silent first-page-only
-            # truncation here would make every engine past page 1 look
-            # "missing from cloud" — a false positive that gets worse on
-            # bigger deployments.
+            # Use paginate() defensively. Per the v3 OpenAPI spec
+            # (docs/research/api-v3.json), /api/3/scan_engines is not
+            # paginated — it returns the full collection in one response,
+            # and paginate()'s page-0 fast path handles that correctly
+            # (no `page.totalPages` => stop after page 0). If Rapid7 ever
+            # paginates this endpoint, this call site is already correct;
+            # the v3-only EnvSnapshot.scan_engines() at audit/snapshot.py
+            # is the one that would silently truncate. See its docstring
+            # for the detection signal.
             self._console_engines = list(self._v3.paginate("/api/3/scan_engines"))
         return self._console_engines
