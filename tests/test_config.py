@@ -670,3 +670,39 @@ def test_load_audit_rejects_removed_rule_id():
                 "insight_agent_version_currency": {"enabled": True, "severity": "warn"},
             },
         })
+
+
+def test_ensure_default_on_adds_missing_keys():
+    """The helper must add missing audit category keys with `True`."""
+    from rapid7_healthcheck.config import _ensure_default_on
+    checks = {"scan_engines": True}
+    result = _ensure_default_on(checks, "configuration_audit", "user_permission_audit")
+    assert result["configuration_audit"] is True
+    assert result["user_permission_audit"] is True
+    assert result["scan_engines"] is True  # existing keys preserved
+
+
+def test_ensure_default_on_preserves_user_disable():
+    """The helper must NEVER overwrite a user-set `False`."""
+    from rapid7_healthcheck.config import _ensure_default_on
+    checks = {"configuration_audit": False, "scan_engines": True}
+    result = _ensure_default_on(checks, "configuration_audit", "user_permission_audit")
+    assert result["configuration_audit"] is False  # critical: do not overwrite
+    assert result["user_permission_audit"] is True
+
+
+def test_ensure_default_on_preserves_user_enable():
+    """The helper must NOT touch a user-set `True` either."""
+    from rapid7_healthcheck.config import _ensure_default_on
+    checks = {"configuration_audit": True}
+    result = _ensure_default_on(checks, "configuration_audit")
+    assert result == {"configuration_audit": True}
+
+
+def test_ensure_default_on_returns_same_dict_when_no_changes():
+    """When every name is already present, return the input dict by identity
+    (no copy). The docstring promises this as an optimization; pin it."""
+    from rapid7_healthcheck.config import _ensure_default_on
+    checks = {"configuration_audit": True, "user_permission_audit": False}
+    result = _ensure_default_on(checks, "configuration_audit", "user_permission_audit")
+    assert result is checks

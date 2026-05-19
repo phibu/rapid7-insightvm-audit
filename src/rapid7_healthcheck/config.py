@@ -686,6 +686,24 @@ def _build_report_config(data: Any) -> ReportConfig:
     )
 
 
+def _ensure_default_on(checks: dict, *names: str) -> dict:
+    """Return `checks` with any missing name defaulted to ``True``.
+
+    Preserves explicit user values: if a key is already present (even with
+    ``False``), it is not overwritten. Mutates and returns a copy of the
+    input dict only when at least one name was missing — when every name
+    is present, returns the input dict unchanged so the caller doesn't pay
+    for a copy.
+    """
+    missing = [n for n in names if n not in checks]
+    if not missing:
+        return checks
+    result = dict(checks)
+    for name in missing:
+        result[name] = True
+    return result
+
+
 def _build_app_config(data: dict) -> AppConfig:
     expected_root = {"rapid7", "report", "thresholds", "checks", "audit", "user_audit", "cloud_integration", "cloud_drift"}
     unknown = set(data.keys()) - expected_root
@@ -709,15 +727,12 @@ def _build_app_config(data: dict) -> AppConfig:
     checks = data["checks"]
     if not isinstance(checks, dict) or not all(isinstance(v, bool) for v in checks.values()):
         raise ConfigError("checks: expected mapping of name -> bool")
-    if "configuration_audit" not in checks:
-        checks = dict(checks)
-        checks["configuration_audit"] = True
-    if "user_permission_audit" not in checks:
-        checks = dict(checks)
-        checks["user_permission_audit"] = True
-    if "cloud_drift_audit" not in checks:
-        checks = dict(checks)
-        checks["cloud_drift_audit"] = True
+    checks = _ensure_default_on(
+        checks,
+        "configuration_audit",
+        "user_permission_audit",
+        "cloud_drift_audit",
+    )
 
     audit = _build_audit_config(data.get("audit"))
     user_audit = _build_user_audit_config(data.get("user_audit"))
