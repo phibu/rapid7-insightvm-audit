@@ -42,7 +42,7 @@ class UserPermissionAuditCheck:
         "belong to a Global Administrator."
     )
 
-    def run(self, client: Any, config: AppConfig, progress=None) -> CheckResult:
+    def run(self, client: Any, config: AppConfig, *, progress=None) -> CheckResult:
         start = time.monotonic()
 
         if not config.user_audit.enabled:

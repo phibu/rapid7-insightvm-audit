@@ -95,7 +95,7 @@ class ConfigurationAuditCheck:
     name = "Configuration Audit"
     description = "Best-practice configuration audits sourced from Rapid7 documentation."
 
-    def run(self, client: Any, config: AppConfig, progress=None) -> CheckResult:
+    def run(self, client: Any, config: AppConfig, *, progress=None) -> CheckResult:
         start = time.monotonic()
 
         if not config.audit.enabled:
