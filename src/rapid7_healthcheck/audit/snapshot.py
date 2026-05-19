@@ -438,15 +438,39 @@ class EnvSnapshot:
             self._total_asset_count = int(body.get("page", {}).get("totalResources", 0))
         return self._total_asset_count
 
+    def _mark_agents_unavailable_from_gateway_error(self, e: Rapid7ClientError) -> bool:
+        """Return True if `e` is a gateway/transient failure on /api/3/agents
+        worth swallowing — and flip the `_agents_unavailable` flag + reset the
+        count cache to 0 so the invariant `unavailable ⇒ count is 0` holds.
+
+        Mirrors the head-probe swallow in `agent_count()`: 502/503/504 and
+        pre-response failures (`status_code is None`) are treated as
+        "endpoint unreachable" because /api/3/agents is well-known to be
+        slow on consoles with large fleets, and the same proxy that gateway-
+        errors the head probe will gateway-error mid-pagination too. Real
+        bugs (other 5xx, 4xx) are not swallowed; caller re-raises.
+        """
+        if e.status_code is None or e.status_code in (502, 503, 504):
+            logger.warning(
+                "agents endpoint unreachable mid-pagination (timeout, gateway "
+                "error, or network error); agent-aware rules will skip: %s", e,
+            )
+            self._agents_unavailable = True
+            self._agent_count_cache = 0
+            return True
+        return False
+
     def agents(self) -> tuple[list[dict], int]:
         """Return (sample_list, total_count) for the Insight Agent fleet.
 
         Lazily fetched and cached on first call. Honors `sample_size` when
         `full_scan` is False — `total_count` comes from `page.totalResources`,
         `sample_list` is capped at `sample_size`. Returns `([], 0)` cleanly
-        when /api/3/agents is unavailable (404 on older consoles or non-GA
-        keys); the `_agents_unavailable` flag is set so dependent rules can
-        self-skip honestly rather than treat the empty list as 'no agents'.
+        when /api/3/agents is unavailable: 404 (older consoles / non-GA keys)
+        on the head probe, or 502/503/504/network-error either on the head
+        probe or mid-pagination. The `_agents_unavailable` flag is set so
+        dependent rules self-skip honestly rather than treat the empty list
+        as 'no agents'.
         """
         if self._agents_cache is not None:
             return self._agents_cache
@@ -458,11 +482,17 @@ class EnvSnapshot:
 
         sample: list[dict] = []
         if total > 0:
-            it = self._client.paginate("/api/3/agents", timeout=self._agents_timeout)
-            if self._full_scan:
-                sample = list(it)
-            else:
-                sample = list(itertools.islice(it, self._sample_size))
+            try:
+                it = self._client.paginate("/api/3/agents", timeout=self._agents_timeout)
+                if self._full_scan:
+                    sample = list(it)
+                else:
+                    sample = list(itertools.islice(it, self._sample_size))
+            except Rapid7ClientError as e:
+                if self._mark_agents_unavailable_from_gateway_error(e):
+                    self._agents_cache = ([], 0)
+                    return self._agents_cache
+                raise
 
         self._agents_cache = (sample, total)
         return self._agents_cache
@@ -541,10 +571,16 @@ class EnvSnapshot:
             return self._agent_asset_ids_cache
 
         ids: set[int] = set()
-        for a in self._client.paginate("/api/3/agents", timeout=self._agents_timeout):
-            aid = _extract_agent_asset_id(a)
-            if aid is not None:
-                ids.add(aid)
+        try:
+            for a in self._client.paginate("/api/3/agents", timeout=self._agents_timeout):
+                aid = _extract_agent_asset_id(a)
+                if aid is not None:
+                    ids.add(aid)
+        except Rapid7ClientError as e:
+            if self._mark_agents_unavailable_from_gateway_error(e):
+                self._agent_asset_ids_cache = set()
+                return self._agent_asset_ids_cache
+            raise
         self._agent_asset_ids_cache = ids
         return ids
 
@@ -583,13 +619,19 @@ class EnvSnapshot:
 
         sample_ids: list[int] = []
         if total > 0:
-            for a in itertools.islice(
-                self._client.paginate("/api/3/agents", timeout=self._agents_timeout),
-                self._sample_size,
-            ):
-                aid = _extract_agent_asset_id(a)
-                if aid is not None:
-                    sample_ids.append(aid)
+            try:
+                for a in itertools.islice(
+                    self._client.paginate("/api/3/agents", timeout=self._agents_timeout),
+                    self._sample_size,
+                ):
+                    aid = _extract_agent_asset_id(a)
+                    if aid is not None:
+                        sample_ids.append(aid)
+            except Rapid7ClientError as e:
+                if self._mark_agents_unavailable_from_gateway_error(e):
+                    self._agent_asset_ids_sampled_cache = ([], 0)
+                    return self._agent_asset_ids_sampled_cache
+                raise
 
         self._agent_asset_ids_sampled_cache = (sample_ids, total)
         return self._agent_asset_ids_sampled_cache

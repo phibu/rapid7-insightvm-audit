@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-05-19
+
+### Fixed
+
+- **`/api/3/agents` 502/503/504 mid-pagination handled gracefully.** v0.4.1 added the gateway-error swallow on the `/api/3/agents?size=1` head probe inside `agent_count()`, but the three follow-up pagination call sites (`agents()`, `agent_asset_ids()`, `agent_asset_ids_sampled()`) were not protected. On consoles with large agent fleets the head probe succeeds (lightweight) but the full pagination still times out at the gateway after the client's 4 attempts — producing a red `error` rule card on `Insight Agent Fleet Coverage` (and the same failure mode on the `agent_unauth_collision` audit rule and `op.asset_coverage.agent_only_assets` op-check). Extracted the swallow rule to a private `_mark_agents_unavailable_from_gateway_error` helper and wrapped all three pagination sites with it: 502/503/504/network-error → flip `_agents_unavailable`, reset the count cache to 0 (so `unavailable ⇒ count is 0` holds), return empty. Dependent rules now self-skip cleanly via `is_agents_unavailable()` instead of red-erroring. Non-gateway 5xx still propagates.
+
+### Changed
+
+- **Cloud-drift rules — source URLs populated.** All three v0 rules (`cd.console_asset_count_drift`, `cd.scan_engine_cloud_registration`, `cd.stale_assessment_cohort`) shipped 0.5.0 with `sources = ()` and a backlog item. They now point to verified Rapid7 doc URLs (Insight Platform API overview, working-with-scan-engines, scan-template-best-practices respectively). The README cloud-drift rule table grows a `Source` column matching the other rule tables.
+
+- **Cloud-drift knob coercion guarded against fractional inputs.** `last_seen_max_age_hours` and `stale_after_days` were `int()`-cast directly from `rule_config`; a user setting `0.5` silently truncated to `0`, making the threshold equal to `now()` and flagging every engine/asset as stale. New `_coerce_positive_int` helper in `scan_engine_cloud_registration.py` (imported by `stale_assessment_cohort.py`) rejects bools, fractional floats, zero, and negatives — falls back to the default with a warning log instead of producing a silent false-positive avalanche.
+
+- **`cd.scan_engine_cloud_registration` duplicate-engine-name guard.** The `cloud_by_name` dict comprehension was last-write-wins; if a stale shadow registration shared a name with the live entry, response order decided which one was kept. Now picks the entry with the newest `last_seen` (None loses), so a live engine cannot be masked by an older shadow regardless of response order.
+
+### Internal
+
+- **`CloudSnapshot.cloud_assets_stale` quoting verified against the v4 spec.** The backlog flagged the single-quoted timestamp form as a potential silent-no-op against a strict v4 filter parser. The v4 `AssetVulnerabilityQueryResource` schema in `docs/research/api-v4.json` documents the criteria form as `last_assessed_for_vulnerabilities >= '2025-09-13T00:02:01Z'` — single-quoted, matching our current output. Inconsistent with the endpoint's POST example (which shows an unquoted timestamp) but the schema description is authoritative for *this* field. Added a citing comment so the next reviewer doesn't have to re-do the lookup; the existing `test_cloud_assets_stale_uses_filter_dsl_with_iso_threshold` test is the pinning test.
+
+- **CLAUDE.md Architecture section grows a `CloudSnapshot` one-liner** mirroring the existing `EnvSnapshot` documentation: two-client lazy container, sampling deliberately ignored, where to add a new cloud-drift rule.
+
+- 9 new tests (640 → 649 total): 6 cover the mid-pagination 504 swallow path on all three agent accessors plus the count-cache invariant; 2 cover fractional/zero/negative coercion of the cloud-drift knobs; 2 cover duplicate engine name resolution in both orderings.
+
 ## [0.5.0] - 2026-05-07
 
 ### Added

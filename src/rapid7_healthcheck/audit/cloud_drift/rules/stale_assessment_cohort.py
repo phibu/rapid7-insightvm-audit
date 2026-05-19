@@ -4,6 +4,9 @@ from datetime import datetime, timedelta, timezone
 
 from rapid7_healthcheck.audit import RuleResult
 from rapid7_healthcheck.audit.cloud_drift import register_cloud_rule
+from rapid7_healthcheck.audit.cloud_drift.rules.scan_engine_cloud_registration import (
+    _coerce_positive_int,
+)
 from rapid7_healthcheck.checks import Finding
 
 
@@ -27,11 +30,17 @@ class StaleAssessmentCohortRule:
     default_severity = "warn"
     expensive = False
     # Tuple, not list — class-level mutable defaults are a footgun even
-    # when nothing currently mutates them. URLs land in 0.5.1 backlog.
-    sources: tuple[str, ...] = ()
+    # when nothing currently mutates them.
+    sources: tuple[str, ...] = (
+        "https://docs.rapid7.com/insightvm/scan-template-best-practices/",
+    )
 
     def run(self, snapshot, severity, full_scan, sample_size, rule_config) -> RuleResult:
-        stale_after_days = int(rule_config.get("stale_after_days", _DEFAULT_STALE_AFTER_DAYS))
+        stale_after_days = _coerce_positive_int(
+            rule_config.get("stale_after_days", _DEFAULT_STALE_AFTER_DAYS),
+            name="stale_after_days",
+            default=_DEFAULT_STALE_AFTER_DAYS,
+        )
         max_stale_percent = float(rule_config.get("max_stale_percent", _DEFAULT_MAX_STALE_PERCENT))
         max_stale_count = rule_config.get("max_stale_count", None)
 

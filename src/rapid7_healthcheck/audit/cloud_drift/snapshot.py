@@ -58,7 +58,17 @@ class CloudSnapshot:
         return self._console_assets_total
 
     def cloud_assets_stale(self, since: datetime) -> int:
-        """Count of cloud assets where last_assessed_for_vulnerabilities < since."""
+        """Count of cloud assets where last_assessed_for_vulnerabilities < since.
+
+        The timestamp is single-quoted because the v4
+        ``AssetVulnerabilityQueryResource`` schema documents the criteria
+        form as ``last_assessed_for_vulnerabilities >= '2025-09-13T00:02:01Z'``
+        (see ``docs/research/api-v4.json``). The POST example on the
+        endpoint shows an unquoted form (``last_scan_end > 2019-09-04...``)
+        but the schema description is authoritative for *this* field — the
+        pinning test ``test_cloud_assets_stale_uses_filter_dsl_with_iso_threshold``
+        locks the exact body shape so a future regression is loud.
+        """
         body = self._cloud.post_one(
             "/v4/integration/assets",
             json_body={

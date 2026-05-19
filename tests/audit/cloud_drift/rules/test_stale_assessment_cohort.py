@@ -104,3 +104,19 @@ def test_stale_count_capped_at_total_count():
 def test_rule_is_registered():
     from rapid7_healthcheck.audit.cloud_drift import _CLOUD_RULE_REGISTRY
     assert "cd.stale_assessment_cohort" in _CLOUD_RULE_REGISTRY
+
+
+def test_fractional_stale_after_days_falls_back_to_default():
+    """stale_after_days=0.5 must not silently truncate to 0 (threshold ==
+    now() would flag every cloud asset as stale). Falls back to default 30."""
+    rule = StaleAssessmentCohortRule()
+    snap = _snapshot(total=1000, stale=10)
+    result = rule.run(snap, "warn", False, 500, {"stale_after_days": 0.5, "max_stale_percent": 10})
+    assert result.summary["stale_after_days"] == 30
+
+
+def test_zero_stale_after_days_falls_back_to_default():
+    rule = StaleAssessmentCohortRule()
+    snap = _snapshot(total=1000, stale=10)
+    result = rule.run(snap, "warn", False, 500, {"stale_after_days": 0, "max_stale_percent": 10})
+    assert result.summary["stale_after_days"] == 30

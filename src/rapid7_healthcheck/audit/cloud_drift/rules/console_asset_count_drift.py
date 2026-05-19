@@ -25,8 +25,10 @@ class ConsoleAssetCountDriftRule:
     default_severity = "warn"
     expensive = False
     # Tuple, not list — class-level mutable defaults are a footgun even
-    # when nothing currently mutates them. URLs land in 0.5.1 backlog.
-    sources: tuple[str, ...] = ()
+    # when nothing currently mutates them.
+    sources: tuple[str, ...] = (
+        "https://insight.help.rapid7.com/docs/api-overview",
+    )
 
     def run(self, snapshot, severity, full_scan, sample_size, rule_config) -> RuleResult:
         tolerance = float(rule_config.get("tolerance_percent", _DEFAULT_TOLERANCE_PERCENT))

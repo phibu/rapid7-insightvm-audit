@@ -316,11 +316,11 @@ Insight Platform API key in addition to your existing console
 
 ### Cloud Drift Audit rules
 
-| Rule ID | What it checks | Default severity |
-|---|---|---|
-| `cd.console_asset_count_drift` | Console asset count vs. cloud asset count, flagged when divergence exceeds `tolerance_percent` (default 5%). One side at zero with the other non-zero upgrades to fail. | warn |
-| `cd.scan_engine_cloud_registration` | Console-known engines that are missing from the Insight Platform engine list (fail) or have stale `last_seen` (warn, default 24 h). | warn |
-| `cd.stale_assessment_cohort` | Cloud assets with `last_assessed_for_vulnerabilities` older than `stale_after_days` (default 30), flagged when the cohort exceeds `max_stale_percent` or `max_stale_count`. | warn |
+| Rule ID | What it checks | Default severity | Source |
+|---|---|---|---|
+| `cd.console_asset_count_drift` | Console asset count vs. cloud asset count, flagged when divergence exceeds `tolerance_percent` (default 5%). One side at zero with the other non-zero upgrades to fail. | warn | https://insight.help.rapid7.com/docs/api-overview |
+| `cd.scan_engine_cloud_registration` | Console-known engines that are missing from the Insight Platform engine list (fail) or have stale `last_seen` (warn, default 24 h). | warn | https://docs.rapid7.com/insightvm/working-with-scan-engines/ |
+| `cd.stale_assessment_cohort` | Cloud assets with `last_assessed_for_vulnerabilities` older than `stale_after_days` (default 30), flagged when the cohort exceeds `max_stale_percent` or `max_stale_count`. | warn | https://docs.rapid7.com/insightvm/scan-template-best-practices/ |
 
 ### Enabling Cloud Drift Audit
 

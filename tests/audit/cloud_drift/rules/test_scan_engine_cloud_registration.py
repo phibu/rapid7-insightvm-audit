@@ -105,6 +105,67 @@ def test_rule_is_registered():
     assert "cd.scan_engine_cloud_registration" in _CLOUD_RULE_REGISTRY
 
 
+def test_fractional_max_age_falls_back_to_default():
+    """A user setting last_seen_max_age_hours=0.5 must not silently truncate
+    to 0 (which would make the threshold == now() and flag every engine as
+    stale). The coercion helper falls back to the default with a warning."""
+    rule = ScanEngineCloudRegistrationRule()
+    snap = _snapshot(
+        console_engines=[{"id": 1, "name": "engine-a"}],
+        # 1h ago: stale under 0.5h (if truncation bug present), fresh under default 24h.
+        cloud_engines=[{"name": "engine-a", "last_seen": _now_iso(1)}],
+    )
+    result = rule.run(snap, "warn", False, 500, {"last_seen_max_age_hours": 0.5})
+    # Default 24h kicks in -> 1h-old engine is fresh -> pass.
+    assert result.status == "pass"
+    assert result.summary["max_age_hours"] == 24
+
+
+def test_zero_or_negative_max_age_falls_back_to_default():
+    rule = ScanEngineCloudRegistrationRule()
+    snap = _snapshot(
+        console_engines=[{"id": 1, "name": "engine-a"}],
+        cloud_engines=[{"name": "engine-a", "last_seen": _now_iso(1)}],
+    )
+    for bad in (0, -5, "abc", None, True):
+        result = rule.run(snap, "warn", False, 500, {"last_seen_max_age_hours": bad})
+        assert result.summary["max_age_hours"] == 24, f"bad input {bad!r} should fall back"
+
+
+def test_duplicate_engine_names_pick_most_recent_last_seen():
+    """A duplicate engine name in the cloud list should not silently let the
+    older shadow registration mask the live one (last-write-wins in the
+    naive dict comprehension would let response order decide). The newer
+    last_seen wins."""
+    rule = ScanEngineCloudRegistrationRule()
+    snap = _snapshot(
+        console_engines=[{"id": 1, "name": "engine-a"}],
+        cloud_engines=[
+            # Stale shadow first; live entry second. last_seen newer on the live entry.
+            {"name": "engine-a", "last_seen": _now_iso(72)},
+            {"name": "engine-a", "last_seen": _now_iso(1)},
+        ],
+    )
+    result = rule.run(snap, "warn", False, 500, {"last_seen_max_age_hours": 24})
+    # Newer entry (1h ago) wins -> rule should not flag stale.
+    assert result.status == "pass"
+
+
+def test_duplicate_engine_names_live_first_then_stale_still_picks_live():
+    """Order-independent: live entry first, stale shadow second. The live
+    one (newer last_seen) must still win."""
+    rule = ScanEngineCloudRegistrationRule()
+    snap = _snapshot(
+        console_engines=[{"id": 1, "name": "engine-a"}],
+        cloud_engines=[
+            {"name": "engine-a", "last_seen": _now_iso(1)},
+            {"name": "engine-a", "last_seen": _now_iso(72)},
+        ],
+    )
+    result = rule.run(snap, "warn", False, 500, {"last_seen_max_age_hours": 24})
+    assert result.status == "pass"
+
+
 def test_naive_last_seen_does_not_raise_type_error():
     # Defense in depth: if a future v4 response ever omits the timezone
     # offset, the naive datetime would otherwise raise TypeError when

@@ -82,6 +82,133 @@ def test_agents_propagates_non_404_errors():
         raise AssertionError("expected Rapid7ClientError to propagate on 500")
 
 
+def _raising_paginate(status_code: int):
+    """Return a paginate side_effect that raises mid-iteration with the given
+    HTTP status. Mirrors the real client behavior where pagination iterates
+    page-by-page and a later page can raise 504 even though the first head
+    probe succeeded."""
+    def _gen(*_args, **_kwargs):
+        # Yield zero items, then raise on first .__next__() — equivalent to
+        # the client retrying max_retries times on the first page and giving up.
+        if False:
+            yield {}
+        raise Rapid7ClientError(
+            f"{status_code} after 4 attempts: gateway timeout",
+            status_code=status_code,
+        )
+    return _gen
+
+
+def test_agents_swallows_504_mid_pagination_and_marks_unavailable():
+    """Head probe succeeds (totalResources > 0), then pagination of the full
+    fleet hits 504. The rule should see is_agents_unavailable() == True and
+    self-skip rather than red-error."""
+    client = MagicMock()
+    client.get.return_value = {"resources": [], "page": {"totalResources": 5000}}
+    client.paginate.side_effect = _raising_paginate(504)
+
+    snapshot = EnvSnapshot(client, full_scan=False, sample_size=100)
+    sample, total = snapshot.agents()
+
+    assert sample == []
+    assert total == 0
+    assert snapshot.is_agents_unavailable() is True
+
+
+def test_agents_swallows_502_and_503_mid_pagination():
+    for status in (502, 503):
+        client = MagicMock()
+        client.get.return_value = {"resources": [], "page": {"totalResources": 5000}}
+        client.paginate.side_effect = _raising_paginate(status)
+
+        snapshot = EnvSnapshot(client, full_scan=False, sample_size=100)
+        sample, total = snapshot.agents()
+
+        assert sample == [], f"status {status}: expected empty sample"
+        assert total == 0, f"status {status}: expected zero total"
+        assert snapshot.is_agents_unavailable() is True, f"status {status}: expected unavailable flag"
+
+
+def test_agents_swallows_network_error_mid_pagination():
+    """status_code=None means a pre-response failure (timeout, network).
+    Same /api/3/agents-is-slow story as 504 — treat as unavailable."""
+    client = MagicMock()
+    client.get.return_value = {"resources": [], "page": {"totalResources": 5000}}
+
+    def _gen(*_args, **_kwargs):
+        if False:
+            yield {}
+        raise Rapid7ClientError("network error after 4 attempts: ConnectionResetError")
+    client.paginate.side_effect = _gen
+
+    snapshot = EnvSnapshot(client, full_scan=False, sample_size=100)
+    sample, total = snapshot.agents()
+
+    assert sample == []
+    assert total == 0
+    assert snapshot.is_agents_unavailable() is True
+
+
+def test_agents_propagates_non_gateway_errors_mid_pagination():
+    """A 500 mid-pagination is a real bug, not a slow-endpoint timeout.
+    Must still propagate, mirroring the head-probe behavior."""
+    client = MagicMock()
+    client.get.return_value = {"resources": [], "page": {"totalResources": 100}}
+    client.paginate.side_effect = _raising_paginate(500)
+
+    snapshot = EnvSnapshot(client, full_scan=False, sample_size=10)
+    try:
+        snapshot.agents()
+    except Rapid7ClientError as e:
+        assert e.status_code == 500
+    else:
+        raise AssertionError("expected Rapid7ClientError to propagate on 500")
+
+
+def test_agents_count_cache_invalidated_after_gateway_failure():
+    """After agents() swallows a gateway error mid-pagination, the count
+    cache must agree: agent_count() must return 0, not the positive head
+    probe value. Otherwise the invariant 'unavailable ⇒ count is 0' breaks."""
+    client = MagicMock()
+    client.get.return_value = {"resources": [], "page": {"totalResources": 5000}}
+    client.paginate.side_effect = _raising_paginate(504)
+
+    snapshot = EnvSnapshot(client, full_scan=False, sample_size=100)
+    snapshot.agents()
+
+    assert snapshot.agent_count() == 0
+    assert snapshot.is_agents_unavailable() is True
+
+
+def test_agent_asset_ids_swallows_504_and_marks_unavailable():
+    """Full-fleet pagination via agent_asset_ids() must use the same swallow
+    pattern (agent_unauth_collision rule depends on this accessor)."""
+    client = MagicMock()
+    client.get.return_value = {"resources": [], "page": {"totalResources": 5000}}
+    client.paginate.side_effect = _raising_paginate(504)
+
+    snapshot = EnvSnapshot(client, full_scan=False, sample_size=100)
+    ids = snapshot.agent_asset_ids()
+
+    assert ids == set()
+    assert snapshot.is_agents_unavailable() is True
+
+
+def test_agent_asset_ids_sampled_swallows_504_and_marks_unavailable():
+    """Sampled pagination via agent_asset_ids_sampled() must use the same
+    swallow pattern (agent_only_assets rule depends on this accessor)."""
+    client = MagicMock()
+    client.get.return_value = {"resources": [], "page": {"totalResources": 5000}}
+    client.paginate.side_effect = _raising_paginate(504)
+
+    snapshot = EnvSnapshot(client, full_scan=False, sample_size=100)
+    sample_ids, total = snapshot.agent_asset_ids_sampled()
+
+    assert sample_ids == []
+    assert total == 0
+    assert snapshot.is_agents_unavailable() is True
+
+
 def test_is_agents_unavailable_false_before_first_call():
     client = MagicMock()
     snapshot = EnvSnapshot(client, full_scan=False, sample_size=10)
