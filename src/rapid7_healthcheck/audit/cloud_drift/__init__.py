@@ -55,8 +55,8 @@ class CloudDriftAuditCheck:
         self,
         client: Any,
         config: AppConfig,
-        progress=None,
         *,
+        progress=None,
         cloud_client: Any = None,
     ) -> CheckResult:
         start = time.monotonic()
