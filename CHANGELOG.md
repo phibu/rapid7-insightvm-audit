@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-05-19
+
+### Fixed
+
+- **`_extract_diagnostics` matches `/v4/integration/...` paths.** The error-path regex was `/api/3/`-only, so cloud-rule failures produced empty `error_path` in failure findings. Extended the alternation to match both v3 and v4 path shapes. `CloudClientError`'s docstring updated to drop the stale "error_path is None for v4" caveat.
+
+- **Cloud-drift footgun: silently-skipped rules.** When `cloud_integration.enabled = true` but `cloud_drift.rules:` was absent or empty, every rule fell into the `rule_cfg is None` branch and produced a green-but-empty report with no operator signal. The orchestrator now emits one INFO line at startup when the condition is hit: `"cloud_integration is enabled but no cloud_drift rules are configured; every cloud-drift rule will be skipped. Add a cloud_drift.rules: block..."` Report rendering is unchanged.
+
+### Changed
+
+- **`cd.scan_engine_cloud_registration` — engine cross-key fallback (`console.address ↔ cloud.host_name`).** The rule cross-matched console engines to cloud engines by `name` only; an engine renamed on one side would silently appear "missing from cloud." Added a fallback path: when `console.name == cloud.name` misses, try `console.address == cloud.host_name`. Name match always wins when both would succeed. Every fallback hit emits an INFO log (`"matched ... via host_name fallback"`) so operators can audit which matches relied on the fallback. README documents the degraded mode.
+
+- **`progress` is now kwarg-only on all three audit orchestrators.** `CloudDriftAuditCheck.run`, `ConfigurationAuditCheck.run`, and `UserPermissionAuditCheck.run` all now declare `*, progress=None` — a typo'd second positional arg errors at the call site instead of silently shifting to the wrong parameter. Production caller in `__main__.py` already passed `progress=` by keyword; no behavior change.
+
+### Internal
+
+- **`_ensure_default_on(checks, *names)` helper extracted in `config.py`.** Three back-to-back default-on blocks for `configuration_audit` / `user_permission_audit` / `cloud_drift_audit` collapsed into one helper that preserves user-set `False` (the critical invariant — a user who explicitly disabled an audit category must not be re-enabled by the default-on path).
+
+- **`_CLOUD_FULL_SCAN` / `_CLOUD_SAMPLE_SIZE` constants dropped.** The two-name indirection added nothing — no cloud-drift rule reads either value. Replaced with literals at the single call site plus an inline comment naming the protocol-passthrough intent.
+
+- **`EnvSnapshot.scan_engines()` pagination assumption pinned.** Backlog item claimed the accessor silently truncates on consoles with >250 engines. The v3 OpenAPI spec actually shows `/api/3/scan_engines` is not paginated (no `page`/`size` parameters, no `page` envelope in `CollectionModelScanEngine`). Added a docstring naming the assumption and the detection signal if it ever changes (`body.get("page")` becoming non-empty). The misleading comment on `CloudSnapshot.console_engines()` (which claimed pagination was necessary to avoid truncation) corrected — its `paginate()` call is defense in depth, not a current necessity.
+
+- **`info` severity convention documented.** A `severity: info` config override produces a finding but never escalates check status. Every existing rule already assumes this; CLAUDE.md "Severity and exit code semantics" and the README audit-rules section now document it explicitly, so users configuring overrides understand the rollup contract.
+
+- **Direct validator tests for `_build_cloud_drift_config`.** Pinned non-mapping rule body (string/list/int), missing `enabled` key, and non-bool `enabled` (string/int) against the cloud-drift validator specifically. The shared validator path already covered these but cloud_drift didn't have its own coverage; future validator divergence would have slipped silently.
+
+- 28 new tests (646 → 674): 9 for `_extract_diagnostics` regex coverage, 6 for the engine fallback and INFO log, 6 for direct cloud-drift validator coverage, 4 for the `_ensure_default_on` helper, 3 for the cloud-empty-rules INFO log.
+
+- 5 feature items from the original 0.6.0 backlog deferred to `someday`: cursor pagination on `CloudClient`, `paginate_post` helper, `verify_tls` on `CloudIntegrationConfig`, parallel `CloudSnapshot` engine fetches, cross-batch concurrent `_paginate`. None has a rule pulling on it; building them speculatively grows surface area without a user.
+
 ## [0.5.1] - 2026-05-19
 
 ### Fixed
