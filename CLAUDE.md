@@ -151,6 +151,7 @@ There is a second audit category sibling to the configuration audit: **User & Pe
 - `Severity` is `Literal["info", "warn", "fail"]`; `Status` is `Literal["pass", "warn", "fail", "error", "skipped"]`.
 - A rule's effective severity = config override or `default_severity`. Findings inherit the rule's severity.
 - Roll-up: any `fail`/`error` → exit `2`; any `warn` → exit `1`; otherwise `0`. Startup failures (bad config, missing key, auth, network) → `3`. Internal tool errors → `4`. Don't change these without updating the README exit-code table.
+- `info` findings never escalate check status. A rule with `severity: info` in the config (or default-severity `info`) produces findings in the report but the check stays `pass`. This is deliberate: `info` is for context (skip reasons, sample-info, descriptive notes), not problems. If a rule needs to escalate a finding, it must emit `warn` or `fail` regardless of the configured default severity.
 
 ### Adding a new audit rule
 

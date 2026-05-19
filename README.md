@@ -206,6 +206,8 @@ Rules:
 
 Per-rule severity and enable/disable live in the `audit:` block of `config.yaml`. Each finding in the report links back to the Rapid7 source documenting the rule.
 
+> **`severity: info` does not escalate status.** A rule configured with `severity: info` still produces findings in the report, but the check stays `pass`. `info` is reserved for descriptive notes, skip reasons, and sample diagnostics — not problems. Use `warn` or `fail` if you want the finding to surface in the exit code.
+
 **Sampling.** Some rules need to inspect every asset (or every schedule). To keep API load predictable on large environments, expensive rules sample up to `audit.sample_size` entities (default 500) per rule. The report explicitly notes which rules used sampling and how many entities were checked vs total. Set `audit.full_scan: true` to enumerate everything (slower, higher API load).
 
 > **Note on scope.** `audit.sample_size` and `user_audit.sample_size` apply only to the audit verticals (Configuration Audit, User & Permission Audit). Operational checks — Scan Engines, Scan Activity, Asset Coverage, Data Quality — run against the full population by design, since they produce aggregate counts where sampling would give a misleading smaller number.
