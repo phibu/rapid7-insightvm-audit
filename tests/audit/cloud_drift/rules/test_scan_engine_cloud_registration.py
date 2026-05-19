@@ -179,3 +179,117 @@ def test_naive_last_seen_does_not_raise_type_error():
     # the threshold, not crash.
     result = rule.run(snap, "warn", False, 500, {"last_seen_max_age_hours": 24})
     assert result.status in ("pass", "warn")
+
+
+def test_fallback_matches_when_name_differs_but_address_matches_host_name():
+    """If console.name != cloud.name but console.address == cloud.host_name,
+    treat as matched. Common scenario: engine renamed on one side."""
+    rule = ScanEngineCloudRegistrationRule()
+    snap = _snapshot(
+        console_engines=[{
+            "id": 1, "name": "console-engine-a", "address": "10.0.0.5",
+        }],
+        cloud_engines=[{
+            "name": "cloud-engine-a", "host_name": "10.0.0.5",
+            "last_seen": _now_iso(0),
+        }],
+    )
+    result = rule.run(snap, "warn", False, 500, {"last_seen_max_age_hours": 24})
+    # Matched via fallback => no "missing from cloud" finding.
+    assert result.status == "pass"
+    missing = [f for f in result.findings if f.severity == "fail"]
+    assert missing == [], f"expected no missing-from-cloud finding, got {missing}"
+
+
+def test_name_match_wins_when_both_would_match_different_cloud_entries():
+    """If two cloud entries exist — one matches by name, a different one
+    by address/host_name — the name match wins (it's the primary key)."""
+    rule = ScanEngineCloudRegistrationRule()
+    snap = _snapshot(
+        console_engines=[{
+            "id": 1, "name": "engine-a", "address": "10.0.0.5",
+        }],
+        cloud_engines=[
+            # Name match (this should win):
+            {"name": "engine-a", "host_name": "different-host",
+             "last_seen": _now_iso(0)},
+            # Fallback match (loses):
+            {"name": "engine-b", "host_name": "10.0.0.5",
+             "last_seen": _now_iso(72)},
+        ],
+    )
+    result = rule.run(snap, "warn", False, 500, {"last_seen_max_age_hours": 24})
+    # Name match was fresh (0h ago) — should pass, not be flagged stale.
+    assert result.status == "pass"
+
+
+def test_console_engine_with_no_name_falls_through_to_fallback():
+    """console.name=null but valid address → fallback can still match."""
+    rule = ScanEngineCloudRegistrationRule()
+    snap = _snapshot(
+        console_engines=[{"id": 1, "name": None, "address": "10.0.0.5"}],
+        cloud_engines=[
+            {"name": "cloud-engine", "host_name": "10.0.0.5",
+             "last_seen": _now_iso(0)},
+        ],
+    )
+    result = rule.run(snap, "warn", False, 500, {"last_seen_max_age_hours": 24})
+    assert result.status == "pass"
+
+
+def test_neither_name_nor_address_matches_still_flags_missing():
+    """When neither primary nor fallback matches, the engine stays flagged
+    as 'missing from cloud' — fallback is additive, never silently masks."""
+    rule = ScanEngineCloudRegistrationRule()
+    snap = _snapshot(
+        console_engines=[{"id": 1, "name": "engine-a", "address": "10.0.0.5"}],
+        cloud_engines=[
+            {"name": "engine-b", "host_name": "10.0.0.99",
+             "last_seen": _now_iso(0)},
+        ],
+    )
+    result = rule.run(snap, "warn", False, 500, {})
+    assert result.status == "fail"
+    missing = [f for f in result.findings if f.severity == "fail"]
+    assert len(missing) == 1
+    assert "engine-a" in missing[0].message
+
+
+def test_cloud_entry_without_host_name_does_not_match_fallback():
+    """Cloud entry with host_name=null cannot be matched via fallback."""
+    rule = ScanEngineCloudRegistrationRule()
+    snap = _snapshot(
+        console_engines=[{"id": 1, "name": "engine-a", "address": "10.0.0.5"}],
+        cloud_engines=[
+            {"name": "engine-b", "host_name": None,
+             "last_seen": _now_iso(0)},
+        ],
+    )
+    result = rule.run(snap, "warn", False, 500, {})
+    assert result.status == "fail"
+
+
+def test_fallback_match_logs_info(caplog):
+    """When the fallback matches, emit an INFO log so operators can audit."""
+    import logging
+    rule = ScanEngineCloudRegistrationRule()
+    snap = _snapshot(
+        console_engines=[{
+            "id": 1, "name": "console-engine-a", "address": "10.0.0.5",
+        }],
+        cloud_engines=[{
+            "name": "cloud-engine-a", "host_name": "10.0.0.5",
+            "last_seen": _now_iso(0),
+        }],
+    )
+    with caplog.at_level(
+        logging.INFO,
+        logger="rapid7_healthcheck.audit.cloud_drift.rules.scan_engine_cloud_registration",
+    ):
+        rule.run(snap, "warn", False, 500, {"last_seen_max_age_hours": 24})
+
+    info_records = [r for r in caplog.records if r.levelno == logging.INFO and "fallback" in r.getMessage()]
+    assert len(info_records) == 1, (
+        f"expected exactly 1 INFO log about fallback match, got "
+        f"{len(info_records)}: {[r.getMessage() for r in info_records]}"
+    )

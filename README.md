@@ -324,6 +324,8 @@ Insight Platform API key in addition to your existing console
 | `cd.scan_engine_cloud_registration` | Console-known engines that are missing from the Insight Platform engine list (fail) or have stale `last_seen` (warn, default 24 h). | warn | https://docs.rapid7.com/insightvm/working-with-scan-engines/ |
 | `cd.stale_assessment_cohort` | Cloud assets with `last_assessed_for_vulnerabilities` older than `stale_after_days` (default 30), flagged when the cohort exceeds `max_stale_percent` or `max_stale_count`. | warn | https://docs.rapid7.com/insightvm/scan-template-best-practices/ |
 
+> **Engine match key — primary and fallback.** `cd.scan_engine_cloud_registration` cross-references console engines to cloud engines using `name` as the primary key. When name matching misses (e.g. an engine was renamed on one side and not the other), the rule falls back to comparing `console.address` against `cloud.host_name`. Name match always wins when both would succeed. When the fallback matches, the rule logs an INFO line — search your run log for `"via host_name fallback"` to audit which engines matched only on the fallback path. `ignore_engines` is name-based and applies before either match attempt.
+
 ### Enabling Cloud Drift Audit
 
 1. Generate an Insight Platform API key on the [Insight Platform key management page](https://insight.rapid7.com).

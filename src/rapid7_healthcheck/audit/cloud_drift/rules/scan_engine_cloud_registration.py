@@ -71,7 +71,11 @@ class ScanEngineCloudRegistrationRule:
         "service cloud-driven workflows (Insight Agent assessment, "
         "Cloud Risk Insights). Engines registered but with a stale "
         "last_seen indicate the cloud-platform connection is degraded. "
-        "Match key is engine name; configure ignore_engines to exempt "
+        "Primary match key is engine name (console.name == cloud.name); "
+        "when name matching misses, falls back to "
+        "console.address == cloud.host_name so an engine renamed on one "
+        "side still matches. Name match always wins when both would "
+        "succeed. Configure ignore_engines (name-based) to exempt "
         "deliberately on-prem-only scanners."
     )
     default_severity = "warn"
@@ -111,6 +115,24 @@ class ScanEngineCloudRegistrationRule:
             if new_seen is not None and (existing_seen is None or new_seen > existing_seen):
                 cloud_by_name[name] = e
 
+        # Fallback index: console.address ↔ cloud.host_name. Used when
+        # name-based match misses (engine renamed on one side, or names
+        # diverge between v3 and v4 inventory). Duplicate host_names use
+        # the same most-recently-seen-wins disambiguation as the name index.
+        cloud_by_host_name: dict[str, dict] = {}
+        for e in cloud_engines:
+            host_name = e.get("host_name")
+            if not host_name:
+                continue
+            existing = cloud_by_host_name.get(host_name)
+            if existing is None:
+                cloud_by_host_name[host_name] = e
+                continue
+            new_seen = _parse_iso(e.get("last_seen"))
+            existing_seen = _parse_iso(existing.get("last_seen"))
+            if new_seen is not None and (existing_seen is None or new_seen > existing_seen):
+                cloud_by_host_name[host_name] = e
+
         threshold = datetime.now(timezone.utc) - timedelta(hours=max_age_hours)
 
         findings: list[Finding] = []
@@ -119,15 +141,39 @@ class ScanEngineCloudRegistrationRule:
 
         for engine in console_engines:
             name = engine.get("name")
-            if not name or name in ignore:
+            address = engine.get("address")
+            # The `ignore_engines` list is name-based; null-named engines
+            # are filtered here (legacy behavior — engines without a name
+            # can't be referenced in config).
+            if name and name in ignore:
                 continue
-            cloud = cloud_by_name.get(name)
+            if not name and not address:
+                # Engine record has no key at all — can't match either way.
+                continue
+
+            cloud = cloud_by_name.get(name) if name else None
+            matched_via = "name" if cloud is not None else None
+            if cloud is None and address:
+                cloud = cloud_by_host_name.get(address)
+                if cloud is not None:
+                    matched_via = "host_name_fallback"
+                    logger.info(
+                        "scan_engine_cloud_registration: matched console "
+                        "engine name=%r address=%r to cloud engine "
+                        "name=%r via host_name fallback (primary name "
+                        "match failed)",
+                        name, address, cloud.get("name"),
+                    )
+
             if cloud is None:
                 missing_from_cloud += 1
+                # Use the available identifier in the message (name preferred,
+                # then address, then a generic placeholder).
+                identifier = name or address or f"id={engine.get('id')}"
                 findings.append(Finding(
                     severity="fail",
                     message=(
-                        f"Console scan engine '{name}' is not registered with "
+                        f"Console scan engine '{identifier}' is not registered with "
                         f"Insight Platform. It cannot service cloud-driven "
                         f"workflows (agent assessment, Cloud Risk Insights). "
                         f"Register it via Security Console → Administration → "
@@ -136,6 +182,7 @@ class ScanEngineCloudRegistrationRule:
                     details={
                         "engine_name": name,
                         "console_engine_id": engine.get("id"),
+                        "console_address": address,
                         "missing_from_cloud": True,
                     },
                 ))
@@ -144,19 +191,24 @@ class ScanEngineCloudRegistrationRule:
             last_seen = _parse_iso(cloud.get("last_seen"))
             if last_seen is None or last_seen < threshold:
                 stale_in_cloud += 1
+                # Use console name in the stale message when available;
+                # cloud name when not (fallback match path).
+                display_name = name or cloud.get("name") or "<unnamed>"
                 findings.append(Finding(
                     severity=severity,
                     message=(
-                        f"Cloud-registered engine '{name}' has stale last_seen "
+                        f"Cloud-registered engine '{display_name}' has stale last_seen "
                         f"({cloud.get('last_seen') or 'never'}); threshold is "
                         f"{max_age_hours}h. The Insight Platform connection is "
                         f"likely down or the engine is offline."
                     ),
                     details={
                         "engine_name": name,
+                        "cloud_engine_name": cloud.get("name"),
                         "console_engine_id": engine.get("id"),
                         "last_seen": cloud.get("last_seen"),
                         "max_age_hours": max_age_hours,
+                        "matched_via": matched_via,
                     },
                 ))
 
