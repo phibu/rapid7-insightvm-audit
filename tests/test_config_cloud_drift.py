@@ -123,3 +123,55 @@ def test_app_config_default_cloud_drift_when_block_absent():
     assert cfg.cloud_drift.rules == {}
     # Default-on behavior for the cloud_drift_audit check entry too.
     assert cfg.checks.get("cloud_drift_audit") is True
+
+
+def test_rule_body_must_be_a_mapping_string():
+    """Non-mapping rule body (string) is rejected."""
+    with pytest.raises(ConfigError, match=r"cd\.console_asset_count_drift.*expected mapping"):
+        _build_cloud_drift_config({
+            "rules": {"cd.console_asset_count_drift": "enabled"},
+        })
+
+
+def test_rule_body_must_be_a_mapping_list():
+    """Non-mapping rule body (list) is rejected."""
+    with pytest.raises(ConfigError, match=r"cd\.console_asset_count_drift.*expected mapping"):
+        _build_cloud_drift_config({
+            "rules": {"cd.console_asset_count_drift": ["enabled"]},
+        })
+
+
+def test_rule_body_must_be_a_mapping_int():
+    """Non-mapping rule body (int) is rejected."""
+    with pytest.raises(ConfigError, match=r"cd\.console_asset_count_drift.*expected mapping"):
+        _build_cloud_drift_config({
+            "rules": {"cd.console_asset_count_drift": 1},
+        })
+
+
+def test_rule_body_missing_enabled_is_rejected():
+    """Rule body without the required `enabled` key is rejected."""
+    with pytest.raises(ConfigError, match=r"cd\.console_asset_count_drift\.enabled.*expected bool"):
+        _build_cloud_drift_config({
+            "rules": {"cd.console_asset_count_drift": {"severity": "warn"}},
+        })
+
+
+def test_rule_body_enabled_string_is_rejected():
+    """Rule body with `enabled: \"true\"` (string, not bool) is rejected."""
+    with pytest.raises(ConfigError, match=r"cd\.console_asset_count_drift\.enabled.*expected bool"):
+        _build_cloud_drift_config({
+            "rules": {
+                "cd.console_asset_count_drift": {"enabled": "true", "severity": "warn"},
+            },
+        })
+
+
+def test_rule_body_enabled_int_is_rejected():
+    """Rule body with `enabled: 1` (int, not bool) is rejected."""
+    with pytest.raises(ConfigError, match=r"cd\.console_asset_count_drift\.enabled.*expected bool"):
+        _build_cloud_drift_config({
+            "rules": {
+                "cd.console_asset_count_drift": {"enabled": 1, "severity": "warn"},
+            },
+        })
