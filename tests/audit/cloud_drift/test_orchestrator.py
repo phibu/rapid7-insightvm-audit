@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import dataclasses
+import logging
 from unittest.mock import MagicMock
 
 import pytest
@@ -127,3 +129,65 @@ def test_rule_exception_isolated(monkeypatch):
     assert all(r.status == "pass" for r in others)
     # Whole check rolls up to fail because one rule errored.
     assert result.status == "fail"
+
+
+def test_info_log_when_cloud_enabled_but_no_rules_configured(caplog):
+    """The orchestrator must log a single INFO line when cloud_integration
+    is enabled but cloud_drift.rules is empty — every rule falls through
+    the rule_cfg-is-None branch and is silently skipped, which produces a
+    deceptively green report. The log line is the only operator signal."""
+    cfg = _config(cloud_enabled=True)
+    # Force rules empty (AppConfig is frozen — use dataclasses.replace):
+    cfg = dataclasses.replace(cfg, cloud_drift=CloudDriftConfig(rules={}))
+    cloud_client = MagicMock()
+
+    check = CloudDriftAuditCheck()
+    with caplog.at_level(logging.INFO, logger="rapid7_healthcheck.audit.cloud_drift"):
+        result = check.run(MagicMock(), cfg, cloud_client=cloud_client)
+
+    # Exactly one INFO record about empty cloud_drift.rules.
+    info_records = [
+        r for r in caplog.records
+        if r.levelno == logging.INFO and "cloud_drift.rules" in r.getMessage()
+    ]
+    assert len(info_records) == 1, (
+        f"expected exactly 1 INFO log about empty cloud_drift.rules, "
+        f"got {len(info_records)}: {[r.getMessage() for r in info_records]}"
+    )
+
+    # Report rendering is unchanged: all 3 cloud rules show as skipped,
+    # rollup is "pass" (skipped rules don't escalate status).
+    assert result.status == "pass"
+    assert len(result.rule_results) == 3
+    assert all(r.status == "skipped" for r in result.rule_results)
+
+
+def test_no_info_log_when_cloud_disabled(caplog):
+    """The footgun only exists when cloud is enabled-but-empty. With
+    cloud disabled, the orchestrator returns the existing skipped
+    CheckResult without ever entering the rule loop."""
+    cfg = _config(cloud_enabled=False)
+    check = CloudDriftAuditCheck()
+    with caplog.at_level(logging.INFO, logger="rapid7_healthcheck.audit.cloud_drift"):
+        check.run(MagicMock(), cfg, cloud_client=None)
+
+    info_records = [
+        r for r in caplog.records
+        if "cloud_drift.rules" in r.getMessage()
+    ]
+    assert info_records == []
+
+
+def test_no_info_log_when_cloud_enabled_with_rules(caplog):
+    """The footgun also doesn't apply when rules are configured."""
+    cfg = _config(cloud_enabled=True, rules_enabled=True)
+    cloud_client = MagicMock()
+    check = CloudDriftAuditCheck()
+    with caplog.at_level(logging.INFO, logger="rapid7_healthcheck.audit.cloud_drift"):
+        check.run(MagicMock(), cfg, cloud_client=cloud_client)
+
+    info_records = [
+        r for r in caplog.records
+        if "cloud_drift.rules" in r.getMessage()
+    ]
+    assert info_records == []

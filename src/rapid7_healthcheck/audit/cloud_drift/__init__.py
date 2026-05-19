@@ -82,6 +82,17 @@ class CloudDriftAuditCheck:
                 rule_results=[],
             )
 
+        # Footgun: user enables cloud_integration but forgets to add a
+        # cloud_drift.rules block. Every rule falls into the rule_cfg-is-None
+        # branch and is silently skipped, producing a deceptively green
+        # report. Emit one INFO line so the operator sees what happened.
+        if not config.cloud_drift.rules:
+            logger.info(
+                "cloud_integration is enabled but no cloud_drift rules are "
+                "configured; every cloud-drift rule will be skipped. Add a "
+                "`cloud_drift.rules:` block to config.yaml to enable rules."
+            )
+
         snapshot = CloudSnapshot(v3_client=client, cloud_client=cloud_client)
 
         rule_results: list[RuleResult] = []
