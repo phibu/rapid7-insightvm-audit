@@ -36,7 +36,21 @@ class MultipleGlobalAdministratorsRule:
         ]
 
         findings: list[Finding] = []
-        if len(gas) > max_ga:
+        if len(gas) == 0:
+            # No enabled Global Administrator at all — a console no one can
+            # administer. Hard-coded "fail" regardless of configured
+            # severity: this is unambiguously broken, not a tuning matter.
+            findings.append(Finding(
+                severity="fail",
+                message=(
+                    "No enabled Global Administrator accounts found. The "
+                    "Security Console has no account that can manage users, "
+                    "scan scope, or the audit trail. Restore or create a "
+                    "Global Administrator immediately."
+                ),
+                details={"ga_count": 0},
+            ))
+        elif len(gas) > max_ga:
             findings.append(Finding(
                 severity=severity,
                 message=(

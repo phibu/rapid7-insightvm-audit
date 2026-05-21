@@ -39,3 +39,31 @@ def test_threshold_knob(fake_snapshot):
         fake_snapshot, "warn", False, 500, {"max_global_administrators": 5},
     )
     assert r.status == "pass"
+
+
+def test_zero_global_admins_hard_fails(fake_snapshot):
+    """No enabled Global Administrator at all is a hard failure — a console
+    no one can administer. The finding is `fail` even when the rule's
+    configured severity is `info`."""
+    fake_snapshot.set_users([
+        {"id": 1, "login": "ga-was-disabled", "enabled": False,
+         "role": {"id": "global-admin"}},
+        {"id": 2, "login": "regular", "enabled": True,
+         "role": {"id": "security-manager"}},
+    ])
+    r = MultipleGlobalAdministratorsRule().run(fake_snapshot, "info", False, 500, {})
+    assert r.status == "fail"
+    assert len(r.findings) == 1
+    assert r.findings[0].severity == "fail"
+    assert "no enabled global administrator" in r.findings[0].message.lower()
+    assert r.summary["ga_count"] == 0
+
+
+def test_one_global_admin_passes(fake_snapshot):
+    """One enabled GA is below max_ga — still a pass, no finding."""
+    fake_snapshot.set_users([
+        {"id": 1, "login": "ga", "enabled": True, "role": {"id": "global-admin"}},
+    ])
+    r = MultipleGlobalAdministratorsRule().run(fake_snapshot, "warn", False, 500, {})
+    assert r.status == "pass"
+    assert r.findings == []
