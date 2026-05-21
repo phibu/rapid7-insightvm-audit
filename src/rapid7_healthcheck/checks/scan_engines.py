@@ -269,22 +269,41 @@ class ScanEnginesCheck:
     def run(self, client: Any, config: AppConfig, **_kwargs: object) -> CheckResult:
         start = time.monotonic()
         thresholds = config.thresholds.scan_engines
-        body = client.get("/api/3/scan_engines")
-        engines = body.get("resources", [])
+
+        # The /api/3/scan_engines fetch is shared by all four rules. Memoize
+        # it behind a closure so it is attempted once but resolved *inside*
+        # each rule's safe_run_rule wrapper — a single failed GET surfaces as
+        # four isolated error rule cards instead of collapsing the check.
+        _fetch_cache: dict[str, object] = {}
+
+        def engines() -> list:
+            if "exc" in _fetch_cache:
+                raise _fetch_cache["exc"]  # type: ignore[misc]
+            if "value" not in _fetch_cache:
+                try:
+                    body = client.get("/api/3/scan_engines")
+                    _fetch_cache["value"] = body.get("resources", [])
+                except Exception as e:
+                    _fetch_cache["exc"] = e
+                    raise
+            return _fetch_cache["value"]  # type: ignore[return-value]
 
         bad_status = EngineBadStatusRule()
         last_contact = EngineLastContactRule()
         missing_refresh = EngineMissingLastRefreshRule()
         unpaired = EngineUnpairedRule()
         rule_results: list[RuleResult] = [
-            safe_run_rule(bad_status, lambda: bad_status.run(engines)),
-            safe_run_rule(last_contact, lambda: last_contact.run(engines, thresholds)),
-            safe_run_rule(missing_refresh, lambda: missing_refresh.run(engines)),
-            safe_run_rule(unpaired, lambda: unpaired.run(engines)),
+            safe_run_rule(bad_status, lambda: bad_status.run(engines())),
+            safe_run_rule(last_contact, lambda: last_contact.run(engines(), thresholds)),
+            safe_run_rule(missing_refresh, lambda: missing_refresh.run(engines())),
+            safe_run_rule(unpaired, lambda: unpaired.run(engines())),
         ]
 
         summary = rule_summary(rule_results)
-        summary.update(_compute_engine_count_summary(engines, rule_results))
+        # If the shared fetch failed, engines are unknown — fall back to an
+        # empty list for the count summary rather than re-raising.
+        engines_for_summary = _fetch_cache.get("value", []) if "exc" not in _fetch_cache else []
+        summary.update(_compute_engine_count_summary(engines_for_summary, rule_results))
 
         return CheckResult(
             name=self.name,

@@ -329,7 +329,12 @@ def test_r1_dead_asset_groups_errors_when_snapshot_missing(fake_client, app_conf
     result = AssetCoverageCheck().run(fake_client, app_config)  # no snapshot
     rule = _rule(result, "op.asset_coverage.dead_asset_groups")
     assert rule.status == "error"
-    assert "snapshot" in (rule.findings[0].message if rule.findings else "")
+    # An error RuleResult carries no findings — the reason lives in summary,
+    # consistent with the error_rule() helper. A spurious warn-severity
+    # finding inside an error rule would pollute flatten_findings / the
+    # delta signature index.
+    assert rule.findings == []
+    assert rule.summary.get("error") == "snapshot required"
 
 
 def test_r1_dead_asset_groups_missing_inline_alive_via_fallback(fake_client, app_config):
@@ -741,6 +746,7 @@ def test_r4_error_when_snapshot_none(fake_client, app_config):
     rule = _rule(result, "op.asset_coverage.agent_only_assets")
 
     assert rule.status == "error"
+    assert rule.findings == []
     assert rule.summary["agent_only_count_sampled"] == 0
     assert rule.summary.get("error") == "snapshot required"
 

@@ -228,3 +228,24 @@ def test_summary_counts_partition_engines(fake_client, app_config):
     assert s["engines_warn"] == 2
     assert s["engines_fail"] == 2
     assert s["engines_total"] == s["engines_healthy"] + s["engines_warn"] + s["engines_fail"]
+
+
+def test_engine_fetch_failure_isolated_into_error_rules(fake_client, app_config):
+    """If the /api/3/scan_engines GET raises, the check must NOT propagate.
+    It returns a CheckResult whose four rule cards are all `error`, and the
+    count summary falls back to zeros instead of crashing."""
+    from rapid7_healthcheck.client import Rapid7ClientError
+
+    fake_client.set_get_raises(
+        "/api/3/scan_engines",
+        Rapid7ClientError("503 at /api/3/scan_engines", status_code=503),
+    )
+
+    # Must not raise.
+    result = ScanEnginesCheck().run(fake_client, app_config)
+
+    assert result.status in ("fail", "error")
+    assert len(result.rule_results) == 4
+    assert all(rr.status == "error" for rr in result.rule_results)
+    assert len({rr.rule_id for rr in result.rule_results}) == 4
+    assert result.summary["engines_total"] == 0

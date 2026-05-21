@@ -68,7 +68,7 @@ class InsightAgentDeployedRule:
             ))
         elif coverage_pct is not None and coverage_pct < warn_below:
             findings.append(Finding(
-                severity="warn",
+                severity=severity,
                 message=(
                     f"Insight Agent coverage is {coverage_pct}% "
                     f"({agents_total:,} agents / {assets_total:,} assets). "

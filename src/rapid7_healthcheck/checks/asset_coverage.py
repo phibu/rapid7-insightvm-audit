@@ -296,15 +296,19 @@ class DeadAssetGroupsRule:
             )
 
         if snapshot is None:
-            # make_rule_result derives status from finding severity (no "error" mapping); construct directly.
+            # An error RuleResult carries no findings — the reason lives in
+            # summary, matching the error_rule() helper. A warn-severity
+            # finding inside an error rule would leak into flatten_findings
+            # and the delta signature index.
             return RuleResult(
                 rule_id=self.RULE_ID,
                 rule_name=self.RULE_NAME,
                 description=self.DESCRIPTION,
-                severity="warn",
+                severity=self.DEFAULT_SEVERITY,
                 status="error",
-                findings=[Finding(severity="warn", message="snapshot required but not provided to check")],
+                findings=[],
                 summary={"dead_groups_count": 0, "error": "snapshot required"},
+                error="snapshot required but not provided to check",
                 sources=self.SOURCES,
             )
 
@@ -458,15 +462,19 @@ class AgentOnlyAssetsRule:
             )
 
         if snapshot is None:
-            # make_rule_result derives status from finding severity (no "error" mapping); construct directly.
+            # An error RuleResult carries no findings — the reason lives in
+            # summary, matching the error_rule() helper. A warn-severity
+            # finding inside an error rule would leak into flatten_findings
+            # and the delta signature index.
             return RuleResult(
                 rule_id=self.RULE_ID,
                 rule_name=self.RULE_NAME,
                 description=self.DESCRIPTION,
-                severity="warn",
+                severity=self.DEFAULT_SEVERITY,
                 status="error",
-                findings=[Finding(severity="warn", message="snapshot required but not provided to check")],
+                findings=[],
                 summary={"agent_only_count_sampled": 0, "error": "snapshot required"},
+                error="snapshot required but not provided to check",
                 sources=self.SOURCES,
             )
 
@@ -489,15 +497,18 @@ class AgentOnlyAssetsRule:
         targets = snapshot.all_included_targets()
 
         if targets is None:
-            # snapshot fake / edge case — treat as no scope coverage info, rule indeterminate.
+            # snapshot fake / edge case — no scope coverage info, rule
+            # indeterminate. An error RuleResult carries no findings; the
+            # reason lives in summary/error (matches the error_rule() helper).
             return RuleResult(
                 rule_id=self.RULE_ID,
                 rule_name=self.RULE_NAME,
                 description=self.DESCRIPTION,
-                severity="warn",
+                severity=self.DEFAULT_SEVERITY,
                 status="error",
-                findings=[Finding(severity="warn", message="all_included_targets() returned None")],
+                findings=[],
                 summary={"agent_only_count_sampled": 0, "error": "no targets"},
+                error="all_included_targets() returned None",
                 sources=self.SOURCES,
             )
 

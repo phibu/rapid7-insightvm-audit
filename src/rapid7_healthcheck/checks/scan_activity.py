@@ -420,7 +420,24 @@ class ScanActivityCheck:
         t = config.thresholds.scan_activity
         now = datetime.now(timezone.utc)
 
-        parsed_sites = _fetch_parsed_sites(client, snapshot)
+        # The per-site scan fetch is shared by all six rules. Memoize it
+        # behind a closure so it is attempted exactly once but resolved
+        # *inside* each rule's safe_run_rule wrapper. If the fetch raises,
+        # the exception is cached and re-raised to every rule, so a single
+        # transient API failure surfaces as six isolated error rule cards
+        # rather than collapsing the entire check.
+        _fetch_cache: dict[str, object] = {}
+
+        def parsed_sites() -> list[_ParsedSiteScans]:
+            if "exc" in _fetch_cache:
+                raise _fetch_cache["exc"]  # type: ignore[misc]
+            if "value" not in _fetch_cache:
+                try:
+                    _fetch_cache["value"] = _fetch_parsed_sites(client, snapshot)
+                except Exception as e:
+                    _fetch_cache["exc"] = e
+                    raise
+            return _fetch_cache["value"]  # type: ignore[return-value]
 
         never_scanned = SitesNeverScannedRule()
         no_success = SitesNoSuccessfulScanRule()
@@ -429,12 +446,12 @@ class ScanActivityCheck:
         recent_unknown = RecentUnknownScansRule()
         overdue = SitesOverdueScansRule()
         rule_results: list[RuleResult] = [
-            safe_run_rule(never_scanned, lambda: never_scanned.run(parsed_sites)),
-            safe_run_rule(no_success, lambda: no_success.run(parsed_sites)),
-            safe_run_rule(stuck, lambda: stuck.run(parsed_sites, t, now)),
-            safe_run_rule(recent_failed, lambda: recent_failed.run(parsed_sites, t, now)),
-            safe_run_rule(recent_unknown, lambda: recent_unknown.run(parsed_sites, t, now)),
-            safe_run_rule(overdue, lambda: overdue.run(parsed_sites, t, now)),
+            safe_run_rule(never_scanned, lambda: never_scanned.run(parsed_sites())),
+            safe_run_rule(no_success, lambda: no_success.run(parsed_sites())),
+            safe_run_rule(stuck, lambda: stuck.run(parsed_sites(), t, now)),
+            safe_run_rule(recent_failed, lambda: recent_failed.run(parsed_sites(), t, now)),
+            safe_run_rule(recent_unknown, lambda: recent_unknown.run(parsed_sites(), t, now)),
+            safe_run_rule(overdue, lambda: overdue.run(parsed_sites(), t, now)),
         ]
 
         return CheckResult(
