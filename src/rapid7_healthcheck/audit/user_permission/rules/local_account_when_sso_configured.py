@@ -8,6 +8,24 @@ from rapid7_healthcheck.checks import Finding
 _DEFAULT_MAX_LOCAL = 2
 
 
+def _is_external_source(source: dict) -> bool:
+    """True iff an authentication source is an external IdP (SAML/LDAP/Kerberos).
+
+    `/api/3/authentication_sources` is absent from the committed v3 spec
+    (`docs/research/api-v3.json`), so the exact field name cannot be
+    verified. This check is deliberately defensive: a source is external
+    if it carries a truthy `external` flag, OR if its `type` is a
+    non-empty string other than `"normal"` (the local credential store).
+    The `type`-based arm mirrors `privileged_user_without_mfa._is_external_auth`
+    and guards against the rule silently self-skipping (false pass) on a
+    console whose payload uses `type` instead of `external`.
+    """
+    if source.get("external"):
+        return True
+    source_type = source.get("type")
+    return isinstance(source_type, str) and source_type != "" and source_type != "normal"
+
+
 @register_user_rule
 class LocalAccountWhenSsoConfiguredRule:
     rule_id = "local_account_when_sso_configured"
@@ -29,7 +47,7 @@ class LocalAccountWhenSsoConfiguredRule:
         max_local = int(rule_config.get("max_local_accounts_when_sso", _DEFAULT_MAX_LOCAL))
 
         sources = snapshot.authentication_sources()
-        external_sources = [s for s in sources if s.get("external")]
+        external_sources = [s for s in sources if _is_external_source(s)]
         if not external_sources:
             return RuleResult(
                 rule_id=self.rule_id,
