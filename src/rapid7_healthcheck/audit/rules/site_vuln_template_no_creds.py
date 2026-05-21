@@ -4,19 +4,46 @@ from rapid7_healthcheck.audit import RuleResult, register
 from rapid7_healthcheck.checks import Finding
 
 
-def _site_has_credentials(snapshot, site_id: int) -> bool:
-    site_creds = snapshot.site_credentials(site_id)
-    if any(c.get("enabled", False) for c in site_creds):
+def _shared_credential_covers(shared: dict, site_id: int) -> bool:
+    """True if a shared scan credential applies to ``site_id``.
+
+    Per the v3 spec, ``SharedCredential.siteAssignment`` is either
+    ``"all-sites"`` (applies to every current and future site; the
+    ``sites`` list is ``null``) or ``"specific-sites"`` (applies only to
+    the site IDs in ``sites``). A ``SharedCredential`` has **no**
+    ``enabled`` field — assignment alone determines coverage.
+
+    Defensive on ``sites``: when ``siteAssignment`` is absent we fall
+    back to the historical "``sites`` is None ⇒ all sites" reading, which
+    matches the spec's null-when-all-sites contract.
+    """
+    if shared.get("siteAssignment") == "all-sites":
         return True
+    sites_restriction = shared.get("sites")
+    if sites_restriction is None:
+        # all-sites shape (sites is null when siteAssignment is all-sites);
+        # also covers older payloads that omit siteAssignment entirely.
+        return shared.get("siteAssignment") in (None, "all-sites")
+    return site_id in sites_restriction
+
+
+def _site_has_credentials(snapshot, site_id: int) -> bool:
+    """True if ``site_id`` has any enabled credential for authenticated scans.
+
+    Checks shared credentials **first** — ``shared_credentials()`` is a
+    single cached GET held entirely in memory. Only when no shared
+    credential covers the site does this fall through to the per-site
+    ``site_credentials(site_id)`` call, which is an HTTP request the v3
+    API offers no bulk equivalent for. On consoles with an ``all-sites``
+    shared credential (the Rapid7-recommended setup) the per-site call is
+    never made — turning what was a ~15-minute N+1 sweep into one
+    ``shared_credentials()`` GET.
+    """
     for shared in snapshot.shared_credentials():
-        if not shared.get("enabled", False):
-            continue
-        sites_restriction = shared.get("sites")
-        if sites_restriction is None:
+        if _shared_credential_covers(shared, site_id):
             return True
-        if site_id in sites_restriction:
-            return True
-    return False
+    site_creds = snapshot.site_credentials(site_id)
+    return any(c.get("enabled", False) for c in site_creds)
 
 
 @register
