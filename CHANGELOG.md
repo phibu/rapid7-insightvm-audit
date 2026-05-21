@@ -23,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`overlapping_scan_windows` accepts an `assumed_scan_duration_minutes` knob.** Schedules with no `duration` field previously used a hardcoded 1-hour window. The window length is now configurable (default 60 minutes, unchanged behavior), matching the peer rule `scan_report_schedule_overlap`.
 
+- **Example `config.yaml` scan-engine last-contact thresholds raised.** `thresholds.scan_engines.last_contact_warn_hours` changed from `2` to `24` and `last_contact_fail_hours` from `24` to `36` in `docs/examples/config.yaml`. The 2-hour warn threshold flagged engines that were merely idle overnight; 24h/36h reflects a realistic "this engine is actually unhealthy" window. Existing deployments are unaffected — these are example-template values; only configs copied fresh from the template pick up the new defaults. The example config was also restructured: inline tunable documentation removed (it lives in README.md) and replaced with section headers only.
+
 ### Removed
 
 - **`Rapid7Client.paginate_post` removed.** It had no production callers after the stale-assets perf fix moved to a bounded single-POST search. The read-only contract is unchanged — `client.post` remains the sole allowlisted write-shaped verb.

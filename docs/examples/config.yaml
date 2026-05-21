@@ -1,52 +1,38 @@
+# =============================================================================
+# Rapid7 InsightVM Environment Health Check — example configuration
+#
+# Every key, threshold, and tunable is documented in README.md. This file is
+# the canonical template: copy it, adjust values, and pass it via --config.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Connection — Security Console (v3 API)
+# -----------------------------------------------------------------------------
 rapid7:
   base_url: https://us.api.insight.rapid7.com
   verify_tls: true
-  # Per-request read timeout. Default raised from 30s to 60s in 0.2.8 —
-  # hosted consoles regularly need >30s under load. Bump to 120 if you
-  # still see "network error after N attempt(s) on GET /api/3/...:
-  # Read timed out" in the report.
   request_timeout_seconds: 60
-  # Number of retries on transient errors (incl. read timeouts). Total
-  # worst-case wait per call ≈ (max_retries + 1) * request_timeout_seconds.
   max_retries: 3
-  # auth_mode: api_key  # default; reads R7_API_KEY from env / .env
-  # auth_mode: basic    # use HTTP Basic Auth; reads R7_BASIC_USER + R7_BASIC_PASSWORD
-                        # required for Rapid7-hosted consoles where SAML/MFA users
-                        # cannot mint a console-local API key in the UI
-
-  # How many pages to fetch concurrently inside one paginated call against
-  # /api/3/assets/search and similar endpoints. The InsightVM API documents
-  # 8 parallel requests as its supported limit; values up to 16 are accepted
-  # but emit a startup warning. Default 1 (sequential — today's behavior).
-  # Bump to 6 to speed up large asset-search walks.
   parallel_pages: 1
-
-  # Default page size for paginated calls. Range 1..500. Lowered from 500
-  # to 250 in 0.2.8 because /api/3/assets/search regularly times out at
-  # 500 against large filtered queries.
   page_size: 250
 
+# -----------------------------------------------------------------------------
+# Report output
+# -----------------------------------------------------------------------------
 report:
   output_dir: ./reports
   filename_pattern: "rapid7-health-{timestamp}.html"
   title: "Rapid7 InsightVM Environment Health Check"
-  # How many days back to compare against a prior report when computing the
-  # "since last run" delta strip. null disables the feature.
   delta_max_age_days: 30
-  # File-log format. Stderr stays human-readable plain regardless.
-  #   plain   — current default; "<ts> <LEVEL> <logger>: <msg>" lines.
-  #   cmtrace — SCCM/MECM CMTrace viewer format. Useful on Windows when ops
-  #             open run logs in cmtrace.exe and want severity colorization
-  #             and the component filter.
-  #   json    — JSON Lines (one object per line). Useful when shipping logs
-  #             into Splunk/Loki/OpenSearch. Auto-derived path uses .jsonl.
-  # Override at runtime with `--log-format {plain,cmtrace,json}`.
   log_format: plain
 
+# -----------------------------------------------------------------------------
+# Thresholds — operational health checks
+# -----------------------------------------------------------------------------
 thresholds:
   scan_engines:
-    last_contact_warn_hours: 2
-    last_contact_fail_hours: 24
+    last_contact_warn_hours: 24
+    last_contact_fail_hours: 36
   scan_activity:
     recent_window_days: 7
     stuck_scan_hours: 24
@@ -55,44 +41,21 @@ thresholds:
     stale_asset_days: 30
     flag_unscanned_assets: true
     never_scanned_days: 90
-    # New in 0.2.7 — see README "Asset Coverage" section.
-    # Flag asset groups whose membership criteria match zero assets
-    # (orphaned RBAC/report scopes).
     flag_dead_asset_groups: true
-    # Maximum number of asset groups for which to issue a per-group
-    # GET /api/3/asset_groups/{id}/assets fallback when the listing
-    # endpoint does not populate the inline `assets` count for dynamic
-    # groups. Bounds the worst-case extra HTTP calls per run. Set to 0
-    # to disable the fallback (groups with missing inline counts will
-    # not be flagged and not resolved).
     dead_groups_fallback_cap: 200
-    # Flag Insight Agent-managed assets that fall outside every site's
-    # configured scan target ranges — they only get opportunistic agent
-    # data, never scheduled scans. REQUIRES audit.full_scan: true to
-    # actually run (per-asset GETs are too expensive for the fast path).
     flag_agent_only_assets: false
   data_quality:
     flag_missing_os: true
     flag_empty_sites: true
-    # Flag assets whose last scan is older than this many days. Distinct from
-    # asset_coverage.never_scanned_days — that signals a coverage gap; this
-    # signals the asset record itself is so stale the data is unreliable.
     flag_stale_assets: true
     stale_asset_days: 180
-    # Flag duplicate asset records (same hostName / same ip across multiple
-    # asset IDs). Classic agent + scan-engine collision; also surfaces
-    # DHCP-driven re-IPing when MAC tracking is incomplete.
     flag_duplicate_hostnames: true
     flag_duplicate_ips: true
-
-    # Skip duplicate hostname/IP detection when total assets exceed this
-    # ceiling. The v3 API has no group-by, so duplicate detection requires
-    # walking every asset; on large consoles (~500k assets, ~45s/page) that
-    # is infeasible. Above this size, both rules emit an info finding
-    # pointing to the Security Console UI instead. Set to 0 to always skip
-    # duplicate detection.
     duplicate_detection_max_assets: 50000
 
+# -----------------------------------------------------------------------------
+# Check toggles — enable or disable each vertical
+# -----------------------------------------------------------------------------
 checks:
   scan_engines: true
   scan_activity: true
@@ -102,32 +65,18 @@ checks:
   user_permission_audit: true
   cloud_drift_audit: true
 
+# -----------------------------------------------------------------------------
+# Configuration Audit
+# -----------------------------------------------------------------------------
 audit:
   enabled: true
   full_scan: false
   sample_size: 500
-  # Per-HTTP-request timeout for /api/3/agents calls (seconds).
-  # /api/3/agents is well-known to be slow on consoles with large agent
-  # fleets even at size=1; the default 60s timeout used elsewhere can
-  # bite. Increase if your console legitimately needs more time, or
-  # leave at default. When the call still times out, agent-aware audit
-  # rules self-skip rather than aborting the run.
   agents_timeout_seconds: 180
   rules:
     agent_unauth_collision:
-      # Note: in fast mode (audit.full_scan: false), this rule's per-site
-      # enumeration is capped at audit.sample_size and short-circuits on the
-      # first agent-managed asset found. Sites that exceed the cap without a
-      # match are listed in a single aggregate info finding. Set
-      # audit.full_scan: true to remove the cap.
       enabled: true
       severity: fail
-      # Skip the rule when the Insight Agent inventory exceeds this cap.
-      # /api/3/agents has no group-by, so the rule full-paginates the agent
-      # list to compute the agent-managed asset set. On large fleets
-      # (~hundreds of thousands of agents) this is too slow for a health
-      # check. Set to 0 to always skip; raise to override on consoles where
-      # agent pagination is fast enough.
       max_agents: 50000
     site_vuln_template_no_creds:
       enabled: true
@@ -135,8 +84,6 @@ audit:
     overlapping_scan_windows:
       enabled: true
       severity: warn
-      # Assumed window length for schedules that carry no duration field.
-      # Default 60 (minutes); matches scan_report_schedule_overlap's knob.
       assumed_scan_duration_minutes: 60
     single_engine_overload:
       enabled: true
@@ -152,8 +99,6 @@ audit:
       enabled: true
       severity: warn
       asset_count_threshold: 1000
-      # Override if you renamed the local engine away from "Local scan engine":
-      # additional_local_names: ["my-renamed-local-engine"]
     dynamic_groups_and_nested_tags:
       enabled: true
       severity: warn
@@ -172,17 +117,11 @@ audit:
     insight_agent_deployed:
       enabled: true
       severity: info
-      # Warn when Insight Agent coverage falls below this percentage of the
-      # total asset inventory. Partial coverage is the riskiest state — agent-
-      # aware audit rules under-report on the uncovered slice. Set to 0 to
-      # disable the coverage warning (rule will only flag a fully agentless
-      # environment at the configured severity).
       warn_below_percent: 70
-# User & Permission Audit — sibling to `audit:`, scoped to console user
-# accounts and authentication settings. Requires the API key to belong
-# to a Global Administrator (the underlying /api/3/users endpoint is
-# GA-only). Disable with `user_audit.enabled: false` or with the
-# `checks.user_permission_audit: false` toggle above.
+
+# -----------------------------------------------------------------------------
+# User & Permission Audit
+# -----------------------------------------------------------------------------
 user_audit:
   enabled: true
   full_scan: false
@@ -191,9 +130,6 @@ user_audit:
     privileged_user_without_mfa:
       enabled: true
       severity: fail
-      # Allowlist logins that legitimately authenticate via Basic Auth
-      # (which bypasses MFA at the protocol level) — typically service
-      # accounts. Empty by default.
       mfa_exempt_logins: []
     local_account_when_sso_configured:
       enabled: true
@@ -216,21 +152,20 @@ user_audit:
       enabled: true
       severity: fail
 
-# ---------------------------------------------------------------------------
-# Cloud Drift Audit (optional). Reconciles the on-prem Security Console
-# with the Insight Platform Cloud Integrations API (v4). Disabled by
-# default — requires a separate Insight Platform API key.
-# ---------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# Cloud Integration — Insight Platform (v4 API), required for Cloud Drift Audit
+# -----------------------------------------------------------------------------
 cloud_integration:
   enabled: false
-  # Pick the region matching your Insight Platform tenant. See
-  # https://insight.help.rapid7.com/docs/api-overview for the region list.
   base_url: "https://us.api.insight.rapid7.com/vm/"
   api_key_env: "R7_CLOUD_API_KEY"
   timeout_seconds: 30
   max_retries: 3
   parallel_pages: 1
 
+# -----------------------------------------------------------------------------
+# Cloud Drift Audit
+# -----------------------------------------------------------------------------
 cloud_drift:
   rules:
     cd.console_asset_count_drift:
@@ -248,8 +183,3 @@ cloud_drift:
       stale_after_days: 30
       max_stale_percent: 10
       max_stale_count: null
-
-# Both blocks above are independently configurable. Cloud-drift rule
-# overrides can be authored before the connection is wired; the entire
-# audit category self-skips with a clear message when
-# cloud_integration.enabled is false or the env var is missing.
