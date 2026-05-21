@@ -141,15 +141,6 @@ def test_post_sends_json_body(session):
     assert kwargs["json"] == {"filters": []}
 
 
-def test_paginate_post_yields_across_pages(session):
-    page0 = {"resources": [{"id": 1}], "page": {"number": 0, "totalPages": 2}}
-    page1 = {"resources": [{"id": 2}], "page": {"number": 1, "totalPages": 2}}
-    session.request.side_effect = [_resp(200, page0), _resp(200, page1)]
-    c = make_client(session)
-    items = list(c.paginate_post("/api/3/assets/search", json_body={"filters": []}, page_size=500))
-    assert [i["id"] for i in items] == [1, 2]
-
-
 def test_zero_pages_returns_empty(session):
     session.request.return_value = _resp(200, {"resources": [], "page": {"number": 0, "totalPages": 0}})
     c = make_client(session)

@@ -272,7 +272,6 @@ def test_r1_dead_asset_groups_all_populated(fake_client, app_config):
         {"id": 1, "name": "Prod Servers", "type": "dynamic", "assets": 250},
         {"id": 2, "name": "Workstations", "type": "static", "assets": 50},
     ])
-    fake_client.set_paginate_post("/api/3/assets/search", [])  # other rules
     result = AssetCoverageCheck().run(fake_client, app_config, snapshot=snap)
     rule = _rule(result, "op.asset_coverage.dead_asset_groups")
     assert rule.status == "pass"
@@ -285,7 +284,6 @@ def test_r1_dead_asset_groups_some_empty(fake_client, app_config):
         {"id": 2, "name": "Decommissioned", "type": "static", "assets": 0},
         {"id": 3, "name": "Old Pilot", "type": "dynamic", "assets": 0},
     ])
-    fake_client.set_paginate_post("/api/3/assets/search", [])
     result = AssetCoverageCheck().run(fake_client, app_config, snapshot=snap)
     rule = _rule(result, "op.asset_coverage.dead_asset_groups")
     assert rule.status == "warn"
@@ -298,7 +296,6 @@ def test_r1_dead_asset_groups_some_empty(fake_client, app_config):
 
 def test_r1_dead_asset_groups_no_groups(fake_client, app_config):
     snap = _FakeSnapshot(asset_groups=[])
-    fake_client.set_paginate_post("/api/3/assets/search", [])
     result = AssetCoverageCheck().run(fake_client, app_config, snapshot=snap)
     rule = _rule(result, "op.asset_coverage.dead_asset_groups")
     assert rule.status == "pass"
@@ -318,14 +315,12 @@ def test_r1_dead_asset_groups_skipped_when_disabled(fake_client, app_config):
         ),
     )
     snap = _FakeSnapshot(asset_groups=[{"id": 1, "name": "g", "type": "static", "assets": 0}])
-    fake_client.set_paginate_post("/api/3/assets/search", [])
     result = AssetCoverageCheck().run(fake_client, cfg, snapshot=snap)
     rule = _rule(result, "op.asset_coverage.dead_asset_groups")
     assert rule.status == "skipped"
 
 
 def test_r1_dead_asset_groups_errors_when_snapshot_missing(fake_client, app_config):
-    fake_client.set_paginate_post("/api/3/assets/search", [])
     result = AssetCoverageCheck().run(fake_client, app_config)  # no snapshot
     rule = _rule(result, "op.asset_coverage.dead_asset_groups")
     assert rule.status == "error"
@@ -347,7 +342,6 @@ def test_r1_dead_asset_groups_missing_inline_alive_via_fallback(fake_client, app
         ],
         member_counts={10: 42, 11: 0},
     )
-    fake_client.set_paginate_post("/api/3/assets/search", [])
     result = AssetCoverageCheck().run(fake_client, app_config, snapshot=snap)
     rule = _rule(result, "op.asset_coverage.dead_asset_groups")
 
@@ -383,7 +377,6 @@ def test_r1_dead_asset_groups_fallback_cap_reached(fake_client, app_config):
         ],
         member_counts={1: 0, 2: 5},  # group 3 not registered (rule must not call it)
     )
-    fake_client.set_paginate_post("/api/3/assets/search", [])
     result = AssetCoverageCheck().run(fake_client, cfg, snapshot=snap)
     rule = _rule(result, "op.asset_coverage.dead_asset_groups")
 
@@ -408,7 +401,6 @@ def test_r1_dead_asset_groups_fallback_error(fake_client, app_config):
         ],
         member_counts={5: None},  # simulate accessor returning None
     )
-    fake_client.set_paginate_post("/api/3/assets/search", [])
     result = AssetCoverageCheck().run(fake_client, app_config, snapshot=snap)
     rule = _rule(result, "op.asset_coverage.dead_asset_groups")
 
@@ -447,7 +439,6 @@ def test_r1_dead_asset_groups_fallback_cap_zero_disables_fallback(fake_client, a
         ],
         member_counts={},  # cap=0 means no fallback calls; nothing to register
     )
-    fake_client.set_paginate_post("/api/3/assets/search", [])
     result = AssetCoverageCheck().run(fake_client, cfg, snapshot=snap)
     rule = _rule(result, "op.asset_coverage.dead_asset_groups")
 
@@ -474,7 +465,6 @@ def test_r1_dead_asset_groups_non_numeric_inline_treated_as_missing(fake_client,
         ],
         member_counts={1: 7},
     )
-    fake_client.set_paginate_post("/api/3/assets/search", [])
     result = AssetCoverageCheck().run(fake_client, app_config, snapshot=snap)
     rule = _rule(result, "op.asset_coverage.dead_asset_groups")
 
@@ -512,7 +502,6 @@ def test_r4_runs_unconditionally(fake_client, app_config):
     )
     fake_client.set_get("/api/3/assets/100", {"ip": "10.0.0.5", "hostName": "in-scope.local"})
     fake_client.set_get("/api/3/assets/101", {"ip": "192.168.1.5", "hostName": "outside.local"})
-    fake_client.set_paginate_post("/api/3/assets/search", [])
 
     cfg = _r4_app_config(app_config, full_scan=False)
     result = AssetCoverageCheck().run(fake_client, cfg, snapshot=snap)
@@ -534,7 +523,6 @@ def test_r4_directional_summary_shape(fake_client, app_config):
     )
     for aid in sample_ids:
         fake_client.set_get(f"/api/3/assets/{aid}", {"ip": "192.168.1.5", "hostName": f"h-{aid}"})
-    fake_client.set_paginate_post("/api/3/assets/search", [])
 
     result = AssetCoverageCheck().run(fake_client, _r4_app_config(app_config, sample_size=100), snapshot=snap)
     rule = _rule(result, "op.asset_coverage.agent_only_assets")
@@ -558,7 +546,6 @@ def test_r4_sample_info_set(fake_client, app_config):
         included_targets=_r4_targets("10.0.0.0/24"),
     )
     fake_client.set_get("/api/3/assets/1", {"ip": "10.0.0.5", "hostName": "x"})
-    fake_client.set_paginate_post("/api/3/assets/search", [])
 
     result = AssetCoverageCheck().run(fake_client, _r4_app_config(app_config), snapshot=snap)
     rule = _rule(result, "op.asset_coverage.agent_only_assets")
@@ -583,7 +570,6 @@ def test_r4_per_asset_404_excluded_from_denominator(fake_client, app_config):
             fake_client.set_get_raises(f"/api/3/assets/{aid}", Rapid7ClientError("404 at /api/3/assets/x", status_code=404))
         else:
             fake_client.set_get(f"/api/3/assets/{aid}", {"ip": "192.168.1.5", "hostName": f"h-{aid}"})
-    fake_client.set_paginate_post("/api/3/assets/search", [])
 
     result = AssetCoverageCheck().run(fake_client, _r4_app_config(app_config), snapshot=snap)
     rule = _rule(result, "op.asset_coverage.agent_only_assets")
@@ -607,7 +593,6 @@ def test_r4_summary_finding_at_index_0(fake_client, app_config):
     fake_client.set_get("/api/3/assets/100", {"ip": "10.0.0.5", "hostName": "inside-1"})
     fake_client.set_get("/api/3/assets/101", {"ip": "192.168.1.5", "hostName": "outside-1"})
     fake_client.set_get("/api/3/assets/102", {"ip": "10.0.0.6", "hostName": "inside-2"})
-    fake_client.set_paginate_post("/api/3/assets/search", [])
 
     result = AssetCoverageCheck().run(fake_client, _r4_app_config(app_config), snapshot=snap)
     rule = _rule(result, "op.asset_coverage.agent_only_assets")
@@ -631,7 +616,6 @@ def test_r4_truncation_rollup(fake_client, app_config):
     )
     for aid in sample_ids:
         fake_client.set_get(f"/api/3/assets/{aid}", {"ip": "192.168.1.5", "hostName": f"h-{aid}"})
-    fake_client.set_paginate_post("/api/3/assets/search", [])
 
     cfg = _r4_app_config(app_config, sample_size=n)
     result = AssetCoverageCheck().run(fake_client, cfg, snapshot=snap)
@@ -652,7 +636,6 @@ def test_r4_skipped_when_flag_off(fake_client, app_config):
         total_agents=1,
         included_targets=_r4_targets("10.0.0.0/24"),
     )
-    fake_client.set_paginate_post("/api/3/assets/search", [])
 
     # Default app_config has flag off; do NOT call _r4_app_config.
     result = AssetCoverageCheck().run(fake_client, app_config, snapshot=snap)
@@ -669,7 +652,6 @@ def test_r4_skipped_when_agents_unavailable(fake_client, app_config):
         agents_unavailable=True,
         included_targets=_r4_targets("10.0.0.0/24"),
     )
-    fake_client.set_paginate_post("/api/3/assets/search", [])
 
     result = AssetCoverageCheck().run(fake_client, _r4_app_config(app_config), snapshot=snap)
     rule = _rule(result, "op.asset_coverage.agent_only_assets")
@@ -691,7 +673,6 @@ def test_r4_unavailable_endpoint_detected_via_sample_call(fake_client, app_confi
         flip_unavailable_on_sample_call=True,  # accessor flips it (simulates 404)
         included_targets=_r4_targets("10.0.0.0/24"),
     )
-    fake_client.set_paginate_post("/api/3/assets/search", [])
 
     result = AssetCoverageCheck().run(fake_client, _r4_app_config(app_config), snapshot=snap)
     rule = _rule(result, "op.asset_coverage.agent_only_assets")
@@ -709,7 +690,6 @@ def test_r4_empty_fleet_pass(fake_client, app_config):
         total_agents=0,
         included_targets=_r4_targets("10.0.0.0/24"),
     )
-    fake_client.set_paginate_post("/api/3/assets/search", [])
 
     result = AssetCoverageCheck().run(fake_client, _r4_app_config(app_config), snapshot=snap)
     rule = _rule(result, "op.asset_coverage.agent_only_assets")
@@ -729,7 +709,6 @@ def test_r4_rule_id_preserved(fake_client, app_config):
         included_targets=_r4_targets("10.0.0.0/24"),
     )
     fake_client.set_get("/api/3/assets/1", {"ip": "10.0.0.5", "hostName": "x"})
-    fake_client.set_paginate_post("/api/3/assets/search", [])
 
     result = AssetCoverageCheck().run(fake_client, _r4_app_config(app_config), snapshot=snap)
     rule = _rule(result, "op.asset_coverage.agent_only_assets")
@@ -741,7 +720,6 @@ def test_r4_error_when_snapshot_none(fake_client, app_config):
     """flag on + snapshot=None → error status with a clear summary message."""
     cfg = _r4_app_config(app_config)
     # Wire the always-runs prerequisites so the call doesn't blow up earlier.
-    fake_client.set_paginate_post("/api/3/assets/search", [])
     result = AssetCoverageCheck().run(fake_client, cfg, snapshot=None)
     rule = _rule(result, "op.asset_coverage.agent_only_assets")
 
@@ -759,7 +737,6 @@ def test_r4_error_when_targets_none(fake_client, app_config):
         total_agents=1,
         included_targets=None,  # explicit
     )
-    fake_client.set_paginate_post("/api/3/assets/search", [])
 
     result = AssetCoverageCheck().run(fake_client, _r4_app_config(app_config), snapshot=snap)
     rule = _rule(result, "op.asset_coverage.agent_only_assets")
@@ -780,7 +757,6 @@ def test_r4_all_in_scope_pass(fake_client, app_config):
     fake_client.set_get("/api/3/assets/100", {"ip": "10.0.0.5", "hostName": "h-100"})
     fake_client.set_get("/api/3/assets/101", {"ip": "10.0.0.6", "hostName": "h-101"})
     fake_client.set_get("/api/3/assets/102", {"ip": "10.0.0.7", "hostName": "h-102"})
-    fake_client.set_paginate_post("/api/3/assets/search", [])
 
     result = AssetCoverageCheck().run(fake_client, _r4_app_config(app_config), snapshot=snap)
     rule = _rule(result, "op.asset_coverage.agent_only_assets")
@@ -799,7 +775,6 @@ def test_r4_all_in_scope_pass(fake_client, app_config):
 # ----- integration: shape, rollup, backwards-compat -----
 
 def test_run_returns_four_rule_results(fake_client, app_config):
-    fake_client.set_paginate_post("/api/3/assets/search", [])
     snap = _FakeSnapshot(asset_groups=[])
     result = AssetCoverageCheck().run(fake_client, app_config, snapshot=snap)
     assert len(result.rule_results) == 4
@@ -826,7 +801,6 @@ def test_check_status_rolls_up_to_warn_when_any_rule_warns(fake_client, app_conf
 
 
 def test_check_status_pass_when_all_rules_pass(fake_client, app_config):
-    fake_client.set_paginate_post("/api/3/assets/search", [])
     snap = _FakeSnapshot(asset_groups=[])
     result = AssetCoverageCheck().run(fake_client, app_config, snapshot=snap)
     assert result.status == "pass"
@@ -834,7 +808,6 @@ def test_check_status_pass_when_all_rules_pass(fake_client, app_config):
 
 def test_optional_snapshot_kwarg_is_backwards_compatible(fake_client, app_config):
     """Calling without snapshot still works for client-only rules; snapshot-needing rules return error."""
-    fake_client.set_paginate_post("/api/3/assets/search", [])
     result = AssetCoverageCheck().run(fake_client, app_config)  # no snapshot
     # Client-only rules complete normally
     assert _rule(result, "op.asset_coverage.stale_assets").status == "pass"
@@ -963,7 +936,6 @@ def test_rule_identity_matches_method_constants(fake_client, app_config):
     identity for the success path and the method's new identity for the
     error path — confusing operators and breaking delta-blob signatures.
     """
-    fake_client.set_paginate_post("/api/3/assets/search", [])
     snap = _FakeSnapshot(asset_groups=[])
     result = AssetCoverageCheck().run(fake_client, app_config, snapshot=snap)
 

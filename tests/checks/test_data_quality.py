@@ -72,8 +72,6 @@ def test_missing_os_warns(fake_client, app_config):
     # Critical: only ONE search call, not paginated.
     post_one_calls = [c for c in fake_client.calls if c[0] == "post_one"]
     assert len(post_one_calls) == 1
-    paginate_post_calls = [c for c in fake_client.calls if c[0] == "paginate_post"]
-    assert len(paginate_post_calls) == 0
 
 
 def test_empty_site_warns(fake_client, app_config):

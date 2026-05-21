@@ -36,10 +36,10 @@ _DIRECT_REQUESTS_WRITE_RE = re.compile(
     r"\brequests\.(?:put|patch|delete|post)\s*\("
 )
 
-# Static `client.post(...)` / `client.paginate_post(...)` call sites must
-# pass a string-literal first argument that matches the allowlist.
+# Static `client.post(...)` call sites must pass a string-literal first
+# argument that matches the allowlist.
 _POST_CALL_RE = re.compile(
-    r"\b\w+\.(?:post|paginate_post)\s*\(\s*(['\"])([^'\"]+)\1"
+    r"\b\w+\.post\s*\(\s*(['\"])([^'\"]+)\1"
 )
 
 
@@ -99,8 +99,8 @@ def test_no_write_verb_methods_on_client_class() -> None:
 
 
 def test_post_call_sites_are_explicitly_allowlisted() -> None:
-    """Every static `client.post(...)` / `client.paginate_post(...)` call site
-    in src/ must target a path that is in `_ALLOWED_POST_PATHS`.
+    """Every static `client.post(...)` call site in src/ must target a path
+    that is in `_ALLOWED_POST_PATHS`.
 
     Catches accidental drift even if the runtime guard is never executed
     (e.g. a code path that's only reached by an integration test).

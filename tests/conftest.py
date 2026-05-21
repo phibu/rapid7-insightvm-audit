@@ -20,8 +20,8 @@ from rapid7_healthcheck.config import (
 class FakeRapid7Client:
     """Test double matching the surface used by checks.
 
-    Routes are registered via `set_get`, `set_paginate`, `set_post`, `set_paginate_post`.
-    Routing key is (method_kind, path) where method_kind is "get"/"paginate"/"post"/"paginate_post".
+    Routes are registered via `set_get`, `set_paginate`, `set_post`.
+    Routing key is (method_kind, path) where method_kind is "get"/"paginate"/"post".
     Path matching is exact.
     """
 
@@ -30,7 +30,6 @@ class FakeRapid7Client:
         self._get_raises: dict[str, BaseException] = {}
         self._post: dict[str, dict] = {}
         self._paginate: dict[str, list[dict]] = {}
-        self._paginate_post: dict[str, list[dict]] = {}
         self._post_one_responses: dict[str, dict] = {}
         self._post_one_responders: dict[str, Callable[[dict, dict | None], dict]] = {}
         self.calls: list[tuple[str, str, dict | None, dict | None]] = []
@@ -46,9 +45,6 @@ class FakeRapid7Client:
 
     def set_paginate(self, path: str, resources: Iterable[dict]) -> None:
         self._paginate[path] = list(resources)
-
-    def set_paginate_post(self, path: str, resources: Iterable[dict]) -> None:
-        self._paginate_post[path] = list(resources)
 
     def set_post_one(self, path: str, response: dict) -> None:
         self._post_one_responses[path] = response
@@ -93,20 +89,6 @@ class FakeRapid7Client:
         if path not in self._paginate:
             raise AssertionError(f"unexpected paginate {path}")
         yield from self._paginate[path]
-
-    def paginate_post(
-        self,
-        path: str,
-        json_body: dict,
-        params: dict | None = None,
-        page_size: int = 500,
-        *,
-        timeout: int | None = None,
-    ) -> Iterator[dict]:
-        self.calls.append(("paginate_post", path, params, json_body))
-        if path not in self._paginate_post:
-            raise AssertionError(f"unexpected paginate_post {path}")
-        yield from self._paginate_post[path]
 
 
 @pytest.fixture

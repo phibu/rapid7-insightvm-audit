@@ -168,25 +168,6 @@ class Rapid7Client:
             timeout=timeout,
         )
 
-    def paginate_post(
-        self,
-        path: str,
-        json_body: dict,
-        params: dict | None = None,
-        page_size: int | None = None,
-        parallel_pages: int | None = None,
-        *,
-        timeout: int | None = None,
-    ) -> Iterator[dict]:
-        yield from self._paginate(
-            "POST", path,
-            params=params,
-            page_size=page_size if page_size is not None else self._default_page_size,
-            json_body=json_body,
-            parallel_pages=parallel_pages if parallel_pages is not None else self._parallel_pages,
-            timeout=timeout,
-        )
-
     def post_one(
         self,
         path: str,
@@ -197,7 +178,7 @@ class Rapid7Client:
     ) -> dict:
         """Issue a single POST to a search endpoint and return the parsed response.
 
-        Unlike `paginate_post`, this does not iterate pages — useful when the
+        This does not iterate pages — useful when the
         caller only needs `page.totalResources` and the first page of resources
         (e.g. for count-with-examples summaries). The path must be in the
         read-only POST allowlist (`_ALLOWED_POST_PATHS`).
