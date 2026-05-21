@@ -1,167 +1,170 @@
 # =============================================================================
 # Rapid7 InsightVM Environment Health Check — example configuration
 #
-# Every key, threshold, and tunable is documented in README.md. This file is
-# the canonical template: copy it, adjust values, and pass it via --config.
+# Every key is documented inline below and, in more detail, in README.md.
+# This file is the canonical template: copy it, adjust values, pass via --config.
 # =============================================================================
 
 # -----------------------------------------------------------------------------
 # Connection — Security Console (v3 API)
 # -----------------------------------------------------------------------------
 rapid7:
-  base_url: https://us.api.insight.rapid7.com
-  verify_tls: true
-  request_timeout_seconds: 60
-  max_retries: 3
-  parallel_pages: 1
-  page_size: 250
+  base_url: https://us.api.insight.rapid7.com  # Security Console URL (self-hosted: https://<host>:3780)
+  verify_tls: true                             # verify the console TLS cert; false only as a last resort
+  request_timeout_seconds: 60                  # per-request read timeout (seconds); raise to 120 if slow
+  max_retries: 3                               # retries on transient errors before a call fails
+  parallel_pages: 1                            # pages fetched concurrently per paginated call (1-16; 1 = sequential)
+  page_size: 250                               # page size for paginated calls (1-500)
+  # auth_mode: api_key                         # optional, default — reads R7_API_KEY
+  # auth_mode: basic                           # optional — reads R7_BASIC_USER + R7_BASIC_PASSWORD
 
 # -----------------------------------------------------------------------------
 # Report output
 # -----------------------------------------------------------------------------
 report:
-  output_dir: ./reports
-  filename_pattern: "rapid7-health-{timestamp}.html"
-  title: "Rapid7 InsightVM Environment Health Check"
-  delta_max_age_days: 30
-  log_format: plain
+  output_dir: ./reports                                # directory for the generated HTML report
+  filename_pattern: "rapid7-health-{timestamp}.html"   # report filename; {timestamp} is substituted
+  title: "Rapid7 InsightVM Environment Health Check"   # title shown at the top of the report
+  delta_max_age_days: 30                               # days back to compare for the "since last run" delta; null disables
+  log_format: plain                                    # file-log format: plain | cmtrace | json
 
 # -----------------------------------------------------------------------------
 # Thresholds — operational health checks
 # -----------------------------------------------------------------------------
 thresholds:
   scan_engines:
-    last_contact_warn_hours: 24
-    last_contact_fail_hours: 36
+    last_contact_warn_hours: 24            # hours without engine contact before a warn
+    last_contact_fail_hours: 36            # hours without engine contact before a fail
   scan_activity:
-    recent_window_days: 7
-    stuck_scan_hours: 24
-    site_no_scan_days: 14
+    recent_window_days: 7                  # what counts as a "recent" scan (days)
+    stuck_scan_hours: 24                   # a running scan older than this is flagged stuck (hours)
+    site_no_scan_days: 14                  # a site with no scan in this window is overdue (days)
   asset_coverage:
-    stale_asset_days: 30
-    flag_unscanned_assets: true
-    never_scanned_days: 90
-    flag_dead_asset_groups: true
-    dead_groups_fallback_cap: 200
-    flag_agent_only_assets: false
+    stale_asset_days: 30                   # assets not scanned within this window are stale (days)
+    flag_unscanned_assets: true            # also list assets not scanned recently
+    never_scanned_days: 90                 # days since last scan to flag an asset as effectively never scanned
+    flag_dead_asset_groups: true           # flag asset groups whose criteria match zero assets
+    dead_groups_fallback_cap: 200          # max per-group fallback GETs for missing inline counts; 0 disables
+    flag_agent_only_assets: false          # flag agent assets outside scan scope (needs audit.full_scan: true)
   data_quality:
-    flag_missing_os: true
-    flag_empty_sites: true
-    flag_stale_assets: true
-    stale_asset_days: 180
-    flag_duplicate_hostnames: true
-    flag_duplicate_ips: true
-    duplicate_detection_max_assets: 50000
+    flag_missing_os: true                  # flag assets with an empty OS fingerprint
+    flag_empty_sites: true                 # flag sites whose scope currently matches no assets
+    flag_stale_assets: true                # flag assets whose record is so old the data is unreliable
+    stale_asset_days: 180                  # stale threshold for the data-quality check (days; separate from asset_coverage)
+    flag_duplicate_hostnames: true         # flag the same hostname across multiple asset records
+    flag_duplicate_ips: true               # flag the same IP across multiple asset records
+    duplicate_detection_max_assets: 50000  # skip duplicate detection above this asset count; 0 always skips
 
 # -----------------------------------------------------------------------------
 # Check toggles — enable or disable each vertical
 # -----------------------------------------------------------------------------
 checks:
-  scan_engines: true
-  scan_activity: true
-  asset_coverage: true
-  data_quality: true
-  configuration_audit: true
-  user_permission_audit: true
-  cloud_drift_audit: true
+  scan_engines: true            # operational check: scan engine health
+  scan_activity: true           # operational check: recent scan activity
+  asset_coverage: true          # operational check: scanning coverage blind spots
+  data_quality: true            # operational check: asset data hygiene
+  configuration_audit: true     # audit category: configuration best practices
+  user_permission_audit: true   # audit category: console users and authentication
+  cloud_drift_audit: true       # audit category: console vs. Insight Platform drift
 
 # -----------------------------------------------------------------------------
 # Configuration Audit
 # -----------------------------------------------------------------------------
 audit:
-  enabled: true
-  full_scan: false
-  sample_size: 500
-  agents_timeout_seconds: 180
+  enabled: true                 # master toggle for the Configuration Audit
+  full_scan: false              # true enumerates every entity; false samples up to sample_size
+  sample_size: 500              # per-rule sampling cap when full_scan is false
+  agents_timeout_seconds: 180   # dedicated per-request timeout for the slow /api/3/agents endpoint
   rules:
     agent_unauth_collision:
-      enabled: true
-      severity: fail
-      max_agents: 50000
+      enabled: true             # enable/disable this rule
+      severity: fail            # finding severity: info | warn | fail
+      max_agents: 50000         # skip the rule when the agent fleet exceeds this count; 0 always skips
     site_vuln_template_no_creds:
-      enabled: true
-      severity: fail
+      enabled: true             # enable/disable this rule
+      severity: fail            # finding severity: info | warn | fail
     overlapping_scan_windows:
-      enabled: true
-      severity: warn
-      assumed_scan_duration_minutes: 60
+      enabled: true             # enable/disable this rule
+      severity: warn            # finding severity: info | warn | fail
+      assumed_scan_duration_minutes: 60  # assumed window length for schedules with no duration field
     single_engine_overload:
-      enabled: true
-      severity: warn
-      asset_count_threshold: 5000
+      enabled: true             # enable/disable this rule
+      severity: warn            # finding severity: info | warn | fail
+      asset_count_threshold: 5000        # flag an engine whose combined site asset count exceeds this
     discovery_template_on_prod_site:
-      enabled: true
-      severity: warn
+      enabled: true             # enable/disable this rule
+      severity: warn            # finding severity: info | warn | fail
     policy_and_vuln_in_same_template:
-      enabled: true
-      severity: warn
+      enabled: true             # enable/disable this rule
+      severity: warn            # finding severity: info | warn | fail
     local_engine_production_scope:
-      enabled: true
-      severity: warn
-      asset_count_threshold: 1000
+      enabled: true             # enable/disable this rule
+      severity: warn            # finding severity: info | warn | fail
+      asset_count_threshold: 1000        # flag the local engine when its scope exceeds this asset count
+      # additional_local_names: ["my-renamed-local-engine"]  # extra names treated as the local engine
     dynamic_groups_and_nested_tags:
-      enabled: true
-      severity: warn
-      dynamic_group_limit: 50
+      enabled: true             # enable/disable this rule
+      severity: warn            # finding severity: info | warn | fail
+      dynamic_group_limit: 50   # flag when the count of dynamic asset groups exceeds this
     scan_report_schedule_overlap:
-      enabled: true
-      severity: warn
-      assumed_report_duration_minutes: 30
-      assumed_scan_duration_minutes: 60
+      enabled: true             # enable/disable this rule
+      severity: warn            # finding severity: info | warn | fail
+      assumed_report_duration_minutes: 30  # assumed report run length when no duration is set
+      assumed_scan_duration_minutes: 60    # assumed scan window length when no duration is set
     engine_version_drift:
-      enabled: true
-      severity: warn
-      refresh_stale_days: 7
-      check_product_version: true
-      check_content_version: true
+      enabled: true             # enable/disable this rule
+      severity: warn            # finding severity: info | warn | fail
+      refresh_stale_days: 7     # flag an engine whose content refresh is older than this (days)
+      check_product_version: true  # also flag engines behind the latest product version
+      check_content_version: true  # also flag engines behind the latest content version
     insight_agent_deployed:
-      enabled: true
-      severity: info
-      warn_below_percent: 70
+      enabled: true             # enable/disable this rule
+      severity: info            # finding severity: info | warn | fail
+      warn_below_percent: 70    # warn when agent coverage falls below this % of total assets; 0 disables
 
 # -----------------------------------------------------------------------------
 # User & Permission Audit
 # -----------------------------------------------------------------------------
 user_audit:
-  enabled: true
-  full_scan: false
-  sample_size: 500
+  enabled: true                 # master toggle for the User & Permission Audit
+  full_scan: false              # true enumerates every user; false samples up to sample_size
+  sample_size: 500              # per-rule sampling cap when full_scan is false
   rules:
     privileged_user_without_mfa:
-      enabled: true
-      severity: fail
-      mfa_exempt_logins: []
+      enabled: true             # enable/disable this rule
+      severity: fail            # finding severity: info | warn | fail
+      mfa_exempt_logins: []     # logins exempt from the MFA check (e.g. Basic-Auth service accounts)
     local_account_when_sso_configured:
-      enabled: true
-      severity: warn
-      max_local_accounts_when_sso: 2
+      enabled: true             # enable/disable this rule
+      severity: warn            # finding severity: info | warn | fail
+      max_local_accounts_when_sso: 2     # allowed local accounts when SSO is configured
     multiple_global_administrators:
-      enabled: true
-      severity: warn
-      max_global_administrators: 2
+      enabled: true             # enable/disable this rule
+      severity: warn            # finding severity: info | warn | fail (zero GAs is always a hard fail)
+      max_global_administrators: 2       # recommended maximum Global Administrator accounts
     locked_user_account:
-      enabled: true
-      severity: warn
+      enabled: true             # enable/disable this rule
+      severity: warn            # finding severity: info | warn | fail
     disabled_user_with_role_bindings:
-      enabled: true
-      severity: warn
+      enabled: true             # enable/disable this rule
+      severity: warn            # finding severity: info | warn | fail
     user_with_role_but_no_access:
-      enabled: true
-      severity: warn
+      enabled: true             # enable/disable this rule
+      severity: warn            # finding severity: info | warn | fail
     superuser_flag_outside_global_admin:
-      enabled: true
-      severity: fail
+      enabled: true             # enable/disable this rule
+      severity: fail            # finding severity: info | warn | fail
 
 # -----------------------------------------------------------------------------
 # Cloud Integration — Insight Platform (v4 API), required for Cloud Drift Audit
 # -----------------------------------------------------------------------------
 cloud_integration:
-  enabled: false
-  base_url: "https://us.api.insight.rapid7.com/vm/"
-  api_key_env: "R7_CLOUD_API_KEY"
-  timeout_seconds: 30
-  max_retries: 3
-  parallel_pages: 1
+  enabled: false                              # master toggle for the Cloud Drift Audit connection
+  base_url: "https://us.api.insight.rapid7.com/vm/"  # Insight Platform region URL
+  api_key_env: "R7_CLOUD_API_KEY"             # environment variable holding the Insight Platform API key
+  timeout_seconds: 30                         # per-request timeout for v4 calls (seconds)
+  max_retries: 3                              # retries on transient v4 errors
+  parallel_pages: 1                           # concurrent v4 page fetches (1-16)
 
 # -----------------------------------------------------------------------------
 # Cloud Drift Audit
@@ -169,17 +172,17 @@ cloud_integration:
 cloud_drift:
   rules:
     cd.console_asset_count_drift:
-      enabled: true
-      severity: warn
-      tolerance_percent: 5
+      enabled: true             # enable/disable this rule
+      severity: warn            # finding severity: info | warn | fail
+      tolerance_percent: 5      # flag when console vs. cloud asset counts diverge beyond this %
     cd.scan_engine_cloud_registration:
-      enabled: true
-      severity: warn
-      last_seen_max_age_hours: 24
-      ignore_engines: []
+      enabled: true             # enable/disable this rule
+      severity: warn            # finding severity: info | warn | fail (missing-from-cloud is always fail)
+      last_seen_max_age_hours: 24  # flag a cloud engine whose last_seen is older than this (hours)
+      ignore_engines: []        # engine names to exclude from the check
     cd.stale_assessment_cohort:
-      enabled: true
-      severity: warn
-      stale_after_days: 30
-      max_stale_percent: 10
-      max_stale_count: null
+      enabled: true             # enable/disable this rule
+      severity: warn            # finding severity: info | warn | fail
+      stale_after_days: 30      # a cloud asset unassessed for this long counts as stale (days)
+      max_stale_percent: 10     # flag when the stale cohort exceeds this % of cloud assets
+      max_stale_count: null     # flag when the stale cohort exceeds this absolute count; null disables
