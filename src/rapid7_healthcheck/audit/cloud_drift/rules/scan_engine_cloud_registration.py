@@ -59,6 +59,19 @@ def _parse_iso(value: str | None) -> datetime | None:
     return dt
 
 
+def _normalize_host_key(value) -> str | None:
+    """Normalize an address / host_name for cross-key fallback matching.
+
+    Lower-cases, strips surrounding whitespace, and strips a single
+    trailing dot (FQDNs may carry a root-zone dot on one side only).
+    Returns ``None`` for empty / non-string input so callers can skip it.
+    """
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip().rstrip(".").strip().lower()
+    return normalized or None
+
+
 @register_cloud_rule
 class ScanEngineCloudRegistrationRule:
     rule_id = "cd.scan_engine_cloud_registration"
@@ -121,7 +134,7 @@ class ScanEngineCloudRegistrationRule:
         # the same most-recently-seen-wins disambiguation as the name index.
         cloud_by_host_name: dict[str, dict] = {}
         for e in cloud_engines:
-            host_name = e.get("host_name")
+            host_name = _normalize_host_key(e.get("host_name"))
             if not host_name:
                 continue
             existing = cloud_by_host_name.get(host_name)
@@ -154,7 +167,7 @@ class ScanEngineCloudRegistrationRule:
             cloud = cloud_by_name.get(name) if name else None
             matched_via = "name" if cloud is not None else None
             if cloud is None and address:
-                cloud = cloud_by_host_name.get(address)
+                cloud = cloud_by_host_name.get(_normalize_host_key(address))
                 if cloud is not None:
                     matched_via = "host_name_fallback"
                     logger.info(
