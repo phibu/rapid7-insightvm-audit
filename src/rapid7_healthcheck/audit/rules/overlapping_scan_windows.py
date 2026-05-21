@@ -11,6 +11,8 @@ from rapid7_healthcheck.checks import Finding
 # ISO 8601 duration parser, minimal: PT[nH][nM][nS]
 _DURATION_RE = re.compile(r"^P(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$")
 
+_DEFAULT_ASSUMED_SCAN_DURATION_MINUTES = 60
+
 
 def _parse_iso(value: str | None) -> datetime | None:
     if not value:
@@ -85,6 +87,13 @@ class OverlappingScanWindowsRule:
 
     def run(self, snapshot, severity, full_scan, sample_size, rule_config) -> RuleResult:
         sites = snapshot.sites()
+        assumed_minutes = int(
+            rule_config.get(
+                "assumed_scan_duration_minutes",
+                _DEFAULT_ASSUMED_SCAN_DURATION_MINUTES,
+            )
+        )
+        assumed_duration = timedelta(minutes=assumed_minutes)
         sampled = False
         sample_info = None
         if not full_scan and len(sites) > sample_size:
@@ -113,7 +122,7 @@ class OverlappingScanWindowsRule:
                 if start is None:
                     continue
                 duration = _parse_duration(sch.get("duration"))
-                end = start + duration if duration > timedelta(0) else start + timedelta(hours=1)
+                end = start + duration if duration > timedelta(0) else start + assumed_duration
                 windows.append((sid, name, sch, start, end, scope))
 
         findings: list[Finding] = []

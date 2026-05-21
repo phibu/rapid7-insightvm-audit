@@ -135,6 +135,9 @@ audit:
     overlapping_scan_windows:
       enabled: true
       severity: warn
+      # Assumed window length for schedules that carry no duration field.
+      # Default 60 (minutes); matches scan_report_schedule_overlap's knob.
+      assumed_scan_duration_minutes: 60
     single_engine_overload:
       enabled: true
       severity: warn
