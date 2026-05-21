@@ -248,9 +248,46 @@ class EnvSnapshot:
         return self._all_included_targets_cache
 
     def site_asset_count(self, site_id: int) -> int:
-        if site_id not in self._site_asset_count:
-            body = self._client.get(f"/api/3/sites/{site_id}/assets", params={"size": 1})
-            self._site_asset_count[site_id] = int(body.get("page", {}).get("totalResources", 0))
+        """Return the asset count for a site.
+
+        Inline-first: ``GET /api/3/sites`` returns each ``Site`` object with
+        an ``assets`` integer field ("the number of assets that belong to
+        the site" — see the v3 spec). When ``sites()`` has already been
+        loaded this turn (every audit/op-check run primes it), that inline
+        value is used directly — **no per-site HTTP call**. This collapses
+        what used to be one ``GET /api/3/sites/{id}/assets?size=1`` per site
+        into zero extra requests; on consoles with hundreds of sites the
+        empty-sites rule went from ~19 min to the cost of the single
+        ``sites()`` pagination.
+
+        Fallback: when ``sites()`` is not loaded, or a particular ``Site``
+        object lacks a numeric ``assets`` field (older console, partial
+        response), fall back to ``GET /api/3/sites/{id}/assets?size=1`` and
+        read ``page.totalResources``. Both sources count the same
+        population, so the fallback is exact, not an approximation.
+
+        Result cached per ``site_id`` regardless of which path produced it.
+        """
+        if site_id in self._site_asset_count:
+            return self._site_asset_count[site_id]
+
+        # Inline path: read the count off the already-cached Site listing.
+        # Only consult the cache if sites() has actually been loaded — calling
+        # sites() here would trigger the pagination as a side effect, which is
+        # fine, but the explicit None check keeps the accessor's HTTP behavior
+        # predictable for callers that never load sites().
+        if self._sites is not None:
+            for site in self._sites:
+                if site.get("id") != site_id:
+                    continue
+                inline = site.get("assets")
+                if isinstance(inline, int) and not isinstance(inline, bool):
+                    self._site_asset_count[site_id] = inline
+                    return inline
+                break  # found the site but no numeric inline count — fall through
+
+        body = self._client.get(f"/api/3/sites/{site_id}/assets", params={"size": 1})
+        self._site_asset_count[site_id] = int(body.get("page", {}).get("totalResources", 0))
         return self._site_asset_count[site_id]
 
     def scan_template(self, template_id: str) -> dict:

@@ -47,7 +47,9 @@ def test_scan_template_cached_per_id():
     assert sum(1 for p, _ in c.get_calls if p == "/api/3/scan_templates/full-audit") == 1
 
 
-def test_site_asset_count_uses_size_one():
+def test_site_asset_count_falls_back_to_size_one_get_when_no_inline():
+    """When sites() has not been loaded (or a site lacks the inline `assets`
+    field), site_asset_count falls back to GET /sites/{id}/assets?size=1."""
     c = _FakeClient()
     c.set_get("/api/3/sites/7/assets", {"resources": [], "page": {"totalResources": 42}})
     s = EnvSnapshot(c, full_scan=False, sample_size=500)
@@ -55,6 +57,54 @@ def test_site_asset_count_uses_size_one():
     path, params = c.get_calls[0]
     assert path == "/api/3/sites/7/assets"
     assert params == {"size": 1}
+
+
+def test_site_asset_count_uses_inline_assets_field_no_http():
+    """When sites() is already loaded and the Site object carries the inline
+    `assets` count (every real /api/3/sites response does), site_asset_count
+    reads it directly — no per-site GET. This is the fix for the N+1 query
+    that made 'sites with zero assets' take ~19 min on large consoles."""
+    c = _FakeClient()
+    c.set_paginate("/api/3/sites", [
+        {"id": 1, "name": "Prod", "assets": 1200},
+        {"id": 2, "name": "Empty", "assets": 0},
+    ])
+    s = EnvSnapshot(c, full_scan=False, sample_size=500)
+    s.sites()  # prime the cache, as the real run does before calling the rule
+    assert s.site_asset_count(1) == 1200
+    assert s.site_asset_count(2) == 0
+    # No per-site /assets GET was issued — the inline field served both.
+    assert c.get_calls == []
+
+
+def test_site_asset_count_inline_missing_falls_back_to_get():
+    """If a Site object in the cached listing has no `assets` key (older
+    console / partial response), site_asset_count still falls back to the
+    per-site GET for that one site."""
+    c = _FakeClient()
+    c.set_paginate("/api/3/sites", [
+        {"id": 1, "name": "HasInline", "assets": 50},
+        {"id": 2, "name": "NoInline"},  # missing the assets key
+    ])
+    c.set_get("/api/3/sites/2/assets", {"resources": [], "page": {"totalResources": 9}})
+    s = EnvSnapshot(c, full_scan=False, sample_size=500)
+    s.sites()
+    assert s.site_asset_count(1) == 50          # inline, no GET
+    assert s.site_asset_count(2) == 9           # fallback GET
+    # Exactly one GET, and only for the inline-less site.
+    assert [p for p, _ in c.get_calls] == ["/api/3/sites/2/assets"]
+
+
+def test_site_asset_count_inline_non_numeric_falls_back_to_get():
+    """A non-numeric inline `assets` value (None, string) is treated as
+    missing — fall back to the GET rather than crash."""
+    c = _FakeClient()
+    c.set_paginate("/api/3/sites", [{"id": 3, "name": "Weird", "assets": None}])
+    c.set_get("/api/3/sites/3/assets", {"resources": [], "page": {"totalResources": 7}})
+    s = EnvSnapshot(c, full_scan=False, sample_size=500)
+    s.sites()
+    assert s.site_asset_count(3) == 7
+    assert [p for p, _ in c.get_calls] == ["/api/3/sites/3/assets"]
 
 
 def test_asset_sample_returns_total_when_sampling():
