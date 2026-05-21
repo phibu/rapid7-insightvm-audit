@@ -15,6 +15,8 @@ rapid7:
   max_retries: 3
   parallel_pages: 1
   page_size: 250
+  # auth_mode: api_key   # default — reads R7_API_KEY
+  # auth_mode: basic     # reads R7_BASIC_USER + R7_BASIC_PASSWORD
 
 # -----------------------------------------------------------------------------
 # Report output
@@ -99,6 +101,7 @@ audit:
       enabled: true
       severity: warn
       asset_count_threshold: 1000
+      # additional_local_names: ["my-renamed-local-engine"]
     dynamic_groups_and_nested_tags:
       enabled: true
       severity: warn
