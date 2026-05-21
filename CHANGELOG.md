@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.5.1] - 2026-05-21
+
+### Fixed
+
+- **Example `config.yaml`: restored two optional keys dropped in the 0.6.5 restructure.** The 0.6.5 comment-strip also removed `rapid7.auth_mode` and the `local_engine_production_scope.additional_local_names` knob, which were commented-out *optional keys*, not explanatory prose. Both are restored as commented examples. No deployment was affected — both have working defaults (`auth_mode` → `api_key`, `additional_local_names` → `[]`); this only restored the template's self-documentation.
+
+### Changed
+
+- **Example `config.yaml`: every key now carries a short inline trailing comment** explaining its purpose or accepted values. The README "Configuration reference" remains the detailed reference; the inline comments make the example self-explanatory at a glance. Documentation only — no key, value, or structure changed.
+
 ## [0.6.5] - 2026-05-21
 
 ### Fixed
