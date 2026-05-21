@@ -62,13 +62,13 @@ def _parse_iso(value: str | None) -> datetime | None:
 def _normalize_host_key(value) -> str | None:
     """Normalize an address / host_name for cross-key fallback matching.
 
-    Lower-cases, strips surrounding whitespace, and strips a single
-    trailing dot (FQDNs may carry a root-zone dot on one side only).
+    Lower-cases, strips surrounding whitespace, and strips trailing
+    dot(s) (FQDNs may carry a root-zone dot on one side only).
     Returns ``None`` for empty / non-string input so callers can skip it.
     """
     if not isinstance(value, str):
         return None
-    normalized = value.strip().rstrip(".").strip().lower()
+    normalized = value.strip().rstrip(".").lower()
     return normalized or None
 
 
