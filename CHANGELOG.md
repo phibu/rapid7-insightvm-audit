@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-05-21
+
+### Fixed
+
+- **`EmptySitesRule` ("Sites with zero assets") no longer issues one HTTP request per site.** `EnvSnapshot.site_asset_count()` issued `GET /api/3/sites/{id}/assets?size=1` for every site to read `page.totalResources` — an N+1 query that took ~19 minutes on a large console (~500 sites). The count is already in hand: `GET /api/3/sites` returns each `Site` object with an `assets` integer field ("the number of assets that belong to the site", per the v3 spec), and `snapshot.sites()` already fetches those full objects. `site_asset_count()` is now inline-first — when `sites()` is loaded (every run primes it before the rule loop), it reads `Site.assets` directly with no HTTP call. It falls back to the per-site `GET` only when `sites()` is unloaded or a `Site` lacks a numeric `assets` field (older console / partial response); both sources count the same population, so the fallback is exact. Speeds up all six `site_asset_count()` callers (the empty-sites op-check rule plus five audit rules); the empty-sites rule drops from ~19 min to the cost of the single `/api/3/sites` pagination.
+
+### Internal
+
+- 4 new tests (673 → 677): the inline-read path plus all three fallback cases (`sites()` unloaded, `assets` key missing, `assets` non-numeric).
+
 ## [0.6.0] - 2026-05-19
 
 ### Fixed
