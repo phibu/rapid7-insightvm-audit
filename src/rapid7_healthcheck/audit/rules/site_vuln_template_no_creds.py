@@ -22,8 +22,11 @@ def _shared_credential_covers(shared: dict, site_id: int) -> bool:
     sites_restriction = shared.get("sites")
     if sites_restriction is None:
         # all-sites shape (sites is null when siteAssignment is all-sites);
-        # also covers older payloads that omit siteAssignment entirely.
-        return shared.get("siteAssignment") in (None, "all-sites")
+        # the explicit "all-sites" case already returned above, so reaching
+        # here with sites=None means siteAssignment was absent — an older
+        # payload that omits it. Treat absent-assignment + null-sites as
+        # all-sites coverage.
+        return True
     return site_id in sites_restriction
 
 
