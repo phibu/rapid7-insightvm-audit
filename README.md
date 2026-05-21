@@ -1,21 +1,26 @@
 # Rapid7 InsightVM Health Check
 
-Read-only health check for a Rapid7 InsightVM environment. Calls the Insight Platform API with a read-only API key and produces a single self-contained HTML report.
+Read-only health check for a Rapid7 InsightVM environment. Calls the InsightVM Security Console API (v3) with a read-only API key and produces a single self-contained HTML report. The optional Cloud Drift Audit additionally calls the Insight Platform Cloud Integrations API (v4).
 
-### What's new in 0.2.0
+### What's new in 0.6.5
 
-The report gains an interactivity layer: a sticky filter bar (severity
-chips, search box, "Changed since last run" chip when delta data is
-present) and a three-state theme toggle (system / light / dark) with
-preference persistence. Filter state syncs to the URL hash so filtered
-views are shareable. Native `<details>` rule cards retained for
-keyboard, screen-reader, and JS-disabled accessibility.
+- **`overlapping_scan_windows` gains an `assumed_scan_duration_minutes` knob** (default 60) for schedules that carry no explicit duration — parity with `scan_report_schedule_overlap`.
+- **Correctness fixes** — `multiple_global_administrators` now hard-fails a console with zero Global Administrators; `local_account_when_sso_configured` detects external auth sources robustly (by `type` or `external` flag); `cd.scan_engine_cloud_registration` no longer misses fallback matches on FQDN trailing dots / whitespace.
+- **Example `config.yaml` restructured** — inline tunable documentation removed; this README is now the authoritative reference for every config key (see [Configuration reference](#configuration-reference)). Example scan-engine last-contact thresholds raised to 24 h warn / 36 h fail.
+
+Highlights from earlier releases:
+
+- **0.5.0** — new **Cloud Drift Audit** category (7th check), reconciling the Security Console against the Insight Platform v4 API.
+- **0.3.x** — **User & Permission Audit** category matured; `--progress` / `--no-progress` flags; per-call `audit.agents_timeout_seconds`.
+- **0.2.8** — opt-in concurrent pagination (`rapid7.parallel_pages`) and tunable `rapid7.page_size`; default request timeout raised to 60 s.
+- **0.2.0** — report interactivity layer: sticky filter bar (severity chips, search, "Changed since last run"), three-state theme toggle, URL-hash-synced filter state, native `<details>` rule cards for accessibility.
 
 ## Requirements
 
 - Python 3.11+
-- Network access to your Insight Platform region URL (e.g. `https://us.api.insight.rapid7.com`)
-- A read-only Insight Platform API key
+- Network access to your **InsightVM Security Console** (`https://<console-host>:3780` for self-hosted, or `https://<tenant>.hosted.rapid7.com` for Rapid7-hosted)
+- A read-only **Security Console API key** — or HTTP Basic Auth credentials (see [Authenticating against your console](#authenticating-against-your-console))
+- *Optional, only for the Cloud Drift Audit:* network access to your Insight Platform region URL (e.g. `https://us.api.insight.rapid7.com`) and a separate Insight Platform API key
 
 ## Setup
 
@@ -162,13 +167,20 @@ Optional flags:
 - `--config <path>` — config file (default `./config.yaml`)
 - `--output <path>` — write the report to a specific path (overrides the configured filename pattern)
 - `--verbose` — DEBUG logging
-- `--log-file <path>` — also write logs to a file. When set, every log
-  line is flushed to disk immediately so the file can be tailed live
+- `--log-file <path>` — also write logs to a file. A run log is written
+  by default; this flag overrides its path. When set, every log line is
+  flushed to disk immediately so the file can be tailed live
   (`tail -f /path/to/log`) during long-running audits. Combined with
   `--verbose`, every HTTP request to the Security Console is logged at
   DEBUG level — showing the exact API call in flight, the HTTP status
   and elapsed time on the way back, and a WARNING line for any
   non-retried 4xx/5xx response.
+- `--no-log-file` — suppress the default-on run log file entirely.
+  Mutually exclusive with `--log-file`.
+- `--log-format {plain,cmtrace,json}` — file-log format; overrides
+  `report.log_format`. Stderr stays human-readable plain regardless.
+  `cmtrace` produces SCCM/MECM CMTrace-viewer output; `json` produces
+  JSON Lines for Splunk/Loki/OpenSearch ingestion.
 - `--progress` — force progress output on (overrides TTY auto-detect; useful in CI / piped logs).
 - `--no-progress` — suppress per-check / per-rule progress output.
 
@@ -186,23 +198,25 @@ The CLI prints the absolute path of the written report on success.
 
 ## Configuration Audit
 
-In addition to the four operational health checks, the tool runs a **Configuration Audit**: twelve best-practice rules sourced from official Rapid7 documentation, each grounded in a public Rapid7 source URL.
+In addition to the four operational health checks, the tool runs a **Configuration Audit**: eleven best-practice rules sourced from official Rapid7 documentation, each grounded in a public Rapid7 source URL.
 
-Rules:
+Rules (the `rule_id` is the config key under `audit.rules:`):
 
-| Rule | Default severity | Source |
-|------|-----------------:|--------|
-| Insight Agent asset scanned without authentication | fail | docs.rapid7.com Console Best Practices, 6.6.229 release notes. In fast mode, per-site enumeration is capped at `audit.sample_size` and short-circuits on first agent-managed asset; sites that hit the cap without a match are listed in a single aggregate info finding. Set `full_scan: true` to remove the cap. |
-| Vulnerability template without credentials | fail | Scan Template Best Practices, Configuring Scan Credentials |
-| Overlapping scan windows | warn | Console Best Practices |
-| Single scan engine overloaded | warn | Console Best Practices |
-| Discovery template on production site | warn (heuristic) | Scan Template Best Practices |
-| Policy and Vulnerability in same template | warn | Scan Template Best Practices |
-| Local Scan Engine carrying production-sized scope | warn (heuristic) | Console Best Practices |
-| Excessive dynamic asset groups or nested tag references | warn | Console Best Practices |
-| Scan and report schedules overlap on shared scope | warn | Console Best Practices |
-| Scan engine version drift or stale content refresh | warn | Console Best Practices |
-| Insight Agent fleet presence | info | docs.rapid7.com Insight Agent overview |
+| Rule (`rule_id`) | Default severity | Knobs | Source |
+|------------------|-----------------:|-------|--------|
+| Insight Agent Asset Scanned Without Authentication (`agent_unauth_collision`) | fail | `max_agents` (50000) — skip when the agent fleet exceeds this | Console Best Practices, 6.6.229 release notes |
+| Vulnerability Template Without Credentials (`site_vuln_template_no_creds`) | fail | — | Scan Template Best Practices, Configuring Scan Credentials |
+| Overlapping Scan Windows (`overlapping_scan_windows`) | warn | `assumed_scan_duration_minutes` (60) — window length for schedules with no duration | Console Best Practices |
+| Single Scan Engine Overloaded (`single_engine_overload`) | warn | `asset_count_threshold` (5000) | Console Best Practices |
+| Discovery Template on Production Site (`discovery_template_on_prod_site`) | warn (heuristic) | — | Scan Template Best Practices |
+| Policy and Vulnerability in Same Template (`policy_and_vuln_in_same_template`) | warn | — | Scan Template Best Practices |
+| Local Scan Engine Carrying Production-Sized Scope (`local_engine_production_scope`) | warn (heuristic) | `asset_count_threshold` (1000), `additional_local_names` (list) | Console Best Practices |
+| Excessive Dynamic Asset Groups or Nested Tag References (`dynamic_groups_and_nested_tags`) | warn | `dynamic_group_limit` (50) | Console Best Practices |
+| Scan and Report Schedules Overlap on Shared Scope (`scan_report_schedule_overlap`) | warn | `assumed_report_duration_minutes` (30), `assumed_scan_duration_minutes` (60) | Console Best Practices |
+| Scan Engine Version Drift or Stale Content Refresh (`engine_version_drift`) | warn | `refresh_stale_days` (7), `check_product_version` (true), `check_content_version` (true) | Console Best Practices |
+| Insight Agent Fleet Coverage (`insight_agent_deployed`) | info | `warn_below_percent` (70) — warn when agent coverage falls below this % of total assets | Insight Agent overview |
+
+In fast mode (`audit.full_scan: false`), `agent_unauth_collision`'s per-site enumeration is capped at `audit.sample_size` and short-circuits on the first agent-managed asset; sites that hit the cap without a match are listed in a single aggregate info finding. Set `audit.full_scan: true` to remove the cap.
 
 Per-rule severity and enable/disable live in the `audit:` block of `config.yaml`. Each finding in the report links back to the Rapid7 source documenting the rule.
 
@@ -286,15 +300,15 @@ A sibling audit category to the configuration audit, scoped to console user acco
 
 **Required permission:** the API key must belong to a **Global Administrator**. The `/api/3/users` and `/api/3/authentication_sources` endpoints are GA-only. If the key lacks this, the audit self-skips with a single info finding rather than failing.
 
-| Rule | Default | Notes |
+| Rule (`rule_id`) | Default | Notes |
 | --- | --- | --- |
-| Privileged user without MFA | fail | Scoped to GA / `role.superuser` users only. Service accounts that legitimately use HTTP Basic Auth (which bypasses MFA) can be allowlisted via `mfa_exempt_logins`. Requires Global Administrator key — non-GA keys receive 401 from `/api/3/users/{id}/2FA` and the rule self-skips with an info finding. External-auth users (SAML/LDAP/Kerberos) are excluded from local 2FA checks; their MFA enforcement is delegated to the IdP and they are surfaced in a single aggregate info finding. |
-| Local accounts when SSO is configured | warn | Excessive local accounts when LDAP/SAML/Kerberos is configured. Knob: `max_local_accounts_when_sso` (default 2). |
-| Multiple Global Administrators | warn | Privilege creep. Knob: `max_global_administrators` (default 2). |
-| Locked user account | warn | Stuck account or brute-force indicator. |
-| Disabled user with active role bindings | warn | Hygiene cleanup. |
-| User has role but no site/asset-group access | warn | Misconfigured user. Honours `sample_size`. |
-| Superuser flag outside Global Administrator | fail | RBAC bypass — should never happen. |
+| Privileged User Without MFA (`privileged_user_without_mfa`) | fail | Scoped to GA / `role.superuser` users only. Service accounts that legitimately use HTTP Basic Auth (which bypasses MFA) can be allowlisted via `mfa_exempt_logins`. Requires Global Administrator key — non-GA keys receive 401 from `/api/3/users/{id}/2FA` and the rule self-skips with an info finding. External-auth users (SAML/LDAP/Kerberos) are excluded from local 2FA checks; their MFA enforcement is delegated to the IdP and they are surfaced in a single aggregate info finding. |
+| Local Accounts When SSO Is Configured (`local_account_when_sso_configured`) | warn | Excessive local accounts when LDAP/SAML/Kerberos is configured. Knob: `max_local_accounts_when_sso` (default 2). External auth sources are detected by either a truthy `external` flag or a non-`normal` `type` — robust to either API payload shape. |
+| Multiple Global Administrators (`multiple_global_administrators`) | warn / fail | Privilege creep. Knob: `max_global_administrators` (default 2). Emits `warn` when GA count exceeds the threshold, and a hard `fail` when **zero** enabled Global Administrators exist (a console nobody can administer). |
+| Locked User Account (`locked_user_account`) | warn | Stuck account or brute-force indicator. |
+| Disabled User With Active Role Bindings (`disabled_user_with_role_bindings`) | warn | Hygiene cleanup. |
+| User Has Role But No Site/Asset-Group Access (`user_with_role_but_no_access`) | warn | Misconfigured user. Honours `sample_size`. |
+| Superuser Flag Outside Global Administrator (`superuser_flag_outside_global_admin`) | fail | RBAC bypass — should never happen. |
 
 **Rules NOT implemented (and why).** Some commonly-requested user-audit rules cannot be implemented because the Rapid7 v3 API does not expose the underlying data. Audit them in the Security Console UI:
 
@@ -318,13 +332,15 @@ Insight Platform API key in addition to your existing console
 
 ### Cloud Drift Audit rules
 
-| Rule ID | What it checks | Default severity | Source |
-|---|---|---|---|
-| `cd.console_asset_count_drift` | Console asset count vs. cloud asset count, flagged when divergence exceeds `tolerance_percent` (default 5%). One side at zero with the other non-zero upgrades to fail. | warn | https://insight.help.rapid7.com/docs/api-overview |
-| `cd.scan_engine_cloud_registration` | Console-known engines that are missing from the Insight Platform engine list (fail) or have stale `last_seen` (warn, default 24 h). | warn | https://docs.rapid7.com/insightvm/working-with-scan-engines/ |
-| `cd.stale_assessment_cohort` | Cloud assets with `last_assessed_for_vulnerabilities` older than `stale_after_days` (default 30), flagged when the cohort exceeds `max_stale_percent` or `max_stale_count`. | warn | https://docs.rapid7.com/insightvm/scan-template-best-practices/ |
+| Rule ID | What it checks | Default severity | Knobs |
+|---|---|---|-------|
+| `cd.console_asset_count_drift` | Console asset count vs. cloud asset count, flagged when divergence exceeds `tolerance_percent`. One side at zero with the other non-zero upgrades to fail. | warn | `tolerance_percent` (5) |
+| `cd.scan_engine_cloud_registration` | Console-known engines that are missing from the Insight Platform engine list (always `fail`) or have stale / never-set `last_seen` (`warn`). | warn | `last_seen_max_age_hours` (24), `ignore_engines` (list, name-based) |
+| `cd.stale_assessment_cohort` | Cloud assets with `last_assessed_for_vulnerabilities` older than `stale_after_days`, flagged when the cohort exceeds `max_stale_percent` or `max_stale_count`. | warn | `stale_after_days` (30), `max_stale_percent` (10), `max_stale_count` (null) |
 
-> **Engine match key — primary and fallback.** `cd.scan_engine_cloud_registration` cross-references console engines to cloud engines using `name` as the primary key. When name matching misses (e.g. an engine was renamed on one side and not the other), the rule falls back to comparing `console.address` against `cloud.host_name`. Name match always wins when both would succeed. When the fallback matches, the rule logs an INFO line — search your run log for `"via host_name fallback"` to audit which engines matched only on the fallback path. `ignore_engines` is name-based and applies before either match attempt.
+Sources: `cd.console_asset_count_drift` and the Cloud Integrations API — https://insight.help.rapid7.com/docs/api-overview ; `cd.scan_engine_cloud_registration` — https://docs.rapid7.com/insightvm/working-with-scan-engines/ ; `cd.stale_assessment_cohort` — https://docs.rapid7.com/insightvm/scan-template-best-practices/
+
+> **Engine match key — primary and fallback.** `cd.scan_engine_cloud_registration` cross-references console engines to cloud engines using `name` as the primary key. When name matching misses (e.g. an engine was renamed on one side and not the other), the rule falls back to comparing `console.address` against `cloud.host_name`. The fallback comparison is normalized — lower-cased, with surrounding whitespace and a trailing FQDN dot stripped — so `engine.example.com.` matches `engine.example.com`. Name match always wins when both would succeed. When the fallback matches, the rule logs an INFO line — search your run log for `"via host_name fallback"` to audit which engines matched only on the fallback path. `ignore_engines` is name-based and applies before either match attempt.
 
 ### Enabling Cloud Drift Audit
 
@@ -355,23 +371,85 @@ Register-ScheduledTask -TaskName "Rapid7 HealthCheck" -Action $action -Trigger $
 0 6 * * * cd /path/to/Rapid7-HealthCheck && /path/to/.venv/bin/python -m rapid7_healthcheck >> /var/log/rapid7-healthcheck.log 2>&1
 ```
 
-## Tuning thresholds
+## Configuration reference
 
-All thresholds live in `config.yaml` under `thresholds:`. Every report footer prints the thresholds applied so it's obvious what to tune.
+`config.yaml` is the single source of truth for every setting. Copy `docs/examples/config.yaml` and adjust. The example file carries no inline comments — this section documents every key. Unknown keys are rejected at startup. The report footer prints the applied thresholds so it's obvious what is tuned.
 
-- `scan_engines.last_contact_warn_hours` / `last_contact_fail_hours` — how long without engine contact before warn/fail.
-- `scan_activity.recent_window_days` — what counts as "recent".
-- `scan_activity.site_no_scan_days` — when no scan in this window becomes a fail.
-- `scan_activity.stuck_scan_hours` — a running scan older than this is flagged as stuck.
-- `asset_coverage.stale_asset_days` — assets not scanned in this window are stale.
-- `asset_coverage.flag_unscanned_assets` — also list assets that have not been scanned recently.
-- `asset_coverage.never_scanned_days` — days since last scan to flag an asset as effectively never scanned (default 90).
-- `data_quality.flag_missing_os` / `flag_empty_sites` — toggle data quality sub-checks.
-- `data_quality.duplicate_detection_max_assets` (default `50000`) — skip duplicate hostname/IP detection when total assets exceed this ceiling. The v3 API has no group-by; on large consoles (500k+ assets, ~45s/page) full pagination is infeasible. Above the ceiling, both rules emit an info finding pointing to the Security Console UI. Set to `0` to always skip; raise it to override on consoles where pagination is fast enough.
+### `rapid7:` — Security Console connection (v3 API)
 
-At inventory sizes above `data_quality.duplicate_detection_max_assets` (default 50,000), the duplicate-hostname and duplicate-IP rules are skipped because the v3 API has no group-by operator and full pagination becomes infeasible on large consoles. The rule cards in the report point users to the Security Console UI for manual review.
+| Key | Type / default | Purpose |
+|-----|----------------|---------|
+| `base_url` | string, required | Security Console URL. Self-hosted: `https://<host>:3780`. Rapid7-hosted: `https://<tenant>.hosted.rapid7.com`. **Not** an Insight Platform region URL — see [About `base_url`](#about-base_url). |
+| `verify_tls` | bool, required | Verify the console's TLS certificate. Set `false` only as a last resort (see Troubleshooting). |
+| `request_timeout_seconds` | int, required | Per-request read timeout. Example default `60`. Raise to `120` for consoles slow under load. |
+| `max_retries` | int, required | Retries on transient errors. Worst-case wait per call ≈ `(max_retries + 1) × request_timeout_seconds`. |
+| `auth_mode` | `api_key` \| `basic`, default `api_key` | `api_key` reads `R7_API_KEY`; `basic` reads `R7_BASIC_USER` + `R7_BASIC_PASSWORD`. See [Authenticating](#authenticating-against-your-console). |
+| `parallel_pages` | int 1–16, default `1` | Pages fetched concurrently within one paginated call. `8` is the API-supported ceiling; `9–16` work but emit a startup warning. `1` = sequential. |
+| `page_size` | int 1–500, default `250` | Page size for paginated calls. `500` regularly times out on large filtered `/api/3/assets/search` queries. |
 
-You can also disable an entire check by setting its toggle in `checks:` to `false` — it appears in the report as `SKIPPED`.
+### `report:` — report output
+
+| Key | Type / default | Purpose |
+|-----|----------------|---------|
+| `output_dir` | string, required | Directory for the generated HTML report. |
+| `filename_pattern` | string, required | Report filename; `{timestamp}` is substituted. |
+| `title` | string, required | Title shown at the top of the report. |
+| `delta_max_age_days` | int ≥ 0 or `null`, default `30` | How many days back to compare against a prior report for the "since last run" delta. `null` disables the delta. |
+| `log_format` | `plain` \| `cmtrace` \| `json`, default `plain` | File-log format. `cmtrace` = SCCM/MECM viewer format; `json` = JSON Lines. Overridable per-run with `--log-format`. |
+
+### `thresholds:` — operational health checks
+
+| Key | Type / default | Purpose |
+|-----|----------------|---------|
+| `scan_engines.last_contact_warn_hours` | int, required (example `24`) | Hours without engine contact before a `warn`. |
+| `scan_engines.last_contact_fail_hours` | int, required (example `36`) | Hours without engine contact before a `fail`. |
+| `scan_activity.recent_window_days` | int, required | What counts as a "recent" scan. |
+| `scan_activity.stuck_scan_hours` | int, required | A `running` scan older than this is flagged stuck. |
+| `scan_activity.site_no_scan_days` | int, required | A site with no scan in this window is overdue. |
+| `asset_coverage.stale_asset_days` | int, required | Assets not scanned within this window are stale. |
+| `asset_coverage.flag_unscanned_assets` | bool, required | Also list assets not scanned recently. |
+| `asset_coverage.never_scanned_days` | int, required | Days since last scan to flag an asset as effectively never scanned. |
+| `asset_coverage.flag_dead_asset_groups` | bool, default `true` | Flag asset groups whose membership criteria match zero assets (orphaned RBAC/report scopes). |
+| `asset_coverage.flag_agent_only_assets` | bool, default `false` | Flag Insight-Agent assets outside every site's scan target ranges. Requires `audit.full_scan: true` to actually run. |
+| `asset_coverage.dead_groups_fallback_cap` | int, default `200` | Max per-group `GET /asset_groups/{id}/assets` fallbacks when the listing endpoint omits inline counts. `0` disables the fallback. |
+| `data_quality.flag_missing_os` | bool, required | Toggle the missing-OS sub-check. |
+| `data_quality.flag_empty_sites` | bool, required | Toggle the empty-sites sub-check. |
+| `data_quality.flag_stale_assets` | bool, default `true` | Toggle the long-stale-asset sub-check. |
+| `data_quality.stale_asset_days` | int, default `180` | Stale threshold for the **data-quality** stale check — distinct from `asset_coverage.stale_asset_days` (a coverage gap); this signals the asset record itself is unreliable. |
+| `data_quality.flag_duplicate_hostnames` | bool, default `true` | Toggle duplicate-hostname detection. |
+| `data_quality.flag_duplicate_ips` | bool, default `true` | Toggle duplicate-IP detection. |
+| `data_quality.duplicate_detection_max_assets` | int, default `50000` | Skip duplicate detection when total assets exceed this ceiling. The v3 API has no group-by; on large consoles (500k+ assets, ~45 s/page) full pagination is infeasible — above the ceiling both rules emit an info finding pointing to the Security Console UI. `0` always skips. |
+
+### `checks:` — vertical toggles
+
+Seven booleans, each `true`/`false`. Setting one `false` makes that vertical appear as `SKIPPED` in the report: `scan_engines`, `scan_activity`, `asset_coverage`, `data_quality`, `configuration_audit`, `user_permission_audit`, `cloud_drift_audit`.
+
+### `audit:` / `user_audit:` — audit categories
+
+| Key | Type / default | Purpose |
+|-----|----------------|---------|
+| `enabled` | bool, required | Master toggle for the category. |
+| `full_scan` | bool, required | `true` enumerates every entity; `false` samples up to `sample_size` per expensive rule. |
+| `sample_size` | int, required (example `500`) | Per-rule sampling cap when `full_scan` is `false`. Applies to Configuration Audit and User & Permission Audit only — never to operational checks or Cloud Drift. |
+| `agents_timeout_seconds` | int, default `180` (`audit:` only) | Dedicated per-request timeout for the slow `/api/3/agents` endpoint. |
+| `rules:` | map | Per-rule `enabled`, `severity`, and rule-specific knobs — see the [Configuration Audit](#configuration-audit) and [User & Permission Audit](#user--permission-audit) rule tables. |
+
+### `cloud_integration:` — Insight Platform connection (v4 API)
+
+| Key | Type / default | Purpose |
+|-----|----------------|---------|
+| `enabled` | bool, default `false` | Master toggle for the Cloud Drift Audit connection. |
+| `base_url` | string | Insight Platform region URL, e.g. `https://us.api.insight.rapid7.com/vm/`. |
+| `api_key_env` | string, default `R7_CLOUD_API_KEY` | Environment variable holding the Insight Platform API key. |
+| `timeout_seconds` | int, default `30` | Per-request timeout for v4 calls. |
+| `max_retries` | int, default `3` | Retries on transient v4 errors. |
+| `parallel_pages` | int 1–16, default `1` | Concurrent v4 page fetches. |
+
+### `cloud_drift:` — Cloud Drift Audit rules
+
+`cloud_drift.rules:` holds per-rule `enabled`, `severity`, and knobs — see the [Cloud Drift Audit rules](#cloud-drift-audit-rules) table.
+
+A rule set to `severity: info` produces findings without escalating check status or the exit code — see the note under [Configuration Audit](#configuration-audit). Disabling a whole check via the `checks:` toggle makes it appear as `SKIPPED` in the report.
 
 ## Troubleshooting
 
@@ -402,7 +480,7 @@ pytest -v
   `Rapid7Client._request` at runtime with a `ReadOnlyViolationError`
   *before* the request is sent. See [SECURITY.md](SECURITY.md) for the full
   contract and the static-scan tests that enforce it in CI.
-- Check things the cloud API does not expose (license status, console build version, content/vuln-definitions update freshness).
+- Check things the v3 Security Console API does not expose (license status, console build version, console content/vuln-definitions update freshness). Note: scan-engine product and content versions *are* checked, by the `engine_version_drift` audit rule.
 - Send notifications. Pipe the exit code into your own notifier or watch the report directory.
 
 ## Security
