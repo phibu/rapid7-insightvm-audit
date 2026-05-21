@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-05-21
+
+### Fixed
+
+- **`site_vuln_template_no_creds` no longer false-flags sites covered by shared credentials.** `_site_has_credentials` gated the shared-credential branch on `shared.get("enabled", False)`, but the v3 `SharedCredential` schema has **no `enabled` field** — so the guard's `continue` fired for every shared credential, making the entire shared-credential branch dead code. Sites whose only credentials were shared (a common, Rapid7-recommended setup) were wrongly reported as "no credentials." The rule now reads the spec-correct `siteAssignment` field via a new `_shared_credential_covers` helper: `"all-sites"` covers every site, `"specific-sites"` covers the IDs in the `sites` list (which is `null` for the all-sites case).
+
+- **`site_vuln_template_no_creds` no longer issues one HTTP request per site when shared credentials cover the fleet.** The rule called the per-site `GET /api/3/sites/{id}/site_credentials` (the v3 API offers no bulk equivalent) *before* checking shared credentials — an N+1 sweep that took ~15 minutes on a large console. `_site_has_credentials` now checks `shared_credentials()` first (a single cached GET held in memory) and only falls through to the per-site call for sites no shared credential covers. On consoles with an `all-sites` shared credential the per-site call is never made; the run collapses to one `shared_credentials()` GET.
+
+### Internal
+
+- The bug-pinning test `test_shared_credentials_count` (which only passed because its fixture invented an `enabled` field the real API never returns) replaced by 4 real-API-shape tests: specific-sites coverage, all-sites coverage, fallback to the per-site call when no shared credential covers the site, and the genuine flag-when-uncredentialed case. 677 → 680.
+
 ## [0.6.1] - 2026-05-21
 
 ### Fixed
