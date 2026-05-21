@@ -127,6 +127,18 @@ class Rapid7Client:
         if api_key is not None:
             self._headers["X-Api-Key"] = api_key
 
+    @property
+    def parallel_pages(self) -> int:
+        """Configured concurrency for parallel fetches.
+
+        Public, read-only view of the `parallel_pages` setting. Used by
+        callers that fan out independent GETs themselves (e.g. the
+        snapshot's per-site batch prefetch) so they reuse the same
+        operator-tuned concurrency as `paginate()` instead of hardcoding
+        a worker count. Always in [1, 16] — validated in `__init__`.
+        """
+        return self._parallel_pages
+
     def connect(self) -> None:
         """Validate base URL and credentials by hitting /api/3."""
         self.get("/api/3")

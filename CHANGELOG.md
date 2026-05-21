@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-05-21
+
+### Fixed
+
+- **"Overlapping Scan Windows" audit rule no longer issues per-site requests serially.** The rule fetched scan schedules and included IP targets for every site with two sequential `GET`s per site (`/api/3/sites/{id}/scan_schedules` and `/api/3/sites/{id}/included_targets`) — an N+1 sweep that took ~10 minutes on a ~300-site console. The v3 `Site` schema carries no inline `schedules`/`includedTargets` field and there is no bulk endpoint, so the per-site fetches are unavoidable — but they need not be serial. New `EnvSnapshot.prefetch_site_schedules()` / `prefetch_site_included_targets()` fan the fetches out across a thread pool sized by the client's `parallel_pages` setting, populating the existing per-site caches; the rule calls them once before its loop. With `rapid7.parallel_pages` raised above the default `1`, the run drops from ~10 min toward ~1 min; at the default it is unchanged.
+
+- **"Stale assets" and "Never-scanned assets" operational checks no longer enumerate the entire result set.** `StaleAssetsRule` / `NeverScannedAssetsRule` paginated *every* matching asset from `/api/3/assets/search` — on a console with 50,000 stale assets that was ~100 sequential POSTs (~19 minutes), materializing 50,000 records. But the report only ever renders the first 500 per-asset findings (`_PER_ITEM_FINDING_CAP`) plus a single "+N more" rollup, so 49,500 of 50,000 fetched records were fetched and immediately discarded. The exact count was already free in `page.totalResources`. New `_bounded_asset_search` fetches only the first `cap` rows (one POST — `cap` equals the page size) and reads the exact total from page metadata. Report output is byte-identical: same 500 per-asset findings, same exact count in the rollup and `summary`.
+
+### Internal
+
+- New `Rapid7Client.parallel_pages` property (read-only accessor) so callers that fan out independent GETs reuse the operator-tuned concurrency. `_capped_findings_with_rollup` / `_per_asset_findings` gain an optional `total` override so the rollup math stays exact when the caller fetched only a bounded head. New test double `FakeRapid7Client.set_post_one_responder` for dynamic `post_one` stubbing. 8 new snapshot tests for the batch prefetch; the stale-assets tests were rewritten in place onto the bounded-fetch path. Full suite: 687 passing.
+
 ## [0.6.2] - 2026-05-21
 
 ### Fixed

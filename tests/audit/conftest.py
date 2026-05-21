@@ -191,6 +191,17 @@ class FakeSnapshot:
             raise AssertionError(f"FakeSnapshot.site_included_targets({site_id}) not registered")
         return self._site_included_targets[site_id]
 
+    def prefetch_site_schedules(self, site_ids: list[int]) -> None:
+        """No-op in tests — FakeSnapshot data is pre-registered, so the
+        per-site caches the real prefetch warms are already populated.
+        Present so rules that call it don't hit the unregistered-method
+        AssertionError."""
+        return None
+
+    def prefetch_site_included_targets(self, site_ids: list[int]) -> None:
+        """No-op in tests — see prefetch_site_schedules."""
+        return None
+
     def site_asset_count(self, site_id: int) -> int:
         if site_id not in self._site_asset_count:
             raise AssertionError(f"FakeSnapshot.site_asset_count({site_id}) not registered")
