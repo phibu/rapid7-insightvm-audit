@@ -102,3 +102,35 @@ def test_disabled_schedule_skipped(fake_snapshot):
     assert r.status == "pass"
 
 
+def test_assumed_scan_duration_knob_widens_overlap_window(fake_snapshot):
+    """Two schedules with NO duration field start 90 min apart. With the
+    default 60-min assumed duration they do not overlap. With the knob
+    raised to 120 min the first window extends past the second's start,
+    so they overlap and the rule warns."""
+    base = datetime(2026, 5, 1, 12, 0, tzinfo=timezone.utc)
+    fake_snapshot.set_sites([{"id": 1, "name": "A"}, {"id": 2, "name": "B"}])
+    # No `duration` key → the rule substitutes the assumed duration.
+    fake_snapshot.set_site_schedules(1, [{"id": 10, "enabled": True,
+                                          "start": _iso(base), "repeat": None}])
+    fake_snapshot.set_site_schedules(2, [{"id": 20, "enabled": True,
+                                          "start": _iso(base + timedelta(minutes=90)),
+                                          "repeat": None}])
+    fake_snapshot.set_site_included_targets(1, [{"address": "10.0.0.0/24"}])
+    fake_snapshot.set_site_included_targets(2, [{"address": "10.0.0.0/24"}])
+
+    # Default 60 min assumed duration: site-1 window is 12:00-13:00,
+    # site-2 starts 13:30 → no overlap.
+    default_result = OverlappingScanWindowsRule().run(
+        fake_snapshot, "warn", False, 500, {},
+    )
+    assert default_result.status == "pass"
+
+    # 120 min assumed duration: site-1 window is 12:00-14:00, site-2
+    # starts 13:30 → overlap.
+    widened_result = OverlappingScanWindowsRule().run(
+        fake_snapshot, "warn", False, 500,
+        {"assumed_scan_duration_minutes": 120},
+    )
+    assert widened_result.status == "warn"
+
+

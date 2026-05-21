@@ -72,3 +72,51 @@ def test_external_users_ignored(fake_snapshot):
     ])
     r = LocalAccountWhenSsoConfiguredRule().run(fake_snapshot, "warn", False, 500, {})
     assert r.status == "pass"
+
+
+def test_external_source_detected_via_type_field(fake_snapshot):
+    """A console may expose external auth sources with a `type` field
+    (saml/ldap/kerberos) and no `external` key. The rule must still
+    detect them — otherwise it self-skips and produces a false pass."""
+    fake_snapshot.set_authentication_sources([
+        {"name": "corp-saml", "type": "saml"},  # external, no `external` key
+    ])
+    fake_snapshot.set_users([
+        {"id": 1, "login": "a", "enabled": True, "authentication": {"type": "normal"}},
+        {"id": 2, "login": "b", "enabled": True, "authentication": {"type": "normal"}},
+        {"id": 3, "login": "c", "enabled": True, "authentication": {"type": "normal"}},
+    ])
+    r = LocalAccountWhenSsoConfiguredRule().run(
+        fake_snapshot, "warn", False, 500, {"max_local_accounts_when_sso": 2},
+    )
+    # 3 local users > threshold 2, and the SAML source IS detected → warn,
+    # not a skipped false pass.
+    assert r.status == "warn"
+    assert r.summary["external_source_count"] == 1
+
+
+def test_normal_type_source_not_treated_as_external(fake_snapshot):
+    """A source whose `type` is `normal` (the local store) is not external."""
+    fake_snapshot.set_authentication_sources([{"name": "builtin", "type": "normal"}])
+    fake_snapshot.set_users([])
+    r = LocalAccountWhenSsoConfiguredRule().run(fake_snapshot, "warn", False, 500, {})
+    assert r.status == "skipped"
+
+
+def test_external_source_detected_when_external_flag_false_but_type_set(fake_snapshot):
+    """A source with external explicitly False but a non-normal `type`
+    (e.g. ldap) must still be detected — the `external` flag arm rejects,
+    the `type` arm accepts."""
+    fake_snapshot.set_authentication_sources([
+        {"name": "corp-ldap", "external": False, "type": "ldap"},
+    ])
+    fake_snapshot.set_users([
+        {"id": 1, "login": "a", "enabled": True, "authentication": {"type": "normal"}},
+        {"id": 2, "login": "b", "enabled": True, "authentication": {"type": "normal"}},
+        {"id": 3, "login": "c", "enabled": True, "authentication": {"type": "normal"}},
+    ])
+    r = LocalAccountWhenSsoConfiguredRule().run(
+        fake_snapshot, "warn", False, 500, {"max_local_accounts_when_sso": 2},
+    )
+    assert r.status == "warn"
+    assert r.summary["external_source_count"] == 1

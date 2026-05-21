@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.5] - 2026-05-21
+
+### Fixed
+
+- **`local_account_when_sso_configured` detects external auth sources by `type`, not just an `external` flag.** `/api/3/authentication_sources` is absent from the committed v3 spec, so the `external` field name was unverifiable. If a console's payload uses `type` instead, the filter returned empty and the rule self-skipped — a false pass that hid local accounts configured alongside SSO. A source is now treated as external if it carries a truthy `external` flag **or** a non-`"normal"` `type` string.
+
+- **`multiple_global_administrators` flags a console with zero Global Administrators.** The rule only fired on *too many* GAs; zero enabled GAs — a console no one can administer — returned a silent `pass`. It now emits a hard `fail` finding when no enabled Global Administrator exists.
+
+- **`cd.scan_engine_cloud_registration` no longer misses fallback matches on FQDN trailing dots or whitespace.** The `console.address ↔ cloud.host_name` fallback index was exact-match, so a trailing dot (`engine.example.com.`) or surrounding whitespace silently missed and a renamed engine was wrongly reported as missing from cloud. Both index build and lookup now normalize the key (lower-case, strip whitespace, strip trailing dots).
+
+- **`error_path` is populated for verbless `"... from {path}"` error messages.** `_extract_diagnostics`'s path regex required an HTTP verb after "from"; `cloud_client.py` raises `"non-JSON response from {path}"` with no verb, leaving `error_path` empty in the report. The verb is now optional.
+
+### Changed
+
+- **`overlapping_scan_windows` accepts an `assumed_scan_duration_minutes` knob.** Schedules with no `duration` field previously used a hardcoded 1-hour window. The window length is now configurable (default 60 minutes, unchanged behavior), matching the peer rule `scan_report_schedule_overlap`.
+
+- **Example `config.yaml` scan-engine last-contact thresholds raised.** `thresholds.scan_engines.last_contact_warn_hours` changed from `2` to `24` and `last_contact_fail_hours` from `24` to `36` in `docs/examples/config.yaml`. The 2-hour warn threshold flagged engines that were merely idle overnight; 24h/36h reflects a realistic "this engine is actually unhealthy" window. Existing deployments are unaffected — these are example-template values; only configs copied fresh from the template pick up the new defaults. The example config was also restructured: inline tunable documentation removed (it lives in README.md) and replaced with section headers only.
+
+### Removed
+
+- **`Rapid7Client.paginate_post` removed.** It had no production callers after the stale-assets perf fix moved to a bounded single-POST search. The read-only contract is unchanged — `client.post` remains the sole allowlisted write-shaped verb.
+
+### Internal
+
+- Cloud-drift coercion helpers (`_coerce_positive_int`, `_coerce_positive_float`, `_coerce_optional_positive_int`) moved into a shared `audit/cloud_drift/_utils.py`, ending a cross-rule import of a private symbol. Added a test for the null-named-engine missing-from-cloud failure path.
+
 ## [0.6.4] - 2026-05-21
 
 ### Fixed

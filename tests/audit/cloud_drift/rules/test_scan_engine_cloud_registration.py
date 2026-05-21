@@ -317,3 +317,55 @@ def test_fallback_match_logs_info(caplog):
         f"expected exactly 1 INFO log about fallback match, got "
         f"{len(info_records)}: {[r.getMessage() for r in info_records]}"
     )
+
+
+def test_fallback_matches_when_host_name_has_trailing_dot():
+    """A console engine whose address is an FQDN and a cloud engine whose
+    host_name is the same FQDN with a trailing dot must still match via
+    the host_name fallback — not be reported as missing from cloud."""
+    rule = ScanEngineCloudRegistrationRule()
+    snap = _snapshot(
+        console_engines=[{"id": 1, "name": "renamed-on-console",
+                          "address": "engine.corp.example.com"}],
+        cloud_engines=[{"name": "old-cloud-name",
+                        "host_name": "engine.corp.example.com.",  # trailing dot
+                        "last_seen": _now_iso(0)}],
+    )
+    result = rule.run(snap, "warn", False, 500, {"last_seen_max_age_hours": 24})
+    assert result.status == "pass"
+    assert result.summary["missing_from_cloud"] == 0
+
+
+def test_fallback_matches_when_address_has_surrounding_whitespace():
+    """Surrounding whitespace on the console address must not break the
+    host_name fallback match."""
+    rule = ScanEngineCloudRegistrationRule()
+    snap = _snapshot(
+        console_engines=[{"id": 1, "name": "renamed",
+                          "address": "  engine.corp.example.com  "}],
+        cloud_engines=[{"name": "cloud-name",
+                        "host_name": "engine.corp.example.com",
+                        "last_seen": _now_iso(0)}],
+    )
+    result = rule.run(snap, "warn", False, 500, {"last_seen_max_age_hours": 24})
+    assert result.status == "pass"
+    assert result.summary["missing_from_cloud"] == 0
+
+
+def test_null_named_engine_missing_from_cloud_fails_with_address_identifier():
+    """A console engine with name=None and an address set, when no cloud
+    engine matches by host_name, is reported missing-from-cloud — and the
+    finding's identifier falls back to the address."""
+    rule = ScanEngineCloudRegistrationRule()
+    snap = _snapshot(
+        console_engines=[{"id": 7, "name": None, "address": "10.20.30.40"}],
+        cloud_engines=[{"name": "some-other-engine",
+                        "host_name": "10.99.99.99",
+                        "last_seen": _now_iso(0)}],
+    )
+    result = rule.run(snap, "warn", False, 500, {"last_seen_max_age_hours": 24})
+    assert result.status == "fail"
+    assert result.summary["missing_from_cloud"] == 1
+    fail = [f for f in result.findings if f.severity == "fail"]
+    assert len(fail) == 1
+    assert "10.20.30.40" in fail[0].message

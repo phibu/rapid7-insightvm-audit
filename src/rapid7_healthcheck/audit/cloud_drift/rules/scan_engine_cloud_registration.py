@@ -5,41 +5,13 @@ from datetime import datetime, timedelta, timezone
 
 from rapid7_healthcheck.audit import RuleResult
 from rapid7_healthcheck.audit.cloud_drift import register_cloud_rule
+from rapid7_healthcheck.audit.cloud_drift._utils import _coerce_positive_int
 from rapid7_healthcheck.checks import Finding
 
 logger = logging.getLogger(__name__)
 
 
 _DEFAULT_LAST_SEEN_MAX_AGE_HOURS = 24
-
-
-def _coerce_positive_int(value, *, name: str, default: int) -> int:
-    """Return value as a positive int; fall back to ``default`` on bad input.
-
-    Rejects ``True``/``False`` (bool is an int subclass — accepting it is
-    almost always a user typo). Rejects floats with a fractional part
-    (``0.5`` silently truncating to ``0`` would set the threshold equal
-    to ``now()`` and flag every engine as stale). Rejects zero and
-    negatives. Anything rejected logs a warning and falls back to
-    ``default`` rather than raising — rule loaders that aren't validated
-    upstream shouldn't take down the whole audit on one typo.
-    """
-    if isinstance(value, bool):
-        logger.warning("ignoring %s=%r (bool not accepted); using default %d", name, value, default)
-        return default
-    if isinstance(value, float):
-        if not value.is_integer():
-            logger.warning(
-                "ignoring %s=%r (fractional values truncate to a threshold of "
-                "now() and flag everything); using default %d",
-                name, value, default,
-            )
-            return default
-        value = int(value)
-    if isinstance(value, int) and value > 0:
-        return value
-    logger.warning("ignoring %s=%r (must be a positive int); using default %d", name, value, default)
-    return default
 
 
 def _parse_iso(value: str | None) -> datetime | None:
@@ -57,6 +29,19 @@ def _parse_iso(value: str | None) -> datetime | None:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt
+
+
+def _normalize_host_key(value) -> str | None:
+    """Normalize an address / host_name for cross-key fallback matching.
+
+    Lower-cases, strips surrounding whitespace, and strips trailing
+    dot(s) (FQDNs may carry a root-zone dot on one side only).
+    Returns ``None`` for empty / non-string input so callers can skip it.
+    """
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip().rstrip(".").lower()
+    return normalized or None
 
 
 @register_cloud_rule
@@ -121,7 +106,7 @@ class ScanEngineCloudRegistrationRule:
         # the same most-recently-seen-wins disambiguation as the name index.
         cloud_by_host_name: dict[str, dict] = {}
         for e in cloud_engines:
-            host_name = e.get("host_name")
+            host_name = _normalize_host_key(e.get("host_name"))
             if not host_name:
                 continue
             existing = cloud_by_host_name.get(host_name)
@@ -154,7 +139,7 @@ class ScanEngineCloudRegistrationRule:
             cloud = cloud_by_name.get(name) if name else None
             matched_via = "name" if cloud is not None else None
             if cloud is None and address:
-                cloud = cloud_by_host_name.get(address)
+                cloud = cloud_by_host_name.get(_normalize_host_key(address))
                 if cloud is not None:
                     matched_via = "host_name_fallback"
                     logger.info(
