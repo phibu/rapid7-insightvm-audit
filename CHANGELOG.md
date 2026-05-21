@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.4] - 2026-05-21
+
+### Fixed
+
+- **`insight_agent_deployed` partial-coverage finding no longer ignores the configured severity.** The "coverage below threshold" finding was emitted with a hardcoded `severity="warn"`. The rule's `default_severity` is `info`, so out of the box a below-threshold environment escalated the check to `warn` status — violating the documented rule that `info` findings never escalate. The finding now inherits the configured severity: at default `info` it appears in the report without escalating; an operator who overrides the rule to `warn`/`fail` still gets escalation.
+
+- **`privileged_user_without_mfa` no longer emits false "no MFA" findings when the calling key lacks Global Administrator.** When every local privileged user's `GET /api/3/users/{id}/2FA` returned HTTP 401 *and* at least one external-auth (SAML/LDAP/Kerberos) user existed, the 401 disambiguation was skipped and the 401'd users were reported as "no MFA configured." External-auth users never trigger a 2FA call, so their presence proves nothing about the key's privilege. The rule now self-skips whenever zero 2FA calls succeed, regardless of external users.
+
+- **"Overlapping Scan Windows" audit rule no longer misses sites that overlap on hostname targets.** `_parse_scope` discarded any included target that was not a valid IP/CIDR — so two sites scanning the same DNS name were never flagged. Hostname targets are now retained and compared case-insensitively for exact matches (DNS resolution remains out of scope).
+
+- **`cd.scan_engine_cloud_registration` reports a never-registered cloud engine as a hard failure.** An engine whose cloud record has no `last_seen` timestamp has never contacted the Insight Platform — qualitatively different from a merely stale connection. It is now reported at `fail` severity unconditionally (matching the broken-sync hard-fail in `cd.console_asset_count_drift`); a previously-seen but stale engine still inherits the configured severity.
+
+- **`cd.stale_assessment_cohort` validates its threshold config.** `max_stale_percent` of `0` or a negative value always-fired; a non-numeric `max_stale_percent` or `max_stale_count` crashed the rule with `ValueError`. Both are now coerced: invalid `max_stale_percent` falls back to the default `10.0`; invalid `max_stale_count` disables the count-based trigger. Bad input logs a warning instead of taking down the audit.
+
+- **Operational checks isolate a failed shared fetch into per-rule error cards.** `ScanActivityCheck` and `ScanEnginesCheck` fetched shared data (per-site scans / the scan-engine list) *before* the per-rule isolation wrappers — so a single transient API error collapsed the entire check instead of producing partial results. The shared fetch is now memoized behind a closure resolved inside each rule's `safe_run_rule` wrapper: one failed fetch surfaces as N isolated `error` rule cards, consistent with the audit subsystem.
+
+- **Operational error rule cards no longer carry a spurious `warn`-severity finding.** `asset_coverage`'s `DeadAssetGroupsRule` / `AgentOnlyAssetsRule` built `status="error"` results containing a `warn`-severity `Finding`, which leaked into `flatten_findings` and the delta signature index. Error rules now carry `findings=[]` with the reason in `summary`/`error`, matching the `error_rule()` helper.
+
 ## [0.6.3] - 2026-05-21
 
 ### Fixed

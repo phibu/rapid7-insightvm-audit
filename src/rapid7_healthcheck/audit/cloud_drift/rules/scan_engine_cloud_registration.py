@@ -191,17 +191,35 @@ class ScanEngineCloudRegistrationRule:
             last_seen = _parse_iso(cloud.get("last_seen"))
             if last_seen is None or last_seen < threshold:
                 stale_in_cloud += 1
-                # Use console name in the stale message when available;
-                # cloud name when not (fallback match path).
+                # Use console name in the message when available; cloud name
+                # when not (fallback match path).
                 display_name = name or cloud.get("name") or "<unnamed>"
-                findings.append(Finding(
-                    severity=severity,
-                    message=(
-                        f"Cloud-registered engine '{display_name}' has stale last_seen "
-                        f"({cloud.get('last_seen') or 'never'}); threshold is "
+                # A missing/unparseable last_seen means the engine has NEVER
+                # contacted the Insight Platform — a hard failure, distinct
+                # from a merely stale connection. Hard-code "fail" for it
+                # (mirrors the broken-sync hard-fail in
+                # console_asset_count_drift); a previously-seen but stale
+                # engine inherits the configured severity.
+                never_seen = last_seen is None
+                if never_seen:
+                    finding_severity = "fail"
+                    message = (
+                        f"Cloud-registered engine '{display_name}' has never "
+                        f"contacted the Insight Platform (no last_seen "
+                        f"timestamp). The cloud connection has never been "
+                        f"established or the engine has not yet come online."
+                    )
+                else:
+                    finding_severity = severity
+                    message = (
+                        f"Cloud-registered engine '{display_name}' has stale "
+                        f"last_seen ({cloud.get('last_seen')}); threshold is "
                         f"{max_age_hours}h. The Insight Platform connection is "
                         f"likely down or the engine is offline."
-                    ),
+                    )
+                findings.append(Finding(
+                    severity=finding_severity,
+                    message=message,
                     details={
                         "engine_name": name,
                         "cloud_engine_name": cloud.get("name"),
@@ -209,6 +227,7 @@ class ScanEngineCloudRegistrationRule:
                         "last_seen": cloud.get("last_seen"),
                         "max_age_hours": max_age_hours,
                         "matched_via": matched_via,
+                        "never_seen": never_seen,
                     },
                 ))
 

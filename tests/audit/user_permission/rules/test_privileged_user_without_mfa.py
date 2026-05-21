@@ -225,6 +225,38 @@ def test_all_privileged_external_no_2fa_calls(fake_snapshot):
     assert len(info_findings) == 1
 
 
+def test_self_skip_when_all_local_users_401_even_with_external_users(fake_snapshot):
+    """All local privileged users return 401 AND an external user exists.
+
+    The presence of external-auth users proves nothing about whether the
+    calling key has Global Administrator: the 2FA endpoint is never called
+    for external users. With zero successful 2FA calls the key likely lacks
+    GA, so the rule must self-skip rather than emit false "no MFA" findings
+    for the 401'd local users.
+    """
+    from rapid7_healthcheck.client import Rapid7ClientError
+
+    fake_snapshot.set_users([
+        _user_with_auth(1, "alice", "normal"),     # local → 401
+        _user_with_auth(2, "bob", "normal"),       # local → 401
+        _user_with_auth(3, "saml-admin", "saml"),  # external → no 2FA call
+    ])
+    err = Rapid7ClientError("401 at /api/3/users/X/2FA", status_code=401)
+    fake_snapshot.set_user_2fa_raises(1, err)
+    fake_snapshot.set_user_2fa_raises(2, err)
+
+    r = PrivilegedUserWithoutMfaRule().run(fake_snapshot, "fail", False, 500, {})
+
+    assert r.status == "skipped"
+    # No false fail findings for the 401'd local users.
+    assert [f for f in r.findings if f.severity == "fail"] == []
+    info_findings = [f for f in r.findings if f.severity == "info"]
+    assert len(info_findings) == 1
+    msg = info_findings[0].message.lower()
+    assert "global administrator" in msg or "401" in msg
+    assert r.summary["users_external_auth"] == 1
+
+
 def test_missing_authentication_field_treated_as_local(fake_snapshot):
     """If the user has no authentication field, fall back to local-account
     handling (existing 2FA-call path runs)."""

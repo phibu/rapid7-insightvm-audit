@@ -55,6 +55,40 @@ def test_no_overlap_when_scope_disjoint(fake_snapshot):
     assert r.status == "pass"
 
 
+def test_warn_when_hostname_scope_overlaps(fake_snapshot):
+    """Two sites scanning the same hostname (not an IP) in overlapping time
+    windows must be flagged. Hostnames are valid InsightVM scan targets and
+    must not be silently dropped."""
+    base = datetime(2026, 5, 1, 12, 0, tzinfo=timezone.utc)
+    fake_snapshot.set_sites([{"id": 1, "name": "A"}, {"id": 2, "name": "B"}])
+    fake_snapshot.set_site_schedules(1, [{"id": 10, "enabled": True,
+                                          "start": _iso(base),
+                                          "duration": "PT2H", "repeat": None}])
+    fake_snapshot.set_site_schedules(2, [{"id": 20, "enabled": True,
+                                          "start": _iso(base + timedelta(minutes=30)),
+                                          "duration": "PT1H", "repeat": None}])
+    # Same host, different case — should match case-insensitively.
+    fake_snapshot.set_site_included_targets(1, [{"address": "db01.corp.example.com"}])
+    fake_snapshot.set_site_included_targets(2, [{"address": "DB01.corp.example.com"}])
+    r = OverlappingScanWindowsRule().run(fake_snapshot, "warn", False, 500, {})
+    assert r.status == "warn"
+    assert len(r.findings) == 1
+
+
+def test_no_overlap_when_hostnames_differ(fake_snapshot):
+    """Distinct hostnames in overlapping time windows do not overlap in scope."""
+    base = datetime(2026, 5, 1, 12, 0, tzinfo=timezone.utc)
+    fake_snapshot.set_sites([{"id": 1, "name": "A"}, {"id": 2, "name": "B"}])
+    fake_snapshot.set_site_schedules(1, [{"id": 10, "enabled": True,
+                                          "start": _iso(base), "duration": "PT2H", "repeat": None}])
+    fake_snapshot.set_site_schedules(2, [{"id": 20, "enabled": True,
+                                          "start": _iso(base), "duration": "PT2H", "repeat": None}])
+    fake_snapshot.set_site_included_targets(1, [{"address": "db01.corp.example.com"}])
+    fake_snapshot.set_site_included_targets(2, [{"address": "web01.corp.example.com"}])
+    r = OverlappingScanWindowsRule().run(fake_snapshot, "warn", False, 500, {})
+    assert r.status == "pass"
+
+
 def test_disabled_schedule_skipped(fake_snapshot):
     base = datetime(2026, 5, 1, 12, 0, tzinfo=timezone.utc)
     fake_snapshot.set_sites([{"id": 1, "name": "A"}, {"id": 2, "name": "B"}])

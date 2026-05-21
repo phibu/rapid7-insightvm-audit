@@ -148,3 +148,25 @@ def test_scan_activity_uses_snapshot_sites_not_paginate(fake_client, app_config)
         f"ScanActivityCheck issued {paginate_after - paginate_before} "
         f"additional /api/3/sites paginations after snapshot was primed"
     )
+
+
+def test_scan_fetch_failure_isolated_into_error_rules(fake_client, app_config):
+    """If the shared per-site scan fetch raises, the check must NOT propagate
+    the exception. It returns a CheckResult whose rule cards are all `error`,
+    so a single transient API failure doesn't black out the whole check."""
+    from rapid7_healthcheck.client import Rapid7ClientError
+
+    fake_client.set_paginate("/api/3/sites", [{"id": 1, "name": "Prod"}])
+    fake_client.set_get_raises(
+        "/api/3/sites/1/scans",
+        Rapid7ClientError("503 at /api/3/sites/1/scans", status_code=503),
+    )
+
+    # Must not raise.
+    result = ScanActivityCheck().run(fake_client, app_config)
+
+    assert result.status in ("fail", "error")
+    assert len(result.rule_results) == 6
+    assert all(rr.status == "error" for rr in result.rule_results)
+    # Each error rule keeps its own identity (rule_id), not a shared placeholder.
+    assert len({rr.rule_id for rr in result.rule_results}) == 6

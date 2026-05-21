@@ -70,14 +70,38 @@ def test_ignored_engine_skipped():
     assert result.status == "pass"
 
 
-def test_cloud_engine_without_last_seen_treated_as_stale():
+def test_cloud_engine_without_last_seen_fails_unconditionally():
+    """A cloud engine record with no last_seen has never contacted the
+    Insight Platform — that is a hard failure, distinct from a merely
+    stale connection. It must be reported at "fail" severity regardless
+    of the configured severity (mirrors the broken-sync hard-fail in
+    console_asset_count_drift)."""
     rule = ScanEngineCloudRegistrationRule()
     snap = _snapshot(
         console_engines=[{"id": 1, "name": "engine-a"}],
         cloud_engines=[{"name": "engine-a", "last_seen": None}],
     )
-    result = rule.run(snap, "warn", False, 500, {"last_seen_max_age_hours": 24})
-    assert result.status == "warn"
+    # Configured severity is "info" — never-seen must still escalate to fail.
+    result = rule.run(snap, "info", False, 500, {"last_seen_max_age_hours": 24})
+    assert result.status == "fail"
+    assert len(result.findings) == 1
+    assert result.findings[0].severity == "fail"
+    assert "never" in result.findings[0].message.lower()
+
+
+def test_stale_engine_respects_configured_severity():
+    """A merely-stale (but previously-seen) engine inherits the configured
+    severity — unlike the never-seen case it is not hard-coded to fail."""
+    rule = ScanEngineCloudRegistrationRule()
+    snap = _snapshot(
+        console_engines=[{"id": 1, "name": "engine-a"}],
+        cloud_engines=[{"name": "engine-a", "last_seen": _now_iso(48)}],
+    )
+    result = rule.run(snap, "info", False, 500, {"last_seen_max_age_hours": 24})
+    # info severity → finding present but status stays pass.
+    assert result.status == "pass"
+    assert len(result.findings) == 1
+    assert result.findings[0].severity == "info"
 
 
 def test_summary_counts():

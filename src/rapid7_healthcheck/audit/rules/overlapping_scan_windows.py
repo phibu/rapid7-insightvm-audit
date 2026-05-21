@@ -35,25 +35,39 @@ def _windows_intersect(a_start, a_end, b_start, b_end) -> bool:
     return a_start < b_end and b_start < a_end
 
 
-def _parse_scope(targets: list) -> list:
-    out = []
+def _parse_scope(targets: list) -> tuple[list, set[str]]:
+    """Split a site's included targets into IP networks and hostnames.
+
+    InsightVM accepts both IP/CIDR and DNS-name scan targets. IP-typed
+    targets are parsed into ``ip_network`` objects for subnet-overlap
+    comparison; anything that is not a valid IP/CIDR is kept as a
+    case-folded hostname string for exact-match comparison. Hostnames are
+    not resolved (DNS lookup is out of scope and non-deterministic), so
+    only identical names count as overlapping scope — but they are no
+    longer silently dropped.
+    """
+    networks: list = []
+    hostnames: set[str] = set()
     for t in targets:
         addr = t.get("address") if isinstance(t, dict) else t
-        if not addr:
+        if not isinstance(addr, str) or not addr.strip():
             continue
+        addr = addr.strip()
         try:
-            out.append(ipaddress.ip_network(addr, strict=False))
+            networks.append(ipaddress.ip_network(addr, strict=False))
         except ValueError:
-            continue
-    return out
+            hostnames.add(addr.casefold())
+    return networks, hostnames
 
 
-def _scopes_intersect(a, b) -> bool:
-    for na in a:
-        for nb in b:
+def _scopes_intersect(a: tuple[list, set[str]], b: tuple[list, set[str]]) -> bool:
+    networks_a, hostnames_a = a
+    networks_b, hostnames_b = b
+    for na in networks_a:
+        for nb in networks_b:
             if na.overlaps(nb):
                 return True
-    return False
+    return bool(hostnames_a & hostnames_b)
 
 
 @register

@@ -58,8 +58,13 @@ def test_full_coverage_passes_with_no_finding():
     assert result.summary["coverage_percent"] == 100.0
 
 
-def test_partial_coverage_below_threshold_warns():
-    """50% coverage with default 70% threshold → warn finding."""
+def test_partial_coverage_below_threshold_emits_finding_at_configured_severity():
+    """50% coverage with default 70% threshold → one finding.
+
+    The finding inherits the configured severity (not a hardcoded "warn"):
+    with the rule's default ``info`` severity the finding must NOT escalate
+    status away from ``pass`` (CLAUDE.md: info findings never escalate).
+    """
     from tests.audit.conftest import FakeSnapshot
     snapshot = FakeSnapshot()
     snapshot.set_agents([{"agentId": str(i), "id": i} for i in range(50)], total=50)
@@ -69,11 +74,29 @@ def test_partial_coverage_below_threshold_warns():
         snapshot, severity="info", full_scan=False, sample_size=10, rule_config={}
     )
 
+    assert result.status == "pass"
+    assert len(result.findings) == 1
+    assert result.findings[0].severity == "info"
+    assert "50.0%" in result.findings[0].message
+    assert result.summary["coverage_percent"] == 50.0
+
+
+def test_partial_coverage_below_threshold_warns_when_configured_warn():
+    """When the operator overrides severity to ``warn``, partial coverage
+    escalates the rule status to ``warn``."""
+    from tests.audit.conftest import FakeSnapshot
+    snapshot = FakeSnapshot()
+    snapshot.set_agents([{"agentId": str(i), "id": i} for i in range(50)], total=50)
+    snapshot.set_total_asset_count(100)
+
+    result = InsightAgentDeployedRule().run(
+        snapshot, severity="warn", full_scan=False, sample_size=10, rule_config={}
+    )
+
     assert result.status == "warn"
     assert len(result.findings) == 1
     assert result.findings[0].severity == "warn"
     assert "50.0%" in result.findings[0].message
-    assert result.summary["coverage_percent"] == 50.0
 
 
 def test_partial_coverage_above_threshold_passes():
@@ -101,7 +124,7 @@ def test_custom_threshold_via_rule_config():
 
     result = InsightAgentDeployedRule().run(
         snapshot,
-        severity="info",
+        severity="warn",
         full_scan=False,
         sample_size=10,
         rule_config={"warn_below_percent": 90},

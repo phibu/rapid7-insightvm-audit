@@ -120,3 +120,46 @@ def test_zero_stale_after_days_falls_back_to_default():
     snap = _snapshot(total=1000, stale=10)
     result = rule.run(snap, "warn", False, 500, {"stale_after_days": 0, "max_stale_percent": 10})
     assert result.summary["stale_after_days"] == 30
+
+
+def test_zero_max_stale_percent_falls_back_to_default():
+    """max_stale_percent=0 would fire on any stale asset at all. Reject it
+    and fall back to the default 10.0 rather than always-warning."""
+    rule = StaleAssessmentCohortRule()
+    snap = _snapshot(total=1000, stale=1)  # 0.1% stale — well under default 10%
+    result = rule.run(snap, "warn", False, 500, {"stale_after_days": 30, "max_stale_percent": 0})
+    assert result.summary["max_stale_percent"] == 10.0
+    assert result.status == "pass"
+
+
+def test_negative_max_stale_percent_falls_back_to_default():
+    rule = StaleAssessmentCohortRule()
+    snap = _snapshot(total=1000, stale=1)
+    result = rule.run(snap, "warn", False, 500, {"stale_after_days": 30, "max_stale_percent": -5})
+    assert result.summary["max_stale_percent"] == 10.0
+    assert result.status == "pass"
+
+
+def test_non_numeric_max_stale_percent_falls_back_to_default():
+    """A non-numeric max_stale_percent must not crash the rule."""
+    rule = StaleAssessmentCohortRule()
+    snap = _snapshot(total=1000, stale=1)
+    result = rule.run(
+        snap, "warn", False, 500,
+        {"stale_after_days": 30, "max_stale_percent": "lots"},
+    )
+    assert result.summary["max_stale_percent"] == 10.0
+    assert result.status == "pass"
+
+
+def test_non_numeric_max_stale_count_does_not_crash():
+    """A non-numeric max_stale_count must not raise ValueError; it is
+    treated as unset (no count-based trigger)."""
+    rule = StaleAssessmentCohortRule()
+    snap = _snapshot(total=1000, stale=1)
+    result = rule.run(
+        snap, "warn", False, 500,
+        {"stale_after_days": 30, "max_stale_percent": 10, "max_stale_count": "many"},
+    )
+    assert result.status == "pass"
+    assert result.summary["max_stale_count"] is None

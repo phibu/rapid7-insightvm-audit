@@ -144,14 +144,14 @@ class PrivilegedUserWithoutMfaRule:
                 sources=list(self.sources),
             )
 
-        # 401 disambiguation: if no user succeeded AND no external user was
-        # processed, the calling key likely lacks GA. (External users do NOT
-        # count toward "succeeded" because we never called the endpoint for
-        # them — but their presence proves we got past role/auth filtering,
-        # so a pure-401 outcome with external users present is ambiguous in
-        # a different way and falls through to the per-user 401-as-no-MFA
-        # branch below.)
-        if users_auth_denied and users_succeeded == 0 and not external_auth_users:
+        # 401 disambiguation: if at least one local user was queried and NONE
+        # succeeded, the calling key likely lacks Global Administrator — every
+        # 2FA call is ambiguous, so self-skip. External-auth users do not
+        # affect this: the 2FA endpoint is never called for them, so their
+        # presence proves nothing about the calling key's privilege. A pure-401
+        # outcome with external users present is still un-disambiguatable, so
+        # it must skip rather than emit false "no MFA" findings for the 401s.
+        if users_auth_denied and users_succeeded == 0:
             return RuleResult(
                 rule_id=self.rule_id,
                 rule_name=self.rule_name,
