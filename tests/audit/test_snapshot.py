@@ -107,6 +107,141 @@ def test_site_asset_count_inline_non_numeric_falls_back_to_get():
     assert [p for p, _ in c.get_calls] == ["/api/3/sites/3/assets"]
 
 
+# --- Batch prefetch (overlapping-scan-windows perf fix) ----------------
+
+
+class _ConcurrentFakeClient:
+    """Fake client that records GET concurrency and exposes parallel_pages.
+
+    Tracks the high-water mark of simultaneously in-flight GETs so a test
+    can prove the prefetch actually fanned out rather than looping.
+    """
+
+    def __init__(self, parallel_pages: int = 1, get_delay: float = 0.0):
+        self.parallel_pages = parallel_pages
+        self.get_calls: list[str] = []
+        self._get: dict[str, dict] = {}
+        self._get_delay = get_delay
+        self._lock = __import__("threading").Lock()
+        self._in_flight = 0
+        self.max_in_flight = 0
+
+    def set_get(self, path: str, body: dict):
+        self._get[path] = body
+
+    def get(self, path: str, params: dict | None = None, *, timeout: int | None = None) -> dict:
+        with self._lock:
+            self._in_flight += 1
+            self.max_in_flight = max(self.max_in_flight, self._in_flight)
+            self.get_calls.append(path)
+        try:
+            if self._get_delay:
+                __import__("time").sleep(self._get_delay)
+            if path not in self._get:
+                raise AssertionError(f"unexpected GET {path}")
+            return self._get[path]
+        finally:
+            with self._lock:
+                self._in_flight -= 1
+
+    def paginate(self, path, params=None, page_size=500, *, timeout=None):
+        yield from []
+
+
+def test_prefetch_site_schedules_warms_cache_no_further_http():
+    """After prefetch, site_schedules(sid) is a cache hit — the per-site GET
+    happens during prefetch, not on the accessor call."""
+    c = _ConcurrentFakeClient(parallel_pages=4)
+    for sid in (1, 2, 3):
+        c.set_get(f"/api/3/sites/{sid}/scan_schedules",
+                  {"resources": [{"id": sid * 10, "enabled": True}]})
+    s = EnvSnapshot(c, full_scan=False, sample_size=500)
+    s.prefetch_site_schedules([1, 2, 3])
+    calls_after_prefetch = len(c.get_calls)
+    assert calls_after_prefetch == 3
+    # Accessor calls now hit the warm cache — no new HTTP.
+    assert s.site_schedules(2) == [{"id": 20, "enabled": True}]
+    assert len(c.get_calls) == calls_after_prefetch
+
+
+def test_prefetch_site_included_targets_reads_addresses_envelope():
+    """included_targets prefetch unwraps the `addresses` (or `resources`)
+    envelope the same way the per-site accessor does."""
+    c = _ConcurrentFakeClient(parallel_pages=4)
+    c.set_get("/api/3/sites/5/included_targets", {"addresses": ["10.0.0.0/24"]})
+    c.set_get("/api/3/sites/6/included_targets", {"resources": ["10.1.0.0/24"]})
+    s = EnvSnapshot(c, full_scan=False, sample_size=500)
+    s.prefetch_site_included_targets([5, 6])
+    assert s.site_included_targets(5) == ["10.0.0.0/24"]
+    assert s.site_included_targets(6) == ["10.1.0.0/24"]
+
+
+def test_prefetch_runs_concurrently_when_parallel_pages_gt_1():
+    """With parallel_pages > 1, prefetch fans GETs out — proven by observing
+    more than one GET in flight at once."""
+    c = _ConcurrentFakeClient(parallel_pages=8, get_delay=0.05)
+    for sid in range(1, 9):
+        c.set_get(f"/api/3/sites/{sid}/scan_schedules", {"resources": []})
+    s = EnvSnapshot(c, full_scan=False, sample_size=500)
+    s.prefetch_site_schedules(list(range(1, 9)))
+    assert c.max_in_flight > 1  # actually parallel, not a sequential loop
+
+
+def test_prefetch_sequential_when_parallel_pages_is_1():
+    """parallel_pages == 1 keeps prefetch sequential — never more than one
+    GET in flight."""
+    c = _ConcurrentFakeClient(parallel_pages=1, get_delay=0.01)
+    for sid in (1, 2, 3):
+        c.set_get(f"/api/3/sites/{sid}/scan_schedules", {"resources": []})
+    s = EnvSnapshot(c, full_scan=False, sample_size=500)
+    s.prefetch_site_schedules([1, 2, 3])
+    assert c.max_in_flight == 1
+
+
+def test_prefetch_skips_already_cached_sites():
+    """A site whose schedules were already fetched is not re-requested."""
+    c = _ConcurrentFakeClient(parallel_pages=4)
+    for sid in (1, 2):
+        c.set_get(f"/api/3/sites/{sid}/scan_schedules", {"resources": []})
+    s = EnvSnapshot(c, full_scan=False, sample_size=500)
+    s.site_schedules(1)  # prime site 1 the slow way
+    c.get_calls.clear()
+    s.prefetch_site_schedules([1, 2])  # only site 2 should be fetched
+    assert c.get_calls == ["/api/3/sites/2/scan_schedules"]
+
+
+def test_prefetch_swallows_per_site_error_leaves_site_uncached():
+    """A Rapid7ClientError on one site is logged and that site stays
+    uncached; other sites still prefetch. The later accessor retries it."""
+    from rapid7_healthcheck.client import Rapid7ClientError
+
+    class _PartialFailClient(_ConcurrentFakeClient):
+        def get(self, path, params=None, *, timeout=None):
+            if path == "/api/3/sites/2/scan_schedules":
+                raise Rapid7ClientError("boom", status_code=500)
+            return super().get(path, params, timeout=timeout)
+
+    c = _PartialFailClient(parallel_pages=4)
+    c.set_get("/api/3/sites/1/scan_schedules", {"resources": [{"id": 11}]})
+    c.set_get("/api/3/sites/3/scan_schedules", {"resources": [{"id": 33}]})
+    s = EnvSnapshot(c, full_scan=False, sample_size=500)
+    s.prefetch_site_schedules([1, 2, 3])
+    # Sites 1 and 3 cached; site 2 not — accessor for 2 would retry/raise.
+    assert s.site_schedules(1) == [{"id": 11}]
+    assert s.site_schedules(3) == [{"id": 33}]
+    assert 2 not in s._site_schedules
+
+
+def test_prefetch_workers_falls_back_to_one_without_parallel_pages():
+    """A client lacking the parallel_pages attribute degrades prefetch to
+    a sequential loop rather than crashing."""
+    c = _FakeClient()  # no parallel_pages attribute
+    c.set_get("/api/3/sites/1/scan_schedules", {"resources": []})
+    s = EnvSnapshot(c, full_scan=False, sample_size=500)
+    s.prefetch_site_schedules([1])  # must not raise
+    assert s.site_schedules(1) == []
+
+
 def test_asset_sample_returns_total_when_sampling():
     c = _FakeClient()
     c.set_get("/api/3/sites/7/assets", {"resources": [], "page": {"totalResources": 9999}})

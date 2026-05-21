@@ -17,6 +17,37 @@ def _rule(result, rule_id: str):
     return next(rr for rr in result.rule_results if rr.rule_id == rule_id)
 
 
+def _paged_search_responder(stale: list[dict], never_scanned: list[dict], *, page_size: int = 500):
+    """Build a post_one responder simulating the /api/3/assets/search envelope.
+
+    Branches on the filter `value` (30 = stale, 90 = never-scanned in the
+    default fixture) and slices `resources` by `params["page"]`, mirroring how
+    the real endpoint paginates. `page.totalResources` always reports the full
+    match count so the rule's bounded fetch can read the exact total from
+    page 0 — which is the whole point of the perf fix.
+    """
+    def _responder(json_body: dict, params: dict | None) -> dict:
+        text = str(json_body)
+        if "'value': 90" in text or '"value": 90' in text:
+            rows = never_scanned
+        elif "'value': 30" in text or '"value": 30' in text:
+            rows = stale
+        else:
+            rows = []
+        page = int((params or {}).get("page", 0))
+        size = int((params or {}).get("size", page_size))
+        start = page * size
+        chunk = rows[start:start + size]
+        total = len(rows)
+        total_pages = (total + size - 1) // size if total else 0
+        return {
+            "resources": chunk,
+            "page": {"totalResources": total, "totalPages": total_pages,
+                     "number": page, "size": size},
+        }
+    return _responder
+
+
 class _FakeSnapshot:
     """Minimal fake EnvSnapshot for op-check tests.
 
@@ -76,7 +107,8 @@ class _FakeSnapshot:
 
 
 def test_all_assets_fresh(fake_client, app_config):
-    fake_client.set_paginate_post("/api/3/assets/search", [])
+    # Default post_one stub returns an empty envelope (totalResources=0) for
+    # every search, so both stale and never-scanned see zero matches.
     result = AssetCoverageCheck().run(fake_client, app_config, snapshot=_FakeSnapshot())
     assert result.status == "pass"
     assert _rule(result, "op.asset_coverage.stale_assets").summary["stale_count"] == 0
@@ -89,21 +121,9 @@ def test_stale_assets_warn(fake_client, app_config):
     fc = FakeRapid7Client()
 
     stale = [_asset(f"old-{i}", i) for i in range(3)]
-    unscanned: list[dict] = []
-
-    def paginate_post(path, json_body, params=None, page_size=500):
-        fc.calls.append(("paginate_post", path, params, json_body))
-        text = str(json_body)
-        # Both filters now use is-earlier-than; differentiate by value.
-        # stale_asset_days=30, never_scanned_days=90 in default fixture.
-        if "'value': 90" in text or '"value": 90' in text:
-            yield from unscanned
-        elif "'value': 30" in text or '"value": 30' in text:
-            yield from stale
-        else:
-            yield from []
-
-    fc.paginate_post = paginate_post  # type: ignore[assignment]
+    fc.set_post_one_responder(
+        "/api/3/assets/search", _paged_search_responder(stale, []),
+    )
 
     result = AssetCoverageCheck().run(fc, app_config, snapshot=_FakeSnapshot())
     assert result.status == "warn"
@@ -117,16 +137,9 @@ def test_never_scanned_assets_fail(fake_client, app_config):
     from tests.conftest import FakeRapid7Client
     fc = FakeRapid7Client()
     never_scanned = [_asset(f"never-{i}", i) for i in range(2)]
-
-    def paginate_post(path, json_body, params=None, page_size=500):
-        fc.calls.append(("paginate_post", path, params, json_body))
-        text = str(json_body)
-        if "'value': 90" in text or '"value": 90' in text:
-            yield from never_scanned
-        else:
-            yield from []
-
-    fc.paginate_post = paginate_post  # type: ignore[assignment]
+    fc.set_post_one_responder(
+        "/api/3/assets/search", _paged_search_responder([], never_scanned),
+    )
     result = AssetCoverageCheck().run(fc, app_config)
     assert result.status == "fail"
     ns = _rule(result, "op.asset_coverage.never_scanned_assets")
@@ -148,13 +161,16 @@ def test_unscanned_check_skipped_when_disabled(fake_client, app_config):
 
     from tests.conftest import FakeRapid7Client
     fc = FakeRapid7Client()
-    fc.set_paginate_post("/api/3/assets/search", [])
 
     result = AssetCoverageCheck().run(fc, cfg, snapshot=_FakeSnapshot())
     assert result.status == "pass"
-    paginate_post_calls = [c for c in fc.calls if c[0] == "paginate_post"]
-    # never_scanned is skipped (off); only stale_assets remains as a paginate_post caller.
-    assert len(paginate_post_calls) == 1
+    search_calls = [
+        c for c in fc.calls
+        if c[0] == "post_one" and c[1] == "/api/3/assets/search"
+    ]
+    # never_scanned is skipped (off); only stale_assets searches /assets/search.
+    # Bounded fetch over an empty result set is exactly one POST.
+    assert len(search_calls) == 1
     # The never-scanned rule should be skipped.
     ns = _rule(result, "op.asset_coverage.never_scanned_assets")
     assert ns.status == "skipped"
@@ -166,16 +182,9 @@ def test_per_asset_findings_stale(fake_client, app_config):
     from tests.conftest import FakeRapid7Client
     fc = FakeRapid7Client()
     stale = [_asset(f"host-{i}", i) for i in range(25)]
-
-    def paginate_post(path, json_body, params=None, page_size=500):
-        fc.calls.append(("paginate_post", path, params, json_body))
-        text = str(json_body)
-        if "'value': 90" in text or '"value": 90' in text:
-            yield from []
-        else:
-            yield from stale
-
-    fc.paginate_post = paginate_post  # type: ignore[assignment]
+    fc.set_post_one_responder(
+        "/api/3/assets/search", _paged_search_responder(stale, []),
+    )
     result = AssetCoverageCheck().run(fc, app_config, snapshot=_FakeSnapshot())
     stale_rule = _rule(result, "op.asset_coverage.stale_assets")
     # One Finding per stale asset; below the cap, no rollup.
@@ -200,24 +209,27 @@ def test_per_asset_findings_capped_with_rollup(fake_client, app_config):
     fc = FakeRapid7Client()
     overflow = _PER_ITEM_FINDING_CAP + 17
     stale = [_asset(f"host-{i}", i) for i in range(overflow)]
-
-    def paginate_post(path, json_body, params=None, page_size=500):
-        text = str(json_body)
-        if "'value': 90" in text or '"value": 90' in text:
-            yield from []
-        else:
-            yield from stale
-
-    fc.paginate_post = paginate_post  # type: ignore[assignment]
+    fc.set_post_one_responder(
+        "/api/3/assets/search", _paged_search_responder(stale, []),
+    )
     result = AssetCoverageCheck().run(fc, app_config, snapshot=_FakeSnapshot())
     stale_rule = _rule(result, "op.asset_coverage.stale_assets")
     assert len(stale_rule.findings) == _PER_ITEM_FINDING_CAP + 1
+    # Exact count comes from page.totalResources, not len() of a fetched list.
     assert stale_rule.summary["stale_count"] == overflow
     rollup = stale_rule.findings[-1]
     assert "more asset" in rollup.message.lower()
     assert rollup.details["remainder"] == 17
     assert rollup.details["total"] == overflow
     assert rollup.details["cap"] == _PER_ITEM_FINDING_CAP
+    # The rule fetched only the bounded head — not all `overflow` rows.
+    # cap (500) == page size (500), so exactly one search POST.
+    search_calls = [
+        c for c in fc.calls
+        if c[0] == "post_one" and c[1] == "/api/3/assets/search"
+        and ("'value': 30" in str(c[3]) or '"value": 30' in str(c[3]))
+    ]
+    assert len(search_calls) == 1
 
 
 def test_uses_is_earlier_than_operator_with_threshold(fake_client, app_config):
@@ -227,11 +239,11 @@ def test_uses_is_earlier_than_operator_with_threshold(fake_client, app_config):
     fc = FakeRapid7Client()
     captured_filters: list[dict] = []
 
-    def paginate_post(path, json_body, params=None, page_size=500):
+    def _responder(json_body: dict, params: dict | None) -> dict:
         captured_filters.append(json_body)
-        yield from []
+        return {"resources": [], "page": {"totalResources": 0, "totalPages": 0}}
 
-    fc.paginate_post = paginate_post  # type: ignore[assignment]
+    fc.set_post_one_responder("/api/3/assets/search", _responder)
     AssetCoverageCheck().run(fc, app_config)
 
     assert len(captured_filters) == 2  # stale + never-scanned
@@ -799,17 +811,9 @@ def test_check_status_rolls_up_to_warn_when_any_rule_warns(fake_client, app_conf
     from tests.conftest import FakeRapid7Client
     fc = FakeRapid7Client()
     stale = [_asset(f"stale-{i}", i) for i in range(3)]
-
-    def paginate_post(path, json_body, params=None, page_size=500):
-        text = str(json_body)
-        # Stale rule's filter uses stale_asset_days (30 in default fixture);
-        # never-scanned uses never_scanned_days (90). Yield assets only for stale.
-        if "'value': 30" in text or '"value": 30' in text:
-            yield from stale
-        else:
-            yield from []
-
-    fc.paginate_post = paginate_post  # type: ignore[assignment]
+    fc.set_post_one_responder(
+        "/api/3/assets/search", _paged_search_responder(stale, []),
+    )
     snap = _FakeSnapshot(asset_groups=[])
     result = AssetCoverageCheck().run(fc, app_config, snapshot=snap)
     assert result.status == "warn"
@@ -839,28 +843,27 @@ def test_per_rule_failure_isolated_other_rules_still_run(fake_client, app_config
     """If one asset-coverage rule's API call raises, the other three rules
     still produce output. Mirrors the data_quality 0.2.8 regression test.
 
-    Triggers the failure on _stale_assets's paginate_post via the rule's
-    filter (last-scan-date is-earlier-than stale_asset_days). The
+    Triggers the failure on _stale_assets's bounded asset search via the
+    rule's filter (last-scan-date is-earlier-than stale_asset_days). The
     stale_asset_days value is derived from app_config at runtime so the
     test stays correct if the fixture default ever changes.
     """
     stale_days = app_config.thresholds.asset_coverage.stale_asset_days
 
-    def paginate_post(path, json_body, params=None, page_size=500):
-        if path == "/api/3/assets/search":
-            # Match _stale_assets specifically: single filter, last-scan-date
-            # is-earlier-than stale_asset_days.
-            filters = json_body.get("filters", [])
-            if (
-                len(filters) == 1
-                and filters[0].get("field") == "last-scan-date"
-                and filters[0].get("operator") == "is-earlier-than"
-                and filters[0].get("value") == stale_days
-            ):
-                raise Rapid7ClientError("Read timed out", status_code=None)
-        yield from []
+    def _responder(json_body: dict, params: dict | None) -> dict:
+        # Match _stale_assets specifically: single filter, last-scan-date
+        # is-earlier-than stale_asset_days.
+        filters = json_body.get("filters", [])
+        if (
+            len(filters) == 1
+            and filters[0].get("field") == "last-scan-date"
+            and filters[0].get("operator") == "is-earlier-than"
+            and filters[0].get("value") == stale_days
+        ):
+            raise Rapid7ClientError("Read timed out", status_code=None)
+        return {"resources": [], "page": {"totalResources": 0, "totalPages": 0}}
 
-    fake_client.paginate_post = paginate_post  # type: ignore[assignment]
+    fake_client.set_post_one_responder("/api/3/assets/search", _responder)
     snap = _FakeSnapshot(asset_groups=[])
     result = AssetCoverageCheck().run(fake_client, app_config, snapshot=snap)
 

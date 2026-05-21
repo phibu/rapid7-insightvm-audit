@@ -214,6 +214,90 @@ class EnvSnapshot:
             )
         return self._site_included_targets[site_id]
 
+    def _resolve_prefetch_workers(self) -> int:
+        """Worker count for batch prefetch — reuses the client's `parallel_pages`.
+
+        Falls back to 1 when the client does not expose the property (e.g.
+        a test double), which makes prefetch degrade to a sequential loop
+        rather than crash. Clamped to [1, 16] defensively.
+        """
+        workers = getattr(self._client, "parallel_pages", 1)
+        try:
+            workers = int(workers)
+        except (TypeError, ValueError):
+            return 1
+        return max(1, min(16, workers))
+
+    def _prefetch_per_site(
+        self,
+        site_ids: list[int],
+        cache: dict[int, list[dict]],
+        fetch_one,
+    ) -> None:
+        """Populate a per-site cache concurrently.
+
+        Generic fan-out used by `prefetch_site_schedules` and
+        `prefetch_site_included_targets`. For each `site_id` not already
+        cached, submits `fetch_one(site_id)` to a thread pool sized by
+        `_resolve_prefetch_workers()` and stores the result in `cache`.
+
+        Concurrency is read-only and safe: every `fetch_one` issues a GET,
+        `requests.Session` is documented thread-safe for reads, and the
+        client's read-only verb check runs per-call. A `Rapid7ClientError`
+        on any one site is swallowed and that site simply stays uncached —
+        the later per-site accessor will retry it sequentially and surface
+        the error in context. Other exceptions propagate.
+        """
+        pending = [sid for sid in site_ids if sid not in cache]
+        if not pending:
+            return
+        workers = self._resolve_prefetch_workers()
+        if workers <= 1 or len(pending) == 1:
+            for sid in pending:
+                try:
+                    cache[sid] = fetch_one(sid)
+                except Rapid7ClientError as e:
+                    logger.warning("prefetch failed for site %s: %s", sid, e)
+            return
+
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = {executor.submit(fetch_one, sid): sid for sid in pending}
+            for fut in as_completed(futures):
+                sid = futures[fut]
+                try:
+                    cache[sid] = fut.result()
+                except Rapid7ClientError as e:
+                    logger.warning("prefetch failed for site %s: %s", sid, e)
+
+    def prefetch_site_schedules(self, site_ids: list[int]) -> None:
+        """Concurrently warm the `site_schedules` cache for many sites.
+
+        Turns the N sequential `GET /api/3/sites/{id}/scan_schedules` calls
+        into `ceil(N / parallel_pages)` parallel batches. After this returns,
+        `site_schedules(sid)` for any `sid` in `site_ids` is a cache hit.
+        Idempotent — already-cached sites are skipped.
+        """
+        def _fetch(sid: int) -> list[dict]:
+            body = self._client.get(f"/api/3/sites/{sid}/scan_schedules")
+            return list(body.get("resources", []))
+
+        self._prefetch_per_site(site_ids, self._site_schedules, _fetch)
+
+    def prefetch_site_included_targets(self, site_ids: list[int]) -> None:
+        """Concurrently warm the `site_included_targets` cache for many sites.
+
+        Peer of `prefetch_site_schedules` for
+        `GET /api/3/sites/{id}/included_targets`. After this returns,
+        `site_included_targets(sid)` is a cache hit for every prefetched site.
+        """
+        def _fetch(sid: int) -> list[dict]:
+            body = self._client.get(f"/api/3/sites/{sid}/included_targets")
+            return list(body.get("addresses", body.get("resources", [])))
+
+        self._prefetch_per_site(site_ids, self._site_included_targets, _fetch)
+
     def all_included_targets(self) -> IncludedTargets:
         """Build the normalized union of every site's included scan targets.
 

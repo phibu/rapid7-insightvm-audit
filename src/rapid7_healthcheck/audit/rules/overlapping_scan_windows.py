@@ -78,6 +78,15 @@ class OverlappingScanWindowsRule:
             sampled = True
             sample_info = f"checked {len(sites)} of {len(snapshot.sites())} sites"
 
+        # The per-site schedule + included-targets fetches are an N+1: two
+        # GETs per site with no batch endpoint. Run them concurrently up
+        # front so the loop below reads warm caches instead of blocking on
+        # ~2N sequential round-trips (the cause of the ~10 min runtime on
+        # large consoles). Both calls are read-only GETs.
+        site_ids = [s["id"] for s in sites]
+        snapshot.prefetch_site_schedules(site_ids)
+        snapshot.prefetch_site_included_targets(site_ids)
+
         windows = []
         for site in sites:
             sid = site["id"]

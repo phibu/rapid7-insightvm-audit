@@ -44,6 +44,7 @@ def _capped_findings_with_rollup(
     label: str,
     cap: int = _PER_ITEM_FINDING_CAP,
     rollup_details_extra: dict | None = None,
+    total: int | None = None,
 ) -> list[Finding]:
     """Build per-item findings up to ``cap``; append one rollup Finding for the
     remainder.
@@ -52,16 +53,26 @@ def _capped_findings_with_rollup(
     ``"+ N more <label>(s) (truncated; showing first <cap>)"``.
     ``rollup_details_extra`` is merged into the rollup finding's ``details``
     dict (alongside the canonical ``remainder`` / ``total`` / ``cap`` keys).
+
+    ``total`` overrides the affected-population size used for the rollup
+    math. By default the population is ``len(items)`` — correct when the
+    caller materialized the whole result set. When the caller deliberately
+    fetched only a bounded head (e.g. the first ``cap`` rows, with the
+    true count read from ``page.totalResources``), it MUST pass ``total``
+    so the rollup remainder and ``details["total"]`` reflect the real
+    population rather than the truncated ``items`` length. ``total`` must
+    be ``>= len(items)``.
     """
     findings: list[Finding] = []
     head = items[:cap]
     for item in head:
         findings.append(build_finding(item))
-    remainder = len(items) - len(head)
+    effective_total = len(items) if total is None else max(total, len(items))
+    remainder = effective_total - len(head)
     if remainder > 0:
         rollup_details: dict = {
             "remainder": remainder,
-            "total": len(items),
+            "total": effective_total,
             "cap": cap,
         }
         if rollup_details_extra:
@@ -82,12 +93,17 @@ def _per_asset_findings(
     severity: str,
     message_for,
     extra_details: dict | None = None,
+    total: int | None = None,
 ) -> list[Finding]:
     """Emit one Finding per asset, capped at _PER_ITEM_FINDING_CAP.
 
     Beyond the cap, append a single rollup Finding so the report's findings
     count stays bounded while still reflecting the actual affected-asset count
     in the row. ``message_for(asset) -> str`` builds the per-asset message.
+
+    ``total`` is forwarded to ``_capped_findings_with_rollup`` — pass it when
+    ``assets`` is a bounded head of a larger population so the rollup count
+    stays accurate without materializing the whole result set.
     """
     def _build(asset: dict) -> Finding:
         details: dict = {
@@ -109,7 +125,59 @@ def _per_asset_findings(
         severity=severity,
         label="asset",
         rollup_details_extra=extra_details,
+        total=total,
     )
+
+
+def _bounded_asset_search(
+    client: Any,
+    json_body: dict,
+    *,
+    cap: int = _PER_ITEM_FINDING_CAP,
+) -> tuple[list[dict], int]:
+    """Fetch only the first ``cap`` matching assets, plus the exact total.
+
+    Returns ``(head, total)``:
+        - ``head``: at most ``cap`` asset dicts — enough to fill the
+          per-asset findings the report actually renders.
+        - ``total``: exact match count from ``page.totalResources``.
+
+    Why this exists: the report caps per-asset findings at
+    ``_PER_ITEM_FINDING_CAP`` and shows the rest as a single rollup. Fully
+    paginating the result set (``paginate_post``) to then discard everything
+    past the cap is the bug this replaces — on a console with 50k stale
+    assets that was ~100 sequential POSTs (~19 min) to render 500 rows.
+
+    Issues ``ceil(cap / page_size)`` POSTs — normally **one**, since the
+    default page size (500) equals the cap. The exact total still comes
+    from the first page's metadata, so ``summary`` counts and the rollup
+    remainder are byte-identical to the old full-enumeration behavior.
+
+    Read-only: ``/api/3/assets/search`` is the lone allowlisted POST path;
+    this issues only POSTs to it.
+    """
+    head: list[dict] = []
+    total = 0
+    page = 0
+    page_size = 500
+    while len(head) < cap:
+        body = client.post_one(
+            "/api/3/assets/search",
+            json_body=json_body,
+            params={"page": page, "size": page_size},
+        )
+        if page == 0:
+            total = int(body.get("page", {}).get("totalResources", 0))
+        resources = body.get("resources", []) or []
+        if not resources:
+            break
+        head.extend(resources)
+        meta = body.get("page", {})
+        total_pages = int(meta.get("totalPages", 0))
+        page += 1
+        if total_pages and page >= total_pages:
+            break
+    return head[:cap], total
 
 
 class StaleAssetsRule:
@@ -134,7 +202,7 @@ class StaleAssetsRule:
             ],
             "match": "all",
         }
-        stale = list(client.paginate_post("/api/3/assets/search", json_body=body))
+        stale, stale_total = _bounded_asset_search(client, body)
         findings = _per_asset_findings(
             stale,
             severity="warn",
@@ -142,6 +210,7 @@ class StaleAssetsRule:
                 f"Stale asset {_asset_label(a)}: no scan in last {t.stale_asset_days} days"
             ),
             extra_details={"stale_asset_days": t.stale_asset_days},
+            total=stale_total,
         )
         return make_rule_result(
             rule_id=self.RULE_ID,
@@ -149,7 +218,7 @@ class StaleAssetsRule:
             description=self.DESCRIPTION,
             findings=findings,
             sources=self.SOURCES,
-            summary={"stale_count": len(stale), "stale_asset_days": t.stale_asset_days},
+            summary={"stale_count": stale_total, "stale_asset_days": t.stale_asset_days},
             duration_ms=int((time.monotonic() - rule_start) * 1000),
         )
 
@@ -184,7 +253,7 @@ class NeverScannedAssetsRule:
             ],
             "match": "all",
         }
-        unscanned = list(client.paginate_post("/api/3/assets/search", json_body=body))
+        unscanned, unscanned_total = _bounded_asset_search(client, body)
         findings = _per_asset_findings(
             unscanned,
             severity="fail",
@@ -192,6 +261,7 @@ class NeverScannedAssetsRule:
                 f"Never-scanned asset {_asset_label(a)}: no scan in last {t.never_scanned_days} days"
             ),
             extra_details={"never_scanned_days": t.never_scanned_days},
+            total=unscanned_total,
         )
         return make_rule_result(
             rule_id=self.RULE_ID,
@@ -199,7 +269,7 @@ class NeverScannedAssetsRule:
             description=self.DESCRIPTION,
             findings=findings,
             sources=self.SOURCES,
-            summary={"unscanned_count": len(unscanned), "never_scanned_days": t.never_scanned_days},
+            summary={"unscanned_count": unscanned_total, "never_scanned_days": t.never_scanned_days},
             duration_ms=int((time.monotonic() - rule_start) * 1000),
             default_severity="fail",
         )

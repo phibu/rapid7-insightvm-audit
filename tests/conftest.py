@@ -32,6 +32,7 @@ class FakeRapid7Client:
         self._paginate: dict[str, list[dict]] = {}
         self._paginate_post: dict[str, list[dict]] = {}
         self._post_one_responses: dict[str, dict] = {}
+        self._post_one_responders: dict[str, Callable[[dict, dict | None], dict]] = {}
         self.calls: list[tuple[str, str, dict | None, dict | None]] = []
 
     def set_get(self, path: str, body: dict) -> None:
@@ -52,8 +53,22 @@ class FakeRapid7Client:
     def set_post_one(self, path: str, response: dict) -> None:
         self._post_one_responses[path] = response
 
+    def set_post_one_responder(
+        self, path: str, responder: Callable[[dict, dict | None], dict]
+    ) -> None:
+        """Register a dynamic `post_one` responder for `path`.
+
+        `responder(json_body, params) -> response_dict` lets a test branch on
+        the search filter (e.g. stale vs never-scanned) and on `params["page"]`
+        to simulate a paginated `/api/3/assets/search` response envelope.
+        Takes precedence over `set_post_one` for the same path.
+        """
+        self._post_one_responders[path] = responder
+
     def post_one(self, path: str, *, json_body: dict, params: dict | None = None, timeout: int | None = None) -> dict:
         self.calls.append(("post_one", path, params, json_body))
+        if path in self._post_one_responders:
+            return self._post_one_responders[path](json_body, params)
         return self._post_one_responses.get(path, {"resources": [], "page": {"totalResources": 0}})
 
     def connect(self) -> None:
