@@ -350,3 +350,22 @@ def test_fallback_matches_when_address_has_surrounding_whitespace():
     result = rule.run(snap, "warn", False, 500, {"last_seen_max_age_hours": 24})
     assert result.status == "pass"
     assert result.summary["missing_from_cloud"] == 0
+
+
+def test_null_named_engine_missing_from_cloud_fails_with_address_identifier():
+    """A console engine with name=None and an address set, when no cloud
+    engine matches by host_name, is reported missing-from-cloud — and the
+    finding's identifier falls back to the address."""
+    rule = ScanEngineCloudRegistrationRule()
+    snap = _snapshot(
+        console_engines=[{"id": 7, "name": None, "address": "10.20.30.40"}],
+        cloud_engines=[{"name": "some-other-engine",
+                        "host_name": "10.99.99.99",
+                        "last_seen": _now_iso(0)}],
+    )
+    result = rule.run(snap, "warn", False, 500, {"last_seen_max_age_hours": 24})
+    assert result.status == "fail"
+    assert result.summary["missing_from_cloud"] == 1
+    fail = [f for f in result.findings if f.severity == "fail"]
+    assert len(fail) == 1
+    assert "10.20.30.40" in fail[0].message
