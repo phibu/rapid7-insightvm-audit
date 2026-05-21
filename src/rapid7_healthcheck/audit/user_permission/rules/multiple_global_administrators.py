@@ -48,7 +48,7 @@ class MultipleGlobalAdministratorsRule:
                     "scan scope, or the audit trail. Restore or create a "
                     "Global Administrator immediately."
                 ),
-                details={"ga_count": 0},
+                details={"ga_count": 0, "threshold": max_ga, "ga_logins": []},
             ))
         elif len(gas) > max_ga:
             findings.append(Finding(

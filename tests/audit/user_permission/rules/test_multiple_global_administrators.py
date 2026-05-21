@@ -57,6 +57,7 @@ def test_zero_global_admins_hard_fails(fake_snapshot):
     assert r.findings[0].severity == "fail"
     assert "no enabled global administrator" in r.findings[0].message.lower()
     assert r.summary["ga_count"] == 0
+    assert r.findings[0].details == {"ga_count": 0, "threshold": 2, "ga_logins": []}
 
 
 def test_one_global_admin_passes(fake_snapshot):
