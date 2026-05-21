@@ -101,3 +101,22 @@ def test_normal_type_source_not_treated_as_external(fake_snapshot):
     fake_snapshot.set_users([])
     r = LocalAccountWhenSsoConfiguredRule().run(fake_snapshot, "warn", False, 500, {})
     assert r.status == "skipped"
+
+
+def test_external_source_detected_when_external_flag_false_but_type_set(fake_snapshot):
+    """A source with external explicitly False but a non-normal `type`
+    (e.g. ldap) must still be detected — the `external` flag arm rejects,
+    the `type` arm accepts."""
+    fake_snapshot.set_authentication_sources([
+        {"name": "corp-ldap", "external": False, "type": "ldap"},
+    ])
+    fake_snapshot.set_users([
+        {"id": 1, "login": "a", "enabled": True, "authentication": {"type": "normal"}},
+        {"id": 2, "login": "b", "enabled": True, "authentication": {"type": "normal"}},
+        {"id": 3, "login": "c", "enabled": True, "authentication": {"type": "normal"}},
+    ])
+    r = LocalAccountWhenSsoConfiguredRule().run(
+        fake_snapshot, "warn", False, 500, {"max_local_accounts_when_sso": 2},
+    )
+    assert r.status == "warn"
+    assert r.summary["external_source_count"] == 1
