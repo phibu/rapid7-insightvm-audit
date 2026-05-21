@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 _ERROR_PATH_RE = re.compile(
     r' on \w+ ((?:/api/3|/v4/integration)/[^\s:]+)'        # "...on GET /api/3/..." or "...on POST /v4/integration/..."
     r'|(?: at )((?:/api/3|/v4/integration)/[^\s:]+)'       # "...at /api/3/..." or "...at /v4/integration/..."
-    r'|(?: from \w+ )((?:/api/3|/v4/integration)/[^\s:]+)' # "...from GET /api/3/..." or "...from POST /v4/integration/..."
+    r'|(?: from (?:\w+ )?)((?:/api/3|/v4/integration)/[^\s:]+)'  # "...from GET /api/3/..." or verbless "...from /v4/integration/..."
 )
 
 
