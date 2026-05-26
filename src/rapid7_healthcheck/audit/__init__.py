@@ -52,7 +52,7 @@ class RuleResult:
     sample_info: str | None = None
     sources: list[str] = field(default_factory=list)
     error: str | None = None
-    duration_ms: int = 0
+    duration_ms: int | None = None
     error_path: str | None = None
     error_status_code: int | None = None
 

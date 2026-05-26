@@ -29,7 +29,7 @@ def make_rule_result(
     findings: list[Finding],
     sources: Iterable[str] = (),
     summary: dict | None = None,
-    duration_ms: int = 0,
+    duration_ms: int | None = None,
     default_severity: Severity = "warn",
     sampled: bool = False,
     sample_info: str | None = None,
@@ -88,7 +88,7 @@ def error_rule(
     description: str,
     error: Exception,
     sources: Iterable[str] = (),
-    duration_ms: int = 0,
+    duration_ms: int | None = None,
     default_severity: Severity = "warn",
 ) -> RuleResult:
     """Build an error RuleResult for an op-check concept whose execution raised.
@@ -157,9 +157,11 @@ def safe_run(
         )
     duration_ms = int((time.monotonic() - rule_start) * 1000)
     # If the rule producer didn't set its own timing (the common case —
-    # make_rule_result() defaults duration_ms=0), stamp the wall-clock
-    # elapsed so the per-rule card in the report no longer renders 0ms.
-    if result.duration_ms == 0:
+    # make_rule_result() defaults duration_ms=None), stamp the wall-clock
+    # elapsed so the per-rule card in the report shows a real timing.
+    # A rule that explicitly set duration_ms=0 (measured sub-millisecond)
+    # is preserved as-is — None is the unambiguous "not measured" sentinel.
+    if result.duration_ms is None:
         return replace(result, duration_ms=duration_ms)
     return result
 
