@@ -129,6 +129,7 @@ class EnvSnapshot:
 
         self._sites: list[dict] | None = None
         self._scan_engines: list[dict] | None = None
+        self._scan_engine_pools: list[dict] | None = None
         self._shared_credentials: list[dict] | None = None
         self._site_credentials: dict[int, list[dict]] = {}
         self._site_schedules: dict[int, list[dict]] = {}
@@ -187,6 +188,32 @@ class EnvSnapshot:
             body = self._client.get("/api/3/scan_engines")
             self._scan_engines = list(body.get("resources", []))
         return self._scan_engines
+
+    def scan_engine_pools(self) -> list[dict]:
+        """Return all scan engine pools from /api/3/scan_engine_pools.
+
+        Used to detect pool-mediated site assignments: an engine assigned to
+        sites only through a pool will have ``ScanEngine.sites == []`` but is
+        still effectively paired. Single GET, no pagination — the v3 OpenAPI
+        spec (``docs/research/api-v3.json``) shows this endpoint accepts no
+        ``page``/``size`` parameters and its response schema
+        (``CollectionModelEnginePool``) has no ``page`` envelope.
+
+        Returns ``[]`` if the endpoint is unavailable (404) on the console —
+        pool-aware rules then fall back to direct-only logic, accepting the
+        false-positive risk that motivated this accessor.
+        """
+        if self._scan_engine_pools is None:
+            try:
+                body = self._client.get("/api/3/scan_engine_pools")
+                self._scan_engine_pools = list(body.get("resources", []))
+            except Rapid7ClientError as e:
+                if e.status_code == 404:
+                    logger.info("scan_engine_pools endpoint not available")
+                    self._scan_engine_pools = []
+                else:
+                    raise
+        return self._scan_engine_pools
 
     def shared_credentials(self) -> list[dict]:
         if self._shared_credentials is None:

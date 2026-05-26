@@ -6,7 +6,9 @@ import pytest
 
 from rapid7_healthcheck.checks.scan_engines import (
     EngineMissingLastRefreshRule,
+    EngineUnpairedRule,
     ScanEnginesCheck,
+    _build_pooled_sites_index,
 )
 
 
@@ -22,7 +24,19 @@ def _now_iso(offset_hours: float = 0) -> str:
     return t.isoformat().replace("+00:00", "Z")
 
 
+def _set_no_pools(fake_client):
+    """Default the pools endpoint to empty so the snapshot fetch is a noop.
+
+    EngineUnpairedRule consults snapshot.scan_engine_pools() to honor
+    pool-mediated pairing; the snapshot's FakeRapid7Client raises on
+    unregistered paths, so every ScanEnginesCheck test must register
+    a (possibly empty) /api/3/scan_engine_pools response.
+    """
+    fake_client.set_get("/api/3/scan_engine_pools", {"resources": []})
+
+
 def test_all_engines_healthy(fake_client, app_config):
+    _set_no_pools(fake_client)
     fake_client.set_get(
         "/api/3/scan_engines",
         {
@@ -42,6 +56,7 @@ def test_all_engines_healthy(fake_client, app_config):
 
 
 def test_engine_warn_when_last_contact_exceeds_warn_hours(fake_client, app_config):
+    _set_no_pools(fake_client)
     fake_client.set_get(
         "/api/3/scan_engines",
         {
@@ -59,6 +74,7 @@ def test_engine_warn_when_last_contact_exceeds_warn_hours(fake_client, app_confi
 
 
 def test_engine_fail_when_last_contact_exceeds_fail_hours(fake_client, app_config):
+    _set_no_pools(fake_client)
     fake_client.set_get(
         "/api/3/scan_engines",
         {
@@ -87,6 +103,7 @@ def test_engine_fail_when_last_contact_exceeds_fail_hours(fake_client, app_confi
 def test_bad_status_engine_is_flagged(
     status, expected_status, expected_severity, fake_client, app_config
 ):
+    _set_no_pools(fake_client)
     fake_client.set_get(
         "/api/3/scan_engines",
         {
@@ -104,6 +121,7 @@ def test_bad_status_engine_is_flagged(
 
 
 def test_engine_with_no_sites_is_warn(fake_client, app_config):
+    _set_no_pools(fake_client)
     fake_client.set_get(
         "/api/3/scan_engines",
         {
@@ -123,6 +141,7 @@ def test_unpaired_engine_finding_includes_identification_details(fake_client, ap
     # Operators need more than the engine ID to act on an unpaired engine.
     # Surface address, port, status, and version info in the finding's details
     # so the report renders something actionable.
+    _set_no_pools(fake_client)
     fake_client.set_get(
         "/api/3/scan_engines",
         {
@@ -188,6 +207,7 @@ def test_missing_last_refresh_still_flags_distributed_engine():
 
 
 def test_missing_last_refreshed_is_warn(fake_client, app_config):
+    _set_no_pools(fake_client)
     fake_client.set_get(
         "/api/3/scan_engines",
         {
@@ -206,6 +226,7 @@ def test_missing_last_refreshed_is_warn(fake_client, app_config):
 def test_double_warn_engine_counted_once(fake_client, app_config):
     # An engine can produce both an age-warn AND a no-pairing-warn.
     # The summary should count the engine once, not the findings.
+    _set_no_pools(fake_client)
     fake_client.set_get(
         "/api/3/scan_engines",
         {
@@ -235,6 +256,7 @@ def test_double_warn_engine_counted_once(fake_client, app_config):
 
 def test_summary_counts_partition_engines(fake_client, app_config):
     # total = healthy + warn + fail, always.
+    _set_no_pools(fake_client)
     fake_client.set_get(
         "/api/3/scan_engines",
         {
@@ -267,6 +289,7 @@ def test_engine_fetch_failure_isolated_into_error_rules(fake_client, app_config)
     count summary falls back to zeros instead of crashing."""
     from rapid7_healthcheck.client import Rapid7ClientError
 
+    _set_no_pools(fake_client)
     fake_client.set_get_raises(
         "/api/3/scan_engines",
         Rapid7ClientError("503 at /api/3/scan_engines", status_code=503),
@@ -280,3 +303,83 @@ def test_engine_fetch_failure_isolated_into_error_rules(fake_client, app_config)
     assert all(rr.status == "error" for rr in result.rule_results)
     assert len({rr.rule_id for rr in result.rule_results}) == 4
     assert result.summary["engines_total"] == 0
+
+
+# --- EngineUnpairedRule pool-awareness ---------------------------------
+
+
+def test_unpaired_skips_engine_paired_via_pool():
+    rule = EngineUnpairedRule()
+    pooled_idx = {2: {10, 11}}  # engine 2 is in a pool with sites 10,11
+    result = rule.run(
+        [{"id": 2, "name": "engine-pool", "status": "active",
+          "sites": [], "address": "10.0.0.5"}],
+        pooled_idx,
+    )
+    assert result.findings == []
+
+
+def test_unpaired_flags_engine_with_no_pool_and_no_sites():
+    rule = EngineUnpairedRule()
+    result = rule.run(
+        [{"id": 3, "name": "lonely", "status": "active",
+          "sites": [], "address": "10.0.0.6"}],
+        {},
+    )
+    assert len(result.findings) == 1
+
+
+def test_unpaired_skips_engine_with_direct_sites_even_without_pool():
+    rule = EngineUnpairedRule()
+    result = rule.run(
+        [{"id": 4, "name": "direct", "status": "active",
+          "sites": [99], "address": "10.0.0.7"}],
+        {},
+    )
+    assert result.findings == []
+
+
+def test_build_pooled_sites_index_unions_per_engine():
+    pools = [
+        {"id": 1, "engines": [10], "sites": [100, 101]},
+        {"id": 2, "engines": [10, 11], "sites": [200]},
+    ]
+    idx = _build_pooled_sites_index(pools)
+    assert idx[10] == {100, 101, 200}
+    assert idx[11] == {200}
+
+
+def test_build_pooled_sites_index_handles_missing_keys():
+    pools = [
+        {"id": 1},  # no engines, no sites
+        {"id": 2, "engines": [], "sites": []},
+    ]
+    idx = _build_pooled_sites_index(pools)
+    assert idx == {}
+
+
+def test_unpaired_skips_engine_paired_only_via_pool_in_check(fake_client, app_config):
+    """End-to-end: ScanEnginesCheck wires snapshot.scan_engine_pools() into
+    the unpaired rule. An engine with empty `sites` but a pool membership
+    must NOT be flagged."""
+    fake_client.set_get(
+        "/api/3/scan_engines",
+        {
+            "resources": [
+                {"id": 7, "name": "pool-only", "status": "active",
+                 "lastRefreshedDate": _now_iso(0), "sites": []},
+            ]
+        },
+    )
+    fake_client.set_get(
+        "/api/3/scan_engine_pools",
+        {"resources": [
+            {"id": 1, "name": "prod-pool", "engines": [7], "sites": [100]},
+        ]},
+    )
+    result = ScanEnginesCheck().run(fake_client, app_config)
+    unpaired = _rule(result, "op.scan_engines.unpaired")
+    assert unpaired.findings == []
+    # And the rollup considers this engine healthy.
+    assert result.summary["engines_healthy"] == 1
+    assert result.summary["engines_warn"] == 0

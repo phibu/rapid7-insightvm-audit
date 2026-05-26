@@ -633,6 +633,69 @@ class TestAgentAssetIdsSampled:
         assert len(c.get_calls) == head_calls_before
 
 
+def test_scan_engine_pools_returns_resources():
+    """Single GET to /api/3/scan_engine_pools, body.get('resources')."""
+    c = _FakeClient()
+    c.set_get(
+        "/api/3/scan_engine_pools",
+        {"resources": [
+            {"id": 1, "name": "pool-a", "engines": [10, 11], "sites": [100]},
+        ]},
+    )
+    snap = EnvSnapshot(c, full_scan=False, sample_size=500)
+    pools = snap.scan_engine_pools()
+    assert len(pools) == 1
+    assert pools[0]["name"] == "pool-a"
+    assert pools[0]["engines"] == [10, 11]
+
+
+def test_scan_engine_pools_cached():
+    """Repeated calls hit cache, not the client."""
+    c = _FakeClient()
+    c.set_get("/api/3/scan_engine_pools", {"resources": []})
+    snap = EnvSnapshot(c, full_scan=False, sample_size=500)
+    snap.scan_engine_pools()
+    snap.scan_engine_pools()
+    assert sum(1 for p, _ in c.get_calls if p == "/api/3/scan_engine_pools") == 1
+
+
+def test_scan_engine_pools_returns_empty_on_404():
+    """Older consoles / restricted keys → 404 → empty list, no raise."""
+    from rapid7_healthcheck.client import Rapid7ClientError
+
+    class _Client404(_FakeClient):
+        def get(self, path, params=None, **_kwargs):
+            if path == "/api/3/scan_engine_pools":
+                raise Rapid7ClientError(
+                    "HTTP 404 from GET /api/3/scan_engine_pools: not found",
+                    status_code=404,
+                )
+            return super().get(path, params)
+
+    c = _Client404()
+    snap = EnvSnapshot(c, full_scan=False, sample_size=500)
+    assert snap.scan_engine_pools() == []
+
+
+def test_scan_engine_pools_propagates_non_404_errors():
+    """Non-404 errors must propagate, not be silently swallowed."""
+    from rapid7_healthcheck.client import Rapid7ClientError
+
+    class _Client500(_FakeClient):
+        def get(self, path, params=None, **_kwargs):
+            if path == "/api/3/scan_engine_pools":
+                raise Rapid7ClientError(
+                    "HTTP 500 from GET /api/3/scan_engine_pools: oops",
+                    status_code=500,
+                )
+            return super().get(path, params)
+
+    c = _Client500()
+    snap = EnvSnapshot(c, full_scan=False, sample_size=500)
+    with pytest.raises(Rapid7ClientError):
+        snap.scan_engine_pools()
+
+
 def test_asset_group_member_count_happy_path():
     """Returns len(response['resources']) and caches per id."""
     c = _FakeClient()

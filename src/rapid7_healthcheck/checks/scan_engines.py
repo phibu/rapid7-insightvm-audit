@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import time
 from datetime import datetime, timezone
 from typing import Any, NamedTuple
@@ -16,8 +17,27 @@ from rapid7_healthcheck.checks._op_rule import (
 )
 from rapid7_healthcheck.config import AppConfig
 
+logger = logging.getLogger(__name__)
+
 _SRC_SCAN_ENGINES = "https://help.rapid7.com/insightvm/en-us/api/index.html#tag/Scan-Engine"
 _SRC_ENGINE_STATUS = "https://docs.rapid7.com/insightvm/managing-scan-engines"
+
+
+def _build_pooled_sites_index(pools: list[dict]) -> dict[int, set[int]]:
+    """engine_id -> set of site_ids reachable via any pool the engine is in.
+
+    Builds a per-engine union of all sites assigned to any pool that
+    contains the engine. Used to recognize pool-mediated pairing in
+    addition to direct ScanEngine.sites assignments.
+    """
+    index: dict[int, set[int]] = {}
+    for pool in pools:
+        pool_engines = pool.get("engines") or []
+        pool_sites = set(pool.get("sites") or [])
+        for engine_id in pool_engines:
+            if isinstance(engine_id, int):
+                index.setdefault(engine_id, set()).update(pool_sites)
+    return index
 
 
 # Per v3 ScanEngine.status enum: [active, incompatible-version, not-responding,
@@ -192,20 +212,26 @@ class EngineUnpairedRule:
     RULE_ID = "op.scan_engines.unpaired"
     RULE_NAME = "Engines not paired with any sites"
     DESCRIPTION = (
-        "Engines configured on the console but not assigned to any site — "
-        "they sit idle and consume no work."
+        "Engines configured on the console but not assigned to any site, either "
+        "directly (ScanEngine.sites) or via a scan engine pool (EnginePool.sites). "
+        "They sit idle and consume no work."
     )
     SOURCES = (_SRC_SCAN_ENGINES,)
     DEFAULT_SEVERITY = "warn"
 
-    def run(self, engines: list[dict]) -> RuleResult:
+    def run(
+        self,
+        engines: list[dict],
+        pooled_sites_by_engine: dict[int, set[int]],
+    ) -> RuleResult:
         findings: list[Finding] = []
         for engine in engines:
             status = engine.get("status", "unknown")
             if status in _BAD_STATUS:
                 continue
-            sites = engine.get("sites") or []
-            if sites:
+            direct_sites = engine.get("sites") or []
+            pooled_sites = pooled_sites_by_engine.get(engine.get("id"), set())
+            if direct_sites or pooled_sites:
                 continue
             name = _engine_name(engine)
             address = engine.get("address")
@@ -225,6 +251,7 @@ class EngineUnpairedRule:
                     "content_version": engine.get("contentVersion"),
                     "serial_number": engine.get("serialNumber"),
                     "last_refreshed": engine.get("lastRefreshedDate"),
+                    "pool_sites_count": len(pooled_sites),  # diagnostic, always 0 here
                 },
             ))
         return make_rule_result(
@@ -273,7 +300,17 @@ class ScanEnginesCheck:
     name = "Scan Engines"
     description = "Health and pairing status of all configured scan engines."
 
-    def run(self, client: Any, config: AppConfig, **_kwargs: object) -> CheckResult:
+    def run(
+        self,
+        client: Any,
+        config: AppConfig,
+        *,
+        snapshot: "EnvSnapshot | None" = None,  # noqa: F821 — forward-ref string only
+        **_kwargs: object,
+    ) -> CheckResult:
+        if snapshot is None:
+            from rapid7_healthcheck.audit.snapshot import EnvSnapshot
+            snapshot = EnvSnapshot(client, full_scan=False, sample_size=500)
         start = time.monotonic()
         thresholds = config.thresholds.scan_engines
 
@@ -295,6 +332,22 @@ class ScanEnginesCheck:
                     raise
             return _fetch_cache["value"]  # type: ignore[return-value]
 
+        # Pool-mediated pairing index for the unpaired rule. If pools cannot
+        # be fetched (e.g. 404 swallowed inside the snapshot, or a transient
+        # error here), fall back to an empty index — the rule then reverts
+        # to its pre-pool-aware behavior (direct ScanEngine.sites only),
+        # which is the 0.6.5 baseline and the desired fallback when no pool
+        # signal is available.
+        pools: list[dict] = []
+        try:
+            pools = snapshot.scan_engine_pools()
+        except Exception:
+            logger.warning(
+                "scan_engine_pools fetch failed; falling back to direct-only pairing",
+                exc_info=True,
+            )
+        pooled_idx = _build_pooled_sites_index(pools)
+
         bad_status = EngineBadStatusRule()
         last_contact = EngineLastContactRule()
         missing_refresh = EngineMissingLastRefreshRule()
@@ -303,7 +356,7 @@ class ScanEnginesCheck:
             safe_run_rule(bad_status, lambda: bad_status.run(engines())),
             safe_run_rule(last_contact, lambda: last_contact.run(engines(), thresholds)),
             safe_run_rule(missing_refresh, lambda: missing_refresh.run(engines())),
-            safe_run_rule(unpaired, lambda: unpaired.run(engines())),
+            safe_run_rule(unpaired, lambda: unpaired.run(engines(), pooled_idx)),
         ]
 
         summary = rule_summary(rule_results)
