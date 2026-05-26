@@ -52,7 +52,8 @@ class SingleEngineOverloadRule:
                         f"Scan engine '{engine_name}' is bound to {len(site_ids)} sites "
                         f"totalling {total} assets (threshold {threshold})"
                     ),
-                    details={"engine_id": engine_id, "sites": site_ids, "total_assets": total,
+                    details={"engine_id": engine_id, "engine_name": engine_name,
+                             "sites": site_ids, "total_assets": total,
                              "threshold": threshold},
                 ))
                 engines_flagged += 1
