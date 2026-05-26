@@ -200,9 +200,15 @@ class EnvSnapshot:
         ``page``/``size`` parameters and its response schema
         (``CollectionModelEnginePool``) has no ``page`` envelope.
 
-        Returns ``[]`` if the endpoint is unavailable (404) on the console —
-        pool-aware rules then fall back to direct-only logic, accepting the
-        false-positive risk that motivated this accessor.
+        Returns ``[]`` on:
+            - 404 (older console without pool support);
+            - 502 / 503 / 504 or pre-response failure (``status_code is None``) —
+              gateway-level transient failures. ``EngineUnpairedRule`` then
+              falls back to direct-only pairing, which is the 0.6.5 behavior,
+              so an unreachable endpoint produces a partial-but-correct result
+              rather than an error rule.
+
+        Other ``Rapid7ClientError`` responses propagate.
         """
         if self._scan_engine_pools is None:
             try:
@@ -211,6 +217,13 @@ class EnvSnapshot:
             except Rapid7ClientError as e:
                 if e.status_code == 404:
                     logger.info("scan_engine_pools endpoint not available")
+                    self._scan_engine_pools = []
+                elif e.status_code is None or e.status_code in (502, 503, 504):
+                    logger.warning(
+                        "scan_engine_pools endpoint unreachable (gateway "
+                        "error or network error); EngineUnpairedRule will "
+                        "fall back to direct-only pairing: %s", e,
+                    )
                     self._scan_engine_pools = []
                 else:
                     raise
