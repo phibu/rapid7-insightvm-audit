@@ -406,7 +406,7 @@ Register-ScheduledTask -TaskName "Rapid7 HealthCheck" -Action $action -Trigger $
 | `scan_activity.recent_window_days` | int, required | What counts as a "recent" scan. |
 | `scan_activity.stuck_scan_hours` | int, required | A `running` scan older than this is flagged stuck. |
 | `scan_activity.site_no_scan_days` | int, required | A site with no scan in this window is overdue. |
-| `asset_coverage.stale_asset_days` | int, required | Assets not scanned within this window are stale. |
+| `asset_coverage.stale_asset_days` | int, required (example `60`) | Assets not scanned within this window are stale. |
 | `asset_coverage.flag_unscanned_assets` | bool, required | Also list assets not scanned recently. |
 | `asset_coverage.never_scanned_days` | int, required | Days since last scan to flag an asset as effectively never scanned. |
 | `asset_coverage.flag_dead_asset_groups` | bool, default `true` | Flag asset groups whose membership criteria match zero assets (orphaned RBAC/report scopes). |

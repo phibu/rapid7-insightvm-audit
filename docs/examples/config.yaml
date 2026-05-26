@@ -40,7 +40,7 @@ thresholds:
     stuck_scan_hours: 24                   # a running scan older than this is flagged stuck (hours)
     site_no_scan_days: 14                  # a site with no scan in this window is overdue (days)
   asset_coverage:
-    stale_asset_days: 30                   # assets not scanned within this window are stale (days)
+    stale_asset_days: 60                   # assets not scanned within this window are stale (days)
     flag_unscanned_assets: true            # also list assets not scanned recently
     never_scanned_days: 90                 # days since last scan to flag an asset as effectively never scanned
     flag_dead_asset_groups: true           # flag asset groups whose criteria match zero assets
