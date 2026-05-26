@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.5.2] - 2026-05-26
+
+### Fixed
+
+- **Engines paired through a scan engine pool are no longer flagged as unpaired** (`op.scan_engines.unpaired`). The rule previously read only `ScanEngine.sites`, which per the v3 spec carries direct site assignments only — engines reachable through an `EnginePool` reported `sites: []` and got a false-positive warning. A new `EnvSnapshot.scan_engine_pools()` accessor backs the fix; the rule now treats either direct sites OR pool-mediated sites as evidence of pairing. Consoles without pool support (404) fall back to the 0.6.5 direct-only behavior.
+
+- **Local scan engine is no longer flagged for a missing `lastRefreshedDate`** (`op.scan_engines.missing_last_refresh`). The in-process Local Scan Engine has no `lastRefreshedDate` by design — it isn't a refreshed peer — but every deployment was getting a spurious warn finding for it. The local-engine heuristic (loopback address or default name `"Local scan engine"`) was extracted to a new shared module `src/rapid7_healthcheck/_local_engine.py` so both the op-check and the audit rule `local_engine_production_scope` use the same detection.
+
+- **Op-check rule cards now report their actual duration instead of `0ms`.** `safe_run()` recorded each rule's start time but only used it on the error path; the success path returned the rule's own `RuleResult` whose `duration_ms` defaulted to 0. Result: every operational rule card rendered as `0ms` while the check-level total was correct. The fix is centralized in `safe_run()` and covers all four op-checks (scan engines, scan activity, asset coverage, data quality) without per-rule edits. Rules that set their own explicit `duration_ms` are preserved.
+
+### Internal
+
+- New top-level `src/rapid7_healthcheck/_local_engine.py` consolidates the local-engine detection heuristic shared between the operational scan-engines check and the configuration-audit rule. Pure helper module, no I/O.
+
+- Defensive `bool`/`int` guard in `_build_pooled_sites_index` aligns with the project-wide convention used in `audit/snapshot.py` for filtering non-int values out of API payloads.
+
 ## [0.6.5.1] - 2026-05-21
 
 ### Fixed
