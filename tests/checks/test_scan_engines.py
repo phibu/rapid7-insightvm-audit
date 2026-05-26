@@ -4,7 +4,10 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from rapid7_healthcheck.checks.scan_engines import ScanEnginesCheck
+from rapid7_healthcheck.checks.scan_engines import (
+    EngineMissingLastRefreshRule,
+    ScanEnginesCheck,
+)
 
 
 def _rule(result, rule_id: str):
@@ -154,6 +157,34 @@ def test_unpaired_engine_finding_includes_identification_details(fake_client, ap
     assert d["content_version"] == "1.2.3"
     assert d["serial_number"] == "ABC-123"
     assert d["last_refreshed"] is not None
+
+
+def test_missing_last_refresh_skips_local_engine_by_name():
+    rule = EngineMissingLastRefreshRule()
+    result = rule.run([
+        {"id": 1, "name": "Local scan engine", "status": "active",
+         "lastRefreshedDate": None, "address": "192.168.1.1"},
+    ])
+    assert result.findings == []
+
+
+def test_missing_last_refresh_skips_local_engine_by_loopback():
+    rule = EngineMissingLastRefreshRule()
+    result = rule.run([
+        {"id": 1, "name": "renamed-local", "status": "active",
+         "lastRefreshedDate": None, "address": "127.0.0.1"},
+    ])
+    assert result.findings == []
+
+
+def test_missing_last_refresh_still_flags_distributed_engine():
+    rule = EngineMissingLastRefreshRule()
+    result = rule.run([
+        {"id": 2, "name": "engine-01", "status": "active",
+         "lastRefreshedDate": None, "address": "10.0.0.5"},
+    ])
+    assert len(result.findings) == 1
+    assert result.findings[0].severity == "warn"
 
 
 def test_missing_last_refreshed_is_warn(fake_client, app_config):

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 
+from rapid7_healthcheck._local_engine import is_local_engine
 from rapid7_healthcheck.audit import RuleResult, register
 from rapid7_healthcheck.checks import Finding
 
@@ -12,16 +13,8 @@ _DEFAULT_THRESHOLD = 1000
 # Local engines are detected by loopback address or the default name Rapid7
 # ships ("Local scan engine"). Operators who renamed the local engine to a
 # real hostname can override via `additional_local_names` rule_config knob.
-_LOOPBACK_ADDRESSES = {"localhost", "127.0.0.1", "::1"}
-_DEFAULT_LOCAL_NAMES = {"local scan engine"}
-
-
-def _is_local_engine(engine: dict, extra_names: set[str]) -> bool:
-    addr = (engine.get("address") or "").strip().lower()
-    if addr in _LOOPBACK_ADDRESSES:
-        return True
-    name = (engine.get("name") or "").strip().lower()
-    return name in _DEFAULT_LOCAL_NAMES or name in extra_names
+# The detection helper lives in rapid7_healthcheck._local_engine so the
+# operational scan-engines check can reuse it without a checks→audit import.
 
 
 @register
@@ -64,7 +57,7 @@ class LocalEngineProductionScopeRule:
         engines_flagged = 0
         sites_examined = 0
         for engine in snapshot.scan_engines():
-            if not _is_local_engine(engine, extra_names):
+            if not is_local_engine(engine, extra_names):
                 continue
             engines_examined += 1
             engine_id = engine.get("id")

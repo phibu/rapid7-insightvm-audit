@@ -4,6 +4,7 @@ import time
 from datetime import datetime, timezone
 from typing import Any, NamedTuple
 
+from rapid7_healthcheck._local_engine import is_local_engine
 from rapid7_healthcheck.audit import RuleResult
 from rapid7_healthcheck.checks import CheckResult, Finding
 from rapid7_healthcheck.checks._op_rule import (
@@ -151,7 +152,10 @@ class EngineMissingLastRefreshRule:
     RULE_NAME = "Engines missing lastRefreshedDate"
     DESCRIPTION = (
         "Engines that report no lastRefreshedDate at all — usually a freshly "
-        "paired engine that has not yet completed a refresh."
+        "paired engine that has not yet completed a refresh. The console-local "
+        "Scan Engine (detected by loopback address or the default name "
+        "'Local scan engine') is excluded because it never reports a "
+        "lastRefreshedDate by design."
     )
     SOURCES = (_SRC_SCAN_ENGINES,)
     DEFAULT_SEVERITY = "warn"
@@ -161,6 +165,9 @@ class EngineMissingLastRefreshRule:
         for engine in engines:
             status = engine.get("status", "unknown")
             if status in _BAD_STATUS:
+                continue
+            if is_local_engine(engine):
+                # Local engine is in-process; never has a lastRefreshedDate.
                 continue
             if _parse_iso(engine.get("lastRefreshedDate")) is not None:
                 continue
