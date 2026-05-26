@@ -25,6 +25,7 @@ def test_warn_when_discovery_template_on_high_importance(fake_snapshot):
     fake_snapshot.set_site_asset_count(1, 100)
     r = DiscoveryTemplateOnProdSiteRule().run(fake_snapshot, "warn", False, 500, {})
     assert r.status == "warn"
+    assert r.card_summary == {"examined": 1, "passed": 0, "failed": 1}
 
 
 def test_skip_low_importance_site(fake_snapshot):

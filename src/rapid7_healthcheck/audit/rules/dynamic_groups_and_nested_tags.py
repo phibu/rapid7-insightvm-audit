@@ -209,5 +209,10 @@ class DynamicGroupsAndNestedTagsRule:
                 "dynamic_groups_referencing_tags": len(groups_referencing_tags),
                 "threshold": dynamic_group_limit,
             },
+            card_summary={
+                "examined": len(tag_by_name),
+                "passed": max(0, len(tag_by_name) - len(findings)),
+                "failed": len(findings),
+            },
             sources=list(self.sources),
         )

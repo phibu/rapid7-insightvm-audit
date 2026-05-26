@@ -40,6 +40,7 @@ def test_warn_when_time_and_scope_overlap(fake_snapshot):
     assert r.status == "warn"
     assert len(r.findings) == 1
     assert "10.0.0" in r.findings[0].message or True  # scope info present implicitly
+    assert r.card_summary == {"examined": 2, "passed": 1, "failed": 1}
 
 
 def test_no_overlap_when_scope_disjoint(fake_snapshot):

@@ -102,5 +102,10 @@ class LocalAccountWhenSsoConfiguredRule:
                 "external_source_count": len(external_sources),
                 "threshold": max_local,
             },
+            card_summary={
+                "examined": len(users),
+                "passed": max(0, len(users) - len(local_users)),
+                "failed": len(local_users),
+            },
             sources=list(self.sources),
         )

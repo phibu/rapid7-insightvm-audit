@@ -62,5 +62,10 @@ class SuperuserFlagOutsideGlobalAdminRule:
             status=status,
             findings=findings,
             summary={"users_examined": len(users), "users_flagged": len(findings)},
+            card_summary={
+                "examined": len(users),
+                "passed": max(0, len(users) - len(findings)),
+                "failed": len(findings),
+            },
             sources=list(self.sources),
         )

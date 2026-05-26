@@ -50,6 +50,7 @@ def test_warn_when_tag_references_another_tag(fake_snapshot):
     assert len(nested_findings) == 1
     assert nested_findings[0].details["references"] == ["base"]
     assert r.summary["nested_tag_refs"] == 1
+    assert r.card_summary == {"examined": 2, "passed": 1, "failed": 1}
 
 
 def test_warn_with_circular_tag_reference(fake_snapshot):

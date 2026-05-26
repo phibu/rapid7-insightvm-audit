@@ -123,6 +123,7 @@ class ScanEngineCloudRegistrationRule:
         findings: list[Finding] = []
         missing_from_cloud = 0
         stale_in_cloud = 0
+        engines_examined = 0
 
         for engine in console_engines:
             name = engine.get("name")
@@ -135,6 +136,7 @@ class ScanEngineCloudRegistrationRule:
             if not name and not address:
                 # Engine record has no key at all — can't match either way.
                 continue
+            engines_examined += 1
 
             cloud = cloud_by_name.get(name) if name else None
             matched_via = "name" if cloud is not None else None
@@ -238,6 +240,11 @@ class ScanEngineCloudRegistrationRule:
                 "stale_in_cloud": stale_in_cloud,
                 "max_age_hours": max_age_hours,
                 "ignore_engines": sorted(ignore),
+            },
+            card_summary={
+                "examined": engines_examined,
+                "passed": max(0, engines_examined - (missing_from_cloud + stale_in_cloud)),
+                "failed": missing_from_cloud + stale_in_cloud,
             },
             sources=list(self.sources),
         )

@@ -126,6 +126,7 @@ def test_summary_counts():
     assert result.summary["cloud_engines"] == 2
     assert result.summary["missing_from_cloud"] == 1
     assert result.summary["stale_in_cloud"] == 1
+    assert result.card_summary == {"examined": 3, "passed": 1, "failed": 2}
 
 
 def test_rule_is_registered():

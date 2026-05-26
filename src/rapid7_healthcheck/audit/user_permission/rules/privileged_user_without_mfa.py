@@ -241,6 +241,11 @@ class PrivilegedUserWithoutMfaRule:
                 "users_exempt": users_exempt,
                 "users_external_auth": len(external_auth_users),
             },
+            card_summary={
+                "examined": len(examined),
+                "passed": max(0, len(examined) - users_without_mfa),
+                "failed": users_without_mfa,
+            },
             sampled=sampled,
             sample_info=sample_info,
             sources=list(self.sources),

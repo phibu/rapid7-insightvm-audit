@@ -74,5 +74,10 @@ class DisabledUserWithRoleBindingsRule:
             status=status,
             findings=findings,
             summary={"users_examined": len(users), "users_flagged": flagged},
+            card_summary={
+                "examined": len(users),
+                "passed": max(0, len(users) - flagged),
+                "failed": flagged,
+            },
             sources=list(self.sources),
         )

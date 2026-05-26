@@ -174,6 +174,11 @@ class OverlappingScanWindowsRule:
                 "windows_examined": len(windows),
                 "findings_count": len(findings),
             },
+            card_summary={
+                "examined": len(windows),
+                "passed": max(0, len(windows) - len(findings)),
+                "failed": len(findings),
+            },
             sampled=sampled,
             sample_info=sample_info,
             sources=list(self.sources),

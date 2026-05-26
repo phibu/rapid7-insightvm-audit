@@ -27,6 +27,7 @@ def test_warn_when_template_has_both(fake_snapshot):
     assert len(r.findings) == 1
     assert "Mixed" in r.findings[0].message
     assert sorted(r.findings[0].details["sites_using"]) == [1, 2]
+    assert r.card_summary == {"examined": 1, "passed": 0, "failed": 1}
 
 
 def test_template_only_evaluated_when_in_use(fake_snapshot):

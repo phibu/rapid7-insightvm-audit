@@ -25,6 +25,7 @@ def test_fails_when_superuser_on_custom_role(fake_snapshot):
     assert r.status == "fail"
     assert "backdoor" in r.findings[0].message
     assert r.findings[0].details["role_id"] == "custom-role"
+    assert r.card_summary == {"examined": 1, "passed": 0, "failed": 1}
 
 
 def test_disabled_user_with_superuser_still_flagged(fake_snapshot):

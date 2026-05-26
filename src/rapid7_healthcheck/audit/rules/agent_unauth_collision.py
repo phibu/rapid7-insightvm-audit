@@ -205,5 +205,10 @@ class AgentUnauthCollisionRule:
                 "per_site_cap": per_site_cap,
                 "agent_asset_ids": len(agent_ids),
             },
+            card_summary={
+                "examined": sites_examined,
+                "passed": max(0, sites_examined - sites_flagged),
+                "failed": sites_flagged,
+            },
             sources=list(self.sources),
         )

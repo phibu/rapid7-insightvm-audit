@@ -22,6 +22,7 @@ class DiscoveryTemplateOnProdSiteRule:
 
     def run(self, snapshot, severity, full_scan, sample_size, rule_config) -> RuleResult:
         findings: list[Finding] = []
+        sites_examined = 0
         for site in snapshot.sites():
             site_id = site.get("id")
             importance = site.get("importance", "normal")
@@ -32,6 +33,7 @@ class DiscoveryTemplateOnProdSiteRule:
             tpl_id = snapshot.site_scan_template_id(site)
             if not tpl_id:
                 continue
+            sites_examined += 1
             tpl = snapshot.scan_template(tpl_id)
             if snapshot.template_vuln_enabled(tpl):
                 continue
@@ -62,5 +64,10 @@ class DiscoveryTemplateOnProdSiteRule:
             status=status,
             findings=findings,
             summary={"sites_flagged": len(findings)},
+            card_summary={
+                "examined": sites_examined,
+                "passed": max(0, sites_examined - len(findings)),
+                "failed": len(findings),
+            },
             sources=list(self.sources),
         )

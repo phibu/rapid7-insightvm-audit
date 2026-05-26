@@ -29,6 +29,7 @@ def test_finding_when_vuln_template_and_no_creds(fake_snapshot):
     assert len(r.findings) == 1
     assert r.findings[0].severity == "fail"
     assert "Prod" in r.findings[0].message
+    assert r.card_summary == {"examined": 1, "passed": 0, "failed": 1}
 
 
 def test_skip_when_template_has_no_vuln_checks(fake_snapshot):

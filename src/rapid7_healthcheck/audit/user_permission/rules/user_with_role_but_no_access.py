@@ -91,6 +91,11 @@ class UserWithRoleButNoAccessRule:
                 "users_examined": len(examined),
                 "users_flagged": len(findings),
             },
+            card_summary={
+                "examined": len(users),
+                "passed": max(0, len(users) - len(findings)),
+                "failed": len(findings),
+            },
             sampled=sampled,
             sample_info=sample_info,
             sources=list(self.sources),
