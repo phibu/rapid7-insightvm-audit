@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+
 import pytest
 
 from rapid7_healthcheck.audit import RuleResult
@@ -95,6 +97,49 @@ def test_safe_run_handles_arbitrary_exception_types():
     assert result.duration_ms >= 0
 
 
+def test_safe_run_sets_duration_ms_on_success_path():
+    """safe_run measures wall-clock time on the success path and sets
+    duration_ms on the returned RuleResult when the rule producer did not
+    populate it itself (i.e. it defaulted to 0)."""
+    def slow_rule():
+        time.sleep(0.01)  # 10ms minimum
+        return make_rule_result(
+            rule_id="op.test.rule",
+            rule_name="Test",
+            description="d",
+            findings=[],
+        )
+
+    result = safe_run(
+        slow_rule,
+        rule_id="op.test.rule",
+        rule_name="Test",
+        description="d",
+    )
+    assert result.duration_ms >= 10, f"expected >=10ms, got {result.duration_ms}"
+
+
+def test_safe_run_preserves_explicit_duration_ms():
+    """If the rule producer explicitly set duration_ms, safe_run must not
+    overwrite it. Lets a rule report its own internal timing if it cares to."""
+    def rule_with_own_timing():
+        return make_rule_result(
+            rule_id="op.test.rule2",
+            rule_name="Test2",
+            description="d",
+            findings=[],
+            duration_ms=999,
+        )
+
+    result = safe_run(
+        rule_with_own_timing,
+        rule_id="op.test.rule2",
+        rule_name="Test2",
+        description="d",
+    )
+    assert result.duration_ms == 999
+
+
 def test_make_rule_result_default_sampled_false():
     """make_rule_result defaults sampled=False and sample_info=None."""
     r = make_rule_result(
@@ -142,7 +187,16 @@ def test_safe_run_rule_dispatches_with_class_attrs():
 
     result = safe_run_rule(rule, lambda: sentinel)
 
-    assert result is sentinel
+    # safe_run may stamp duration_ms via dataclasses.replace, producing a new
+    # instance with the same field values — compare on identity-defining fields
+    # rather than `is`, which would be coupled to the absence of replace().
+    assert result.rule_id == sentinel.rule_id
+    assert result.rule_name == sentinel.rule_name
+    assert result.description == sentinel.description
+    assert result.status == sentinel.status
+    assert result.findings == sentinel.findings
+    assert result.summary == sentinel.summary
+    assert result.sources == sentinel.sources
     assert result.rule_id == "op.test.id_rule"
     assert result.rule_name == "Test rule"
 
