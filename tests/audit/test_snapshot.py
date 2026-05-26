@@ -783,3 +783,25 @@ def test_asset_group_member_count_500_also_returns_none():
     # Cached: subsequent call does not retry — symmetric with the 404 path.
     assert s.asset_group_member_count(11) is None
     assert sum(1 for path, _ in c.get_calls if path == "/api/3/asset_groups/11/assets") == 1
+
+
+def test_scans_total_returns_page_total():
+    """scans_total() reads /api/3/scans page.totalResources only — no enumeration."""
+    c = _FakeClient()
+    c.set_get("/api/3/scans", {"resources": [], "page": {"totalResources": 42}})
+    s = EnvSnapshot(c, full_scan=False, sample_size=500)
+    assert s.scans_total() == 42
+    path, params = c.get_calls[0]
+    assert path == "/api/3/scans"
+    assert params == {"size": 1}
+
+
+def test_scans_total_is_cached():
+    """Second call returns the cached value without re-hitting the client."""
+    c = _FakeClient()
+    c.set_get("/api/3/scans", {"resources": [], "page": {"totalResources": 7}})
+    s = EnvSnapshot(c, full_scan=False, sample_size=500)
+    assert s.scans_total() == 7
+    assert s.scans_total() == 7
+    # Exactly one GET hit /api/3/scans.
+    assert sum(1 for p, _ in c.get_calls if p == "/api/3/scans") == 1

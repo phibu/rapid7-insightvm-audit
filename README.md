@@ -291,6 +291,7 @@ An operational health check that detects blind spots in scanning coverage: stale
 | `op.asset_coverage.never_scanned_assets` | Assets never scanned or not scanned within the never-scanned threshold (effectively expired). | fail | https://docs.rapid7.com/insightvm/filtered-asset-search |
 | `op.asset_coverage.dead_asset_groups` | Asset groups whose membership criteria match zero assets. Orphaned RBAC/report scopes. | warn | https://docs.rapid7.com/insightvm/asset-groups/ |
 | `op.asset_coverage.agent_only_assets` | Sampled (up to `audit.sample_size` agents). Reports Insight-Agent assets whose IP is outside every site's `included_targets`. Directional estimate, not full enumeration. | warn | https://docs.rapid7.com/insightvm/insight-agent-overview/ |
+| `op.asset_coverage.ghost_assets` | Assets with NO OS fingerprint AND NO hostname — phantom records the console knows about but cannot identify. Stricter than `op.data_quality.missing_os`. Toggle via `flag_ghost_assets`. | fail | https://docs.rapid7.com/insightvm/filtered-asset-search |
 
 Per-rule severity and enable/disable live in the `checks.asset_coverage` block of `config.yaml`.
 
@@ -406,7 +407,7 @@ Register-ScheduledTask -TaskName "Rapid7 HealthCheck" -Action $action -Trigger $
 | `scan_activity.recent_window_days` | int, required | What counts as a "recent" scan. |
 | `scan_activity.stuck_scan_hours` | int, required | A `running` scan older than this is flagged stuck. |
 | `scan_activity.site_no_scan_days` | int, required | A site with no scan in this window is overdue. |
-| `asset_coverage.stale_asset_days` | int, required | Assets not scanned within this window are stale. |
+| `asset_coverage.stale_asset_days` | int, required (example `60`) | Assets not scanned within this window are stale. |
 | `asset_coverage.flag_unscanned_assets` | bool, required | Also list assets not scanned recently. |
 | `asset_coverage.never_scanned_days` | int, required | Days since last scan to flag an asset as effectively never scanned. |
 | `asset_coverage.flag_dead_asset_groups` | bool, default `true` | Flag asset groups whose membership criteria match zero assets (orphaned RBAC/report scopes). |

@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.6] - 2026-05-26
+
+### Added
+
+- **New rule: Ghost Assets** (`op.asset_coverage.ghost_assets`). Flags assets that have neither an OS fingerprint nor a hostname — phantom records the console knows about but cannot identify. Stricter than the existing `op.data_quality.missing_os` rule (which flags on either gap alone). Severity: fail. Output capped at the per-item finding cap with an overflow rollup. New config key `asset_coverage.flag_ghost_assets` (default: true). Reuses the existing `POST /api/3/assets/search` allowlist entry; no new HTTP verbs.
+- **Report header Inventory Totals strip.** A new at-a-glance counter row at the top of the report shows total assets, sites, scan engines, asset groups (static/dynamic split), and total scans. New `EnvSnapshot.scans_total()` accessor reads `/api/3/scans` page metadata only — no enumeration cost. Renders nothing on snapshot failure (graceful degradation — a single accessor failure cannot kill the whole report).
+
+### Changed
+
+- **`asset_coverage.stale_asset_days` example raised from 30 to 60 days.** The previous 30-day threshold was overly aggressive for many environments; 60 sits between the coverage-gap threshold and the data-quality "record unreliable" threshold (180). `never_scanned_days` stays at 90 (still proportional). The schema requires this key (no in-code default), so users on the example config see fewer findings on this rule for assets last scanned 31–59 days ago; users with their own explicit value are unaffected.
+
+### Fixed
+
+- **`overlapping_scan_windows` and `scan_report_schedule_overlap` no longer silently suppress findings when `assumed_*_minutes` is set to 0 or negative.** These knobs are now floored at 1 minute. Non-numeric strings still surface as a `status="error"` rule (preserves the bad-config-is-error pattern).
+- **`single_engine_overload` finding details now include `engine_name`** alongside `engine_id` for UI clarity. The message already used the name; details previously only had the int ID.
+- **`cd.scan_engine_cloud_registration` missing-from-cloud finding** now includes the `matched_via` key (always `None` on this path) for schema uniformity with the stale finding.
+
+### Internal
+
+- `EngineUnpairedRule.run` accepts `pooled_sites_by_engine` as an optional kwarg (defaults to `{}`) — restores ergonomic invocation for isolated rule callers after the 0.6.5.2 signature change.
+- Removed the always-0 `pool_sites_count` field from `EngineUnpairedRule` finding details (introduced in 0.6.5.2 as a diagnostic stub).
+- New direct unit tests for `_local_engine.is_local_engine` covering loopback variants, case-insensitivity, whitespace, and the `extra_names` override.
+- `_set_no_pools` test helper promoted to a module-scoped autouse fixture in `tests/checks/test_scan_engines.py`. Pre-registers `/api/3/scan_engine_pools` → empty so new `ScanEnginesCheck` integration tests no longer need to remember the boilerplate.
+- `EnvSnapshot` construction lifted from `_run_checks()` into `run()` in `__main__.py` so the same instance now backs both check execution and the inventory totals strip (no duplicate API calls).
+
 ## [0.6.5.2] - 2026-05-26
 
 ### Fixed

@@ -130,6 +130,46 @@
   .delta-pill.dp-mid  { background: var(--warn-bg); color: var(--warn-fg); }
   .delta-strip .since { margin-left: auto; }
 
+  .inventory-totals {
+    margin: 0 0 1.5rem 0;
+    padding: 0.75rem 1rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+  .inventory-totals h2 {
+    margin: 0 0 0.5rem 0;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--neutral-muted);
+    font-weight: 600;
+  }
+  .totals-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1.5rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .total-tile {
+    display: flex;
+    flex-direction: column;
+    padding: 0.25rem 0;
+    min-width: 120px;
+  }
+  .total-label {
+    font-size: 12px;
+    color: var(--neutral-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  .total-value {
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--neutral-fg);
+    line-height: 1.2;
+  }
+
   .metric-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
@@ -255,7 +295,7 @@
     :root {
       --bg: #fff; --neutral-fg: #000; --neutral-muted: #444; --surface: #f6f6f6;
     }
-    .delta-strip, .metric-grid { page-break-inside: avoid; }
+    .delta-strip, .metric-grid, .inventory-totals { page-break-inside: avoid; }
     section.check { page-break-before: always; page-break-inside: auto; }
     section.check:first-of-type { page-break-before: avoid; }
     details { page-break-inside: avoid; }
@@ -399,6 +439,20 @@
   </div>
   {% endif %}
 </div>
+
+{% if inventory_totals %}
+<section class="inventory-totals" aria-label="Inventory totals">
+  <h2>Inventory</h2>
+  <div class="totals-strip">
+    <div class="total-tile"><span class="total-label">Assets</span><span class="total-value">{{ inventory_totals.total_assets }}</span></div>
+    <div class="total-tile"><span class="total-label">Sites</span><span class="total-value">{{ inventory_totals.total_sites }}</span></div>
+    <div class="total-tile"><span class="total-label">Scan Engines</span><span class="total-value">{{ inventory_totals.total_scan_engines }}</span></div>
+    <div class="total-tile"><span class="total-label">Asset Groups (static)</span><span class="total-value">{{ inventory_totals.total_asset_groups_static }}</span></div>
+    <div class="total-tile"><span class="total-label">Asset Groups (dynamic)</span><span class="total-value">{{ inventory_totals.total_asset_groups_dynamic }}</span></div>
+    <div class="total-tile"><span class="total-label">Total Scans</span><span class="total-value">{{ inventory_totals.total_scans }}</span></div>
+  </div>
+</section>
+{% endif %}
 
 {% if delta %}
 <div class="delta-strip" aria-label="Changes since last run">

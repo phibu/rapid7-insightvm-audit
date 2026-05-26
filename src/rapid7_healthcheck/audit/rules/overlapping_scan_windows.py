@@ -87,11 +87,19 @@ class OverlappingScanWindowsRule:
 
     def run(self, snapshot, severity, full_scan, sample_size, rule_config) -> RuleResult:
         sites = snapshot.sites()
-        assumed_minutes = int(
-            rule_config.get(
-                "assumed_scan_duration_minutes",
-                _DEFAULT_ASSUMED_SCAN_DURATION_MINUTES,
-            )
+        # Floor at 1 minute: a zero would collapse the assumed window to
+        # a point in time (silently suppressing findings for schedules
+        # missing a `duration`); a negative would produce a negative
+        # timedelta. Non-numeric strings still raise ValueError, which
+        # safe_run surfaces as a status="error" rule card.
+        assumed_minutes = max(
+            1,
+            int(
+                rule_config.get(
+                    "assumed_scan_duration_minutes",
+                    _DEFAULT_ASSUMED_SCAN_DURATION_MINUTES,
+                )
+            ),
         )
         assumed_duration = timedelta(minutes=assumed_minutes)
         sampled = False

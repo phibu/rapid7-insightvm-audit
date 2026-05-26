@@ -30,7 +30,7 @@ from rapid7_healthcheck._log import (
 from rapid7_healthcheck.client import Rapid7AuthError, Rapid7Client, Rapid7ClientError
 from rapid7_healthcheck.cloud_client import CloudClient
 from rapid7_healthcheck.config import AppConfig, CloudIntegrationConfig, ConfigError, load_config
-from rapid7_healthcheck.report import ReportContext, write_report
+from rapid7_healthcheck.report import InventoryTotals, ReportContext, write_report
 
 
 EXIT_HEALTHY = 0
@@ -188,25 +188,42 @@ def pick_exit_code(results: list[CheckResult]) -> int:
     return EXIT_HEALTHY
 
 
+def _build_inventory_totals(snapshot: Any) -> "InventoryTotals | None":
+    """Build the InventoryTotals dataclass from the shared EnvSnapshot.
+
+    A single snapshot-accessor failure should not kill the whole report —
+    if any accessor raises, log and return None, and the template skips
+    the inventory strip.
+    """
+    try:
+        groups = snapshot.asset_groups()
+        static = sum(1 for g in groups if g.get("type") == "static")
+        dynamic = sum(1 for g in groups if g.get("type") == "dynamic")
+        return InventoryTotals(
+            total_assets=snapshot.total_asset_count(),
+            total_sites=len(snapshot.sites()),
+            total_scan_engines=len(snapshot.scan_engines()),
+            total_asset_groups_static=static,
+            total_asset_groups_dynamic=dynamic,
+            total_scans=snapshot.scans_total(),
+        )
+    except Exception:
+        logger.exception("inventory totals build failed; report will skip the strip")
+        return None
+
+
 def _run_checks(
     client: Any,
     cfg: AppConfig,
+    snapshot: Any,
     progress: "ProgressReporter | None" = None,
     *,
     cloud_client: Any = None,
 ) -> list[CheckResult]:
-    from rapid7_healthcheck.audit.snapshot import EnvSnapshot
-
-    # Single snapshot shared with op-checks. Lazy-loads on first access; methods
-    # cache. Audit checks build their own snapshot internally today (deferred
+    # The caller owns the snapshot (since 0.6.6) so it can be shared with the
+    # inventory-totals builder. Op-checks accept it via the `snapshot=` kwarg;
+    # audit checks still build their own snapshot internally today (deferred
     # cleanup — see backlog).
-    snapshot = EnvSnapshot(
-        client,
-        full_scan=cfg.audit.full_scan,
-        sample_size=cfg.audit.sample_size,
-        agents_timeout_seconds=cfg.audit.agents_timeout_seconds,
-    )
-
     results: list[CheckResult] = []
     total = len(_REGISTRY)
     for idx, (name, check_cls) in enumerate(_REGISTRY.items(), start=1):
@@ -334,7 +351,17 @@ def run(argv: list[str] | None = None) -> int:
         )
     )
 
-    results = _run_checks(client, cfg, progress=progress, cloud_client=cloud_client)
+    from rapid7_healthcheck.audit.snapshot import EnvSnapshot
+    snapshot = EnvSnapshot(
+        client,
+        full_scan=cfg.audit.full_scan,
+        sample_size=cfg.audit.sample_size,
+        agents_timeout_seconds=cfg.audit.agents_timeout_seconds,
+    )
+
+    results = _run_checks(client, cfg, snapshot, progress=progress, cloud_client=cloud_client)
+
+    inventory_totals = _build_inventory_totals(snapshot)
 
     progress.newline_if_needed()
     ctx = ReportContext(
@@ -345,6 +372,7 @@ def run(argv: list[str] | None = None) -> int:
         config_path=args.config,
         results=results,
         thresholds_table=build_thresholds_table(cfg),
+        inventory_totals=inventory_totals,
     )
 
     if args.output:

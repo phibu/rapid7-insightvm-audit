@@ -353,3 +353,42 @@ def test_render_report_renders_delta_strip_when_prior_passed(tmp_path):
     html = out2.read_text(encoding="utf-8")
     # Should mention the delta strip's "resolved" pill.
     assert "resolved" in html.lower()
+
+
+from rapid7_healthcheck.report import InventoryTotals
+
+
+def test_report_renders_inventory_strip_when_totals_present():
+    r = CheckResult(name="X", description="x", status="pass")
+    ctx = _ctx([r])
+    ctx.inventory_totals = InventoryTotals(
+        total_assets=1234,
+        total_sites=12,
+        total_scan_engines=3,
+        total_asset_groups_static=5,
+        total_asset_groups_dynamic=2,
+        total_scans=987,
+    )
+    html = render_report(ctx)
+    # Match the rendered <section>, not the always-inlined CSS rule — mirrors
+    # the rigor of the negative test below so a regression in the
+    # {% if inventory_totals %} branch can't slip past.
+    assert '<section class="inventory-totals"' in html
+    assert "1234" in html
+    assert "987" in html
+    # Labels rendered
+    assert "Asset Groups (static)" in html
+    assert "Asset Groups (dynamic)" in html
+    assert "Scan Engines" in html
+
+
+def test_report_omits_inventory_strip_when_totals_is_none():
+    r = CheckResult(name="X", description="x", status="pass")
+    ctx = _ctx([r])
+    # explicitly None (which is the default)
+    ctx.inventory_totals = None
+    html = render_report(ctx)
+    # The CSS rules for `.inventory-totals` are always inlined in <style>,
+    # but the rendered <section> only appears when totals is non-None.
+    assert '<section class="inventory-totals"' not in html
+    assert "Asset Groups (static)" not in html

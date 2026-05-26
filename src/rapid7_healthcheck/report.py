@@ -344,6 +344,17 @@ def _metrics(results: list[CheckResult]) -> dict:
     }
 
 
+@dataclass(frozen=True)
+class InventoryTotals:
+    """At-a-glance inventory counters rendered at the top of the report."""
+    total_assets: int
+    total_sites: int
+    total_scan_engines: int
+    total_asset_groups_static: int
+    total_asset_groups_dynamic: int
+    total_scans: int
+
+
 @dataclass
 class ReportContext:
     title: str
@@ -357,6 +368,7 @@ class ReportContext:
     state_blob_json: str | None = None     # pre-serialized JSON for embedding, or None if dropped
     metrics: dict | None = None            # populated by render_report
     content_hash: str | None = None        # SHA-256 prefix of state_blob_json
+    inventory_totals: "InventoryTotals | None" = None
 
 
 def _verdict(results: list[CheckResult]) -> tuple[str, str]:
@@ -447,6 +459,7 @@ def render_report(ctx: ReportContext, *, prior_state: dict | None = None) -> str
         state_blob_json=ctx.state_blob_json,
         metrics=ctx.metrics,
         content_hash=ctx.content_hash,
+        inventory_totals=ctx.inventory_totals,
     )
 
 

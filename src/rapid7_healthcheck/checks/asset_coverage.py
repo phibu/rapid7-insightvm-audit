@@ -641,6 +641,93 @@ class AgentOnlyAssetsRule:
         )
 
 
+class GhostAssetsRule:
+    RULE_ID = "op.asset_coverage.ghost_assets"
+    RULE_NAME = "Ghost assets (no OS AND no hostname)"
+    DESCRIPTION = (
+        "Assets the console knows about but cannot identify — neither an OS "
+        "fingerprint nor a hostname. Typically the result of stale agent "
+        "registrations, network-only scans of unreachable hosts, or import "
+        "errors. Stricter than the data-quality 'missing OS' rule, which "
+        "flags on either gap alone."
+    )
+    SOURCES = (_SRC_FILTERED_SEARCH,)
+    DEFAULT_SEVERITY = "fail"
+
+    def run(self, client: Any, t) -> RuleResult:
+        if not t.flag_ghost_assets:
+            return skipped_rule(
+                rule_id=self.RULE_ID,
+                rule_name=self.RULE_NAME,
+                description=self.DESCRIPTION,
+                sources=self.SOURCES,
+            )
+
+        rule_start = time.monotonic()
+        # Server-side: assets with no OS fingerprint (small candidate set).
+        # The v3 spec does not verify a server-side `host-name is-empty`
+        # filter, so we narrow on hostName client-side instead.
+        body = client.post_one(
+            "/api/3/assets/search",
+            json_body={
+                "filters": [{"field": "operating-system", "operator": "is-empty"}],
+                "match": "all",
+            },
+            params={"size": _PER_ITEM_FINDING_CAP * 2},
+        )
+        candidates = body.get("resources", []) or []
+
+        # Client-side narrow: also missing hostName (whitespace-only counts as empty).
+        ghosts = [
+            a for a in candidates
+            if not (a.get("hostName") or "").strip()
+        ]
+
+        findings: list[Finding] = []
+        emitted = 0
+        for ghost in ghosts:
+            if emitted >= _PER_ITEM_FINDING_CAP:
+                break
+            findings.append(Finding(
+                severity="fail",
+                message=f"Asset id={ghost.get('id')} has no OS and no hostname (ghost record)",
+                details={
+                    "id": ghost.get("id"),
+                    "ip": ghost.get("ip"),
+                    "mac": ghost.get("mac"),
+                },
+            ))
+            emitted += 1
+
+        if len(ghosts) > emitted:
+            findings.append(Finding(
+                severity="warn",
+                message=(
+                    f"{len(ghosts) - emitted} additional ghost assets omitted "
+                    f"from findings (capped at {_PER_ITEM_FINDING_CAP})"
+                ),
+                details={
+                    "remainder": len(ghosts) - emitted,
+                    "total": len(ghosts),
+                    "cap": _PER_ITEM_FINDING_CAP,
+                },
+            ))
+
+        return make_rule_result(
+            rule_id=self.RULE_ID,
+            rule_name=self.RULE_NAME,
+            description=self.DESCRIPTION,
+            findings=findings,
+            sources=self.SOURCES,
+            summary={
+                "ghost_count": len(ghosts),
+                "candidates_examined": len(candidates),
+            },
+            default_severity=self.DEFAULT_SEVERITY,
+            duration_ms=int((time.monotonic() - rule_start) * 1000),
+        )
+
+
 class AssetCoverageCheck:
     name = "Asset Coverage"
     description = "Stale and never-scanned assets relative to configured thresholds."
@@ -652,11 +739,13 @@ class AssetCoverageCheck:
         never = NeverScannedAssetsRule()
         dead = DeadAssetGroupsRule()
         agent_only = AgentOnlyAssetsRule()
+        ghost = GhostAssetsRule()
         rule_results: list[RuleResult] = [
             safe_run_rule(stale, lambda: stale.run(client, t)),
             safe_run_rule(never, lambda: never.run(client, t)),
             safe_run_rule(dead, lambda: dead.run(snapshot, t)),
             safe_run_rule(agent_only, lambda: agent_only.run(snapshot, client, t, config.audit)),
+            safe_run_rule(ghost, lambda: ghost.run(client, t)),
         ]
 
         return CheckResult(
