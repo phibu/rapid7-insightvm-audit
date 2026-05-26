@@ -370,7 +370,10 @@ def test_report_renders_inventory_strip_when_totals_present():
         total_scans=987,
     )
     html = render_report(ctx)
-    assert "inventory-totals" in html
+    # Match the rendered <section>, not the always-inlined CSS rule — mirrors
+    # the rigor of the negative test below so a regression in the
+    # {% if inventory_totals %} branch can't slip past.
+    assert '<section class="inventory-totals"' in html
     assert "1234" in html
     assert "987" in html
     # Labels rendered
