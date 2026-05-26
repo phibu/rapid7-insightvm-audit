@@ -24,19 +24,22 @@ def _now_iso(offset_hours: float = 0) -> str:
     return t.isoformat().replace("+00:00", "Z")
 
 
-def _set_no_pools(fake_client):
-    """Default the pools endpoint to empty so the snapshot fetch is a noop.
+@pytest.fixture(autouse=True)
+def _default_empty_scan_engine_pools(fake_client):
+    """Module-scoped autouse: pre-register an empty /api/3/scan_engine_pools.
 
     EngineUnpairedRule consults snapshot.scan_engine_pools() to honor
     pool-mediated pairing; the snapshot's FakeRapid7Client raises on
-    unregistered paths, so every ScanEnginesCheck test must register
-    a (possibly empty) /api/3/scan_engine_pools response.
+    unregistered paths, so every ScanEnginesCheck integration test
+    needed a manual registration. The autouse default lets new tests
+    skip this boilerplate. Tests that need a non-empty pool listing
+    call `fake_client.set_get("/api/3/scan_engine_pools", ...)` which
+    overwrites the default registration.
     """
     fake_client.set_get("/api/3/scan_engine_pools", {"resources": []})
 
 
 def test_all_engines_healthy(fake_client, app_config):
-    _set_no_pools(fake_client)
     fake_client.set_get(
         "/api/3/scan_engines",
         {
@@ -56,7 +59,6 @@ def test_all_engines_healthy(fake_client, app_config):
 
 
 def test_engine_warn_when_last_contact_exceeds_warn_hours(fake_client, app_config):
-    _set_no_pools(fake_client)
     fake_client.set_get(
         "/api/3/scan_engines",
         {
@@ -74,7 +76,6 @@ def test_engine_warn_when_last_contact_exceeds_warn_hours(fake_client, app_confi
 
 
 def test_engine_fail_when_last_contact_exceeds_fail_hours(fake_client, app_config):
-    _set_no_pools(fake_client)
     fake_client.set_get(
         "/api/3/scan_engines",
         {
@@ -103,7 +104,6 @@ def test_engine_fail_when_last_contact_exceeds_fail_hours(fake_client, app_confi
 def test_bad_status_engine_is_flagged(
     status, expected_status, expected_severity, fake_client, app_config
 ):
-    _set_no_pools(fake_client)
     fake_client.set_get(
         "/api/3/scan_engines",
         {
@@ -121,7 +121,6 @@ def test_bad_status_engine_is_flagged(
 
 
 def test_engine_with_no_sites_is_warn(fake_client, app_config):
-    _set_no_pools(fake_client)
     fake_client.set_get(
         "/api/3/scan_engines",
         {
@@ -141,7 +140,6 @@ def test_unpaired_engine_finding_includes_identification_details(fake_client, ap
     # Operators need more than the engine ID to act on an unpaired engine.
     # Surface address, port, status, and version info in the finding's details
     # so the report renders something actionable.
-    _set_no_pools(fake_client)
     fake_client.set_get(
         "/api/3/scan_engines",
         {
@@ -207,7 +205,6 @@ def test_missing_last_refresh_still_flags_distributed_engine():
 
 
 def test_missing_last_refreshed_is_warn(fake_client, app_config):
-    _set_no_pools(fake_client)
     fake_client.set_get(
         "/api/3/scan_engines",
         {
@@ -226,7 +223,6 @@ def test_missing_last_refreshed_is_warn(fake_client, app_config):
 def test_double_warn_engine_counted_once(fake_client, app_config):
     # An engine can produce both an age-warn AND a no-pairing-warn.
     # The summary should count the engine once, not the findings.
-    _set_no_pools(fake_client)
     fake_client.set_get(
         "/api/3/scan_engines",
         {
@@ -256,7 +252,6 @@ def test_double_warn_engine_counted_once(fake_client, app_config):
 
 def test_summary_counts_partition_engines(fake_client, app_config):
     # total = healthy + warn + fail, always.
-    _set_no_pools(fake_client)
     fake_client.set_get(
         "/api/3/scan_engines",
         {
@@ -289,7 +284,6 @@ def test_engine_fetch_failure_isolated_into_error_rules(fake_client, app_config)
     count summary falls back to zeros instead of crashing."""
     from rapid7_healthcheck.client import Rapid7ClientError
 
-    _set_no_pools(fake_client)
     fake_client.set_get_raises(
         "/api/3/scan_engines",
         Rapid7ClientError("503 at /api/3/scan_engines", status_code=503),
