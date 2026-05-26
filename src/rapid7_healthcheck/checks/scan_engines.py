@@ -222,8 +222,10 @@ class EngineUnpairedRule:
     def run(
         self,
         engines: list[dict],
-        pooled_sites_by_engine: dict[int, set[int]],
+        pooled_sites_by_engine: dict[int, set[int]] | None = None,
     ) -> RuleResult:
+        if pooled_sites_by_engine is None:
+            pooled_sites_by_engine = {}
         findings: list[Finding] = []
         for engine in engines:
             status = engine.get("status", "unknown")
@@ -251,7 +253,6 @@ class EngineUnpairedRule:
                     "content_version": engine.get("contentVersion"),
                     "serial_number": engine.get("serialNumber"),
                     "last_refreshed": engine.get("lastRefreshedDate"),
-                    "pool_sites_count": len(pooled_sites),  # diagnostic, always 0 here
                 },
             ))
         return make_rule_result(

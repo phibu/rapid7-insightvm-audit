@@ -329,6 +329,15 @@ def test_unpaired_flags_engine_with_no_pool_and_no_sites():
     assert len(result.findings) == 1
 
 
+def test_unpaired_can_be_called_without_pool_index():
+    rule = EngineUnpairedRule()
+    result = rule.run(
+        [{"id": 3, "name": "lonely", "status": "active",
+          "sites": [], "address": "10.0.0.6"}],
+    )
+    assert len(result.findings) == 1  # same as passing {}
+
+
 def test_unpaired_skips_engine_with_direct_sites_even_without_pool():
     rule = EngineUnpairedRule()
     result = rule.run(
