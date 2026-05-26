@@ -232,13 +232,28 @@ def test_assumed_scan_duration_floored_at_one_minute_when_zero(fake_snapshot):
     assert len(r.findings) >= 1
 
 
-def test_assumed_durations_floored_at_one_minute_when_negative(fake_snapshot):
-    """Negative assumed_*_minutes values would produce negative timedeltas.
-    Both knobs must floor at 1."""
+def test_assumed_report_duration_floored_at_one_minute_when_negative(fake_snapshot):
+    """A negative assumed_report_duration_minutes would produce a negative
+    timedelta. The scan-knob is held at its default 60 so this test isolates
+    the report guard — if a future regression breaks only that guard, the
+    scan window would not save us."""
     _overlap_fixture(fake_snapshot)
     r = ScanReportScheduleOverlapRule().run(
         fake_snapshot, "warn", False, 500,
-        {"assumed_report_duration_minutes": -10, "assumed_scan_duration_minutes": -5},
+        {"assumed_report_duration_minutes": -10, "assumed_scan_duration_minutes": 60},
+    )
+    assert r.status == "warn"
+    assert len(r.findings) >= 1
+
+
+def test_assumed_scan_duration_floored_at_one_minute_when_negative(fake_snapshot):
+    """A negative assumed_scan_duration_minutes would produce a negative
+    timedelta. The report-knob is held at its default 30 so this test
+    isolates the scan guard from the report guard."""
+    _overlap_fixture(fake_snapshot)
+    r = ScanReportScheduleOverlapRule().run(
+        fake_snapshot, "warn", False, 500,
+        {"assumed_report_duration_minutes": 30, "assumed_scan_duration_minutes": -5},
     )
     assert r.status == "warn"
     assert len(r.findings) >= 1

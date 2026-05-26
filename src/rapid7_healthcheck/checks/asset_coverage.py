@@ -423,6 +423,8 @@ class DeadAssetGroupsRule:
                 "fallback_cap_reached": fallback_cap_reached,
                 "fallback_errors": fallback_errors,
             },
+            examined=len(groups),
+            failed=len(dead),
             duration_ms=int((time.monotonic() - rule_start) * 1000),
         )
 
@@ -723,6 +725,8 @@ class GhostAssetsRule:
                 "ghost_count": len(ghosts),
                 "candidates_examined": len(candidates),
             },
+            examined=len(candidates),
+            failed=len(ghosts),
             default_severity=self.DEFAULT_SEVERITY,
             duration_ms=int((time.monotonic() - rule_start) * 1000),
         )

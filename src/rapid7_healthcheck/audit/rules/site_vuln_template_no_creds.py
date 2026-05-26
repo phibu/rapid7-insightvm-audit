@@ -108,5 +108,10 @@ class SiteVulnTemplateNoCredsRule:
             status=status,
             findings=findings,
             summary={"sites_examined": sites_examined, "sites_flagged": sites_flagged},
+            card_summary={
+                "examined": sites_examined,
+                "passed": max(0, sites_examined - sites_flagged),
+                "failed": sites_flagged,
+            },
             sources=list(self.sources),
         )

@@ -29,6 +29,7 @@ def test_finding_when_one_engine_exceeds_threshold_across_sites(fake_snapshot):
     # engine_name alongside engine_id so UI renderers can show name first
     assert r.findings[0].details["engine_id"] == 100
     assert r.findings[0].details["engine_name"] == "E1"
+    assert r.card_summary == {"examined": 1, "passed": 0, "failed": 1}
 
 
 def test_threshold_default_5000(fake_snapshot):

@@ -55,5 +55,10 @@ class LockedUserAccountRule:
             status=status,
             findings=findings,
             summary={"users_examined": len(users), "locked_count": locked_count},
+            card_summary={
+                "examined": len(users),
+                "passed": max(0, len(users) - locked_count),
+                "failed": locked_count,
+            },
             sources=list(self.sources),
         )

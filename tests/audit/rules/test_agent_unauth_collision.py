@@ -47,6 +47,7 @@ def test_fail_when_unauth_site_has_agent_assets(fake_snapshot):
     f = r.findings[0]
     assert "ProdLinux" in f.message
     assert f.details["examined"] >= 1
+    assert r.card_summary == {"examined": 1, "passed": 0, "failed": 1}
 
 
 def test_pass_when_no_agent_assets(fake_snapshot):

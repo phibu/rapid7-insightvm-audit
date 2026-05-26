@@ -31,6 +31,7 @@ def test_fails_when_global_admin_lacks_mfa(fake_snapshot):
     assert r.status == "fail"
     assert r.summary["users_without_mfa"] == 1
     assert "alice" in r.findings[0].message
+    assert r.card_summary == {"examined": 1, "passed": 0, "failed": 1}
 
 
 def test_superuser_flag_treated_as_privileged(fake_snapshot):

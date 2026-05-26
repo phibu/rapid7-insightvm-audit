@@ -112,6 +112,8 @@ class EngineBadStatusRule:
             findings=findings,
             sources=list(self.SOURCES),
             summary={"count": len(findings)},
+            examined=len(engines),
+            failed=len(findings),
             default_severity=self.DEFAULT_SEVERITY,
         )
 
@@ -163,6 +165,8 @@ class EngineLastContactRule:
             findings=findings,
             sources=list(self.SOURCES),
             summary={"count": len(findings)},
+            examined=len(engines),
+            failed=len(findings),
             default_severity=self.DEFAULT_SEVERITY,
         )
 
@@ -204,6 +208,8 @@ class EngineMissingLastRefreshRule:
             findings=findings,
             sources=list(self.SOURCES),
             summary={"count": len(findings)},
+            examined=len(engines),
+            failed=len(findings),
             default_severity=self.DEFAULT_SEVERITY,
         )
 
@@ -262,6 +268,8 @@ class EngineUnpairedRule:
             findings=findings,
             sources=list(self.SOURCES),
             summary={"count": len(findings)},
+            examined=len(engines),
+            failed=len(findings),
             default_severity=self.DEFAULT_SEVERITY,
         )
 

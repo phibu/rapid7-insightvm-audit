@@ -55,5 +55,10 @@ class PolicyAndVulnInSameTemplateRule:
             status=status,
             findings=findings,
             summary={"templates_examined": len(in_use), "templates_flagged": len(findings)},
+            card_summary={
+                "examined": len(in_use),
+                "passed": max(0, len(in_use) - len(findings)),
+                "failed": len(findings),
+            },
             sources=list(self.sources),
         )

@@ -174,6 +174,11 @@ class OverlappingScanWindowsRule:
                 "windows_examined": len(windows),
                 "findings_count": len(findings),
             },
+            # card_summary intentionally None: findings count pairwise overlaps,
+            # not windows. On a dense overlap graph (N windows mutually
+            # overlapping) the rule emits C(N,2) findings which exceeds N
+            # windows. "4 examined, 0 passed, 6 failed" would be visibly
+            # nonsensical. Card falls back to per-summary-key rendering.
             sampled=sampled,
             sample_info=sample_info,
             sources=list(self.sources),

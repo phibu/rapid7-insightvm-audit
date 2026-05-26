@@ -100,7 +100,7 @@ def test_safe_run_handles_arbitrary_exception_types():
 def test_safe_run_sets_duration_ms_on_success_path():
     """safe_run measures wall-clock time on the success path and sets
     duration_ms on the returned RuleResult when the rule producer did not
-    populate it itself (i.e. it defaulted to 0)."""
+    populate it itself (i.e. it left duration_ms as None)."""
     def slow_rule():
         time.sleep(0.01)  # 10ms minimum
         return make_rule_result(
@@ -119,7 +119,63 @@ def test_safe_run_sets_duration_ms_on_success_path():
     assert result.duration_ms >= 10, f"expected >=10ms, got {result.duration_ms}"
 
 
-def test_safe_run_preserves_explicit_duration_ms():
+def test_make_rule_result_default_duration_ms_is_none():
+    """make_rule_result defaults duration_ms=None (unmeasured), not 0.
+
+    None means "not measured" — distinguishes from a rule that genuinely
+    measured 0ms (sub-millisecond execution). safe_run's stamping logic
+    relies on this distinction.
+    """
+    result = make_rule_result(
+        rule_id="op.test.rule",
+        rule_name="Test",
+        description="d",
+        findings=[],
+    )
+    assert result.duration_ms is None
+
+
+def test_safe_run_stamps_duration_on_none_result():
+    """safe_run measures wall-clock and stamps duration_ms when the producer
+    left it as None (the common case for rules that use make_rule_result)."""
+    def slow_rule():
+        time.sleep(0.01)
+        return make_rule_result(
+            rule_id="op.test.rule",
+            rule_name="Test",
+            description="d",
+            findings=[],
+        )
+
+    result = safe_run(
+        slow_rule,
+        rule_id="op.test.rule",
+        rule_name="Test",
+        description="d",
+    )
+    assert result.duration_ms is not None
+    assert result.duration_ms >= 10
+
+
+def test_safe_run_preserves_explicit_zero_duration():
+    """A rule that explicitly measured 0ms (sub-millisecond) keeps its 0.
+
+    Critical: 0 is now distinct from "not measured" (None). safe_run must
+    NOT overwrite an explicit 0 — that would discard a real measurement.
+    """
+    def rule():
+        return make_rule_result(
+            rule_id="op.test.rule",
+            rule_name="Test",
+            description="d",
+            findings=[],
+            duration_ms=0,
+        )
+    result = safe_run(rule, rule_id="op.test.rule", rule_name="Test", description="d")
+    assert result.duration_ms == 0  # not overwritten
+
+
+def test_safe_run_preserves_explicit_nonzero_duration():
     """If the rule producer explicitly set duration_ms, safe_run must not
     overwrite it. Lets a rule report its own internal timing if it cares to."""
     def rule_with_own_timing():
@@ -160,6 +216,53 @@ def test_make_rule_result_passes_sampled_and_sample_info():
     )
     assert r.sampled is True
     assert r.sample_info == "strategy=first-n; sampled=100; population=500000"
+
+
+def test_make_rule_result_with_examined_and_failed_populates_card_summary():
+    result = make_rule_result(
+        rule_id="op.test.rule",
+        rule_name="Test",
+        description="d",
+        findings=[],
+        examined=10,
+        failed=3,
+    )
+    assert result.card_summary == {"examined": 10, "passed": 7, "failed": 3}
+
+
+def test_make_rule_result_without_examined_leaves_card_summary_none():
+    result = make_rule_result(
+        rule_id="op.test.rule",
+        rule_name="Test",
+        description="d",
+        findings=[],
+    )
+    assert result.card_summary is None
+
+
+def test_make_rule_result_clamps_passed_to_zero_when_failed_exceeds_examined():
+    # Defensive: failed > examined is a programming bug, but render 0 not negative.
+    result = make_rule_result(
+        rule_id="op.test.rule",
+        rule_name="Test",
+        description="d",
+        findings=[],
+        examined=5,
+        failed=8,
+    )
+    assert result.card_summary == {"examined": 5, "passed": 0, "failed": 8}
+
+
+def test_make_rule_result_with_only_examined_leaves_card_summary_none():
+    """Both examined AND failed must be supplied to build card_summary."""
+    result = make_rule_result(
+        rule_id="op.test.rule",
+        rule_name="Test",
+        description="d",
+        findings=[],
+        examined=10,
+    )
+    assert result.card_summary is None
 
 
 class _IdRule:

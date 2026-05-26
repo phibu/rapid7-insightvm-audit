@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-05-26
+
+### Added
+
+- **Rule cards now show a standardized "N examined · N passed · N failed" summary line.** Previously each rule had bespoke summary keys (`count`, `stale_count`, `engines_examined`/`engines_flagged`, etc.); now every rule that has a meaningful per-item population reports the three canonical counts via a new `card_summary` field on `RuleResult`. Rules where "examined" is genuinely ambiguous (ratio questions, single-entity questions, aggregate-only counts) leave `card_summary=None` and the template falls back to the existing per-summary-key rendering. The existing `summary` dict is unchanged on every rule — delta-blob compatibility with prior runs is preserved.
+
+### Changed
+
+- **`RuleResult.duration_ms` contract.** Type changed from `int = 0` (where `0` ambiguously meant either "not measured" or "measured zero") to `int | None = None`. `None` now means "not measured"; `0` is reserved for "measured zero" (sub-millisecond). `safe_run` no longer overwrites a rule's explicit `0`. As an incidental UX improvement, rule cards without a timing measurement now render `"-"` instead of `"0 ms"` (via the existing `_format_duration` helper).
+
+### Fixed
+
+- **`EnvSnapshot.scan_engine_pools()` now handles gateway errors (502/503/504) and network errors gracefully** rather than propagating them. End-to-end behavior is unchanged (the outer try/except in `ScanEnginesCheck.run` already absorbed these), but the snapshot-level trap matches the established `agent_count()` pattern and the warning log message correctly identifies the endpoint and fallback.
+
+### Internal
+
+- Split `test_assumed_durations_floored_at_one_minute_when_negative` into two isolated tests (`_report_duration` and `_scan_duration` variants) so a future regression breaking only one knob's guard is caught.
+- Added `card_summary: dict[str, int] | None` field to `RuleResult`. Audit rules populate it inline in `RuleResult(...)`; op-check rules thread `examined`/`failed` kwargs through `make_rule_result(...)`. Per-rule adoption is opt-out: where "examined" is ambiguous (overlapping_scan_windows counts pairs not schedules; insight_agent_deployed is a ratio question; missing_os is an aggregate count; etc.) the rule leaves the field as None.
+
 ## [0.6.6] - 2026-05-26
 
 ### Added

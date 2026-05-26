@@ -167,5 +167,10 @@ class EngineVersionDriftRule:
                 "console_content_version": console_content,
                 "refresh_stale_days": stale_days,
             },
+            card_summary={
+                "examined": len(engines),
+                "passed": max(0, len(engines) - engines_flagged),
+                "failed": engines_flagged,
+            },
             sources=list(self.sources),
         )

@@ -51,6 +51,7 @@ def test_finding_when_user_has_role_but_no_bindings(fake_snapshot):
     r = UserWithRoleButNoAccessRule().run(fake_snapshot, "info", False, 500, {})
     assert r.summary["users_flagged"] == 1
     assert "alice" in r.findings[0].message
+    assert r.card_summary == {"examined": 1, "passed": 0, "failed": 1}
 
 
 def test_disabled_user_skipped(fake_snapshot):

@@ -40,6 +40,7 @@ def test_warn_when_local_count_exceeds_threshold(fake_snapshot):
     r = LocalAccountWhenSsoConfiguredRule().run(fake_snapshot, "warn", False, 500, {})
     assert r.status == "warn"
     assert r.findings[0].details["local_user_count"] == 3
+    assert r.card_summary == {"examined": 3, "passed": 0, "failed": 3}
 
 
 def test_threshold_knob_overrides_default(fake_snapshot):

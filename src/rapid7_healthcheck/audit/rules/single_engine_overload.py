@@ -73,5 +73,10 @@ class SingleEngineOverloadRule:
             status=status,
             findings=findings,
             summary={"engines_examined": len(sites_by_engine), "engines_flagged": engines_flagged},
+            card_summary={
+                "examined": len(sites_by_engine),
+                "passed": max(0, len(sites_by_engine) - engines_flagged),
+                "failed": engines_flagged,
+            },
             sources=list(self.sources),
         )

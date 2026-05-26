@@ -392,3 +392,41 @@ def test_report_omits_inventory_strip_when_totals_is_none():
     # but the rendered <section> only appears when totals is non-None.
     assert '<section class="inventory-totals"' not in html
     assert "Asset Groups (static)" not in html
+
+
+def test_report_renders_card_summary_when_present():
+    """A rule with card_summary populated renders the standardized
+    'N examined · N passed · N failed' header in the rule card."""
+    rr = RuleResult(
+        rule_id="op.x", rule_name="X", description="d",
+        severity="warn", status="warn",
+        findings=[], summary={}, sources=[],
+        card_summary={"examined": 10, "passed": 7, "failed": 3},
+    )
+    cr = CheckResult(name="X", description="x", status="warn", rule_results=[rr])
+    html = render_report(_ctx([cr]))
+    # Match the rendered <div>, not the always-inlined CSS rule (which uses
+    # the same class name).
+    assert '<div class="rule-card-summary">' in html
+    assert "<strong>10</strong> examined" in html
+    assert "<strong>7</strong> passed" in html
+    assert "<strong>3</strong> failed" in html
+
+
+def test_report_omits_card_summary_when_none():
+    """A rule with card_summary=None does NOT render the standardized header.
+
+    Mirrors the inventory-totals positive/negative pair: match on the
+    rendered <div class="rule-card-summary"> tag, not the always-inlined
+    CSS rule."""
+    rr = RuleResult(
+        rule_id="op.x", rule_name="X", description="d",
+        severity="warn", status="warn",
+        findings=[], summary={"some_count": 5}, sources=[],
+        card_summary=None,
+    )
+    cr = CheckResult(name="X", description="x", status="warn", rule_results=[rr])
+    html = render_report(_ctx([cr]))
+    # The CSS rules for `.rule-card-summary` are inlined in <style>, so a
+    # substring match would false-positive. Match the rendered <div> instead.
+    assert '<div class="rule-card-summary">' not in html

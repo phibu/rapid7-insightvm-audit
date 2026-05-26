@@ -278,6 +278,20 @@
     margin: 0; font-weight: 600; color: var(--neutral-fg);
     font-variant-numeric: tabular-nums;
   }
+  /* Standardized "N examined · N passed · N failed" header line, populated
+     by rules that supply card_summary via make_rule_result(examined=, failed=).
+     Rendered between the rule summary toggle and the description; falls back
+     to the existing dl.rule-summary block when card_summary is None. */
+  .rule-card-summary {
+    display: flex; flex-wrap: wrap; align-items: baseline;
+    gap: 0.4rem;
+    margin: 0.25rem 0 0.5rem;
+    font-size: 13px;
+    color: var(--neutral-muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .rule-card-summary strong { color: var(--neutral-fg); font-weight: 600; }
+  .rule-card-summary .card-summary-sep { color: var(--neutral-muted); }
   pre {
     background: var(--surface); padding: 0.5rem 0.75rem; border-radius: 4px;
     overflow-x: auto; font-size: 12px; max-height: 240px; overflow-y: auto;
@@ -578,6 +592,15 @@
              data-severity="{{ rr.status }}"
              data-search-text="{{ (rr.rule_name|lower ~ ' ' ~ rr.findings|map(attribute='message')|join(' ')|lower)[:200] }}">
       <summary><b>{{ rr.rule_name }}</b> <span class="badge {{ rr.status }}">{{ rr.status|upper }}</span>{% if rr.sampled %} <span class="badge info" title="Rule ran on a sample">sampled</span>{% endif %} <span class="rule-duration">{{ rr.duration_ms | duration }}</span></summary>
+      {% if rr.card_summary %}
+      <div class="rule-card-summary">
+        <span class="card-summary-item"><strong>{{ rr.card_summary.examined }}</strong> examined</span>
+        <span class="card-summary-sep">·</span>
+        <span class="card-summary-item"><strong>{{ rr.card_summary.passed }}</strong> passed</span>
+        <span class="card-summary-sep">·</span>
+        <span class="card-summary-item"><strong>{{ rr.card_summary.failed }}</strong> failed</span>
+      </div>
+      {% endif %}
       <p class="check-desc">{{ rr.description }}</p>
 
       {% if rr.summary %}

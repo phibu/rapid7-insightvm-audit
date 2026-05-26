@@ -83,6 +83,10 @@ def test_empty_site_warns(fake_client, app_config):
     rr = _rule(result, "op.data_quality.empty_sites")
     assert rr.status == "warn"
     assert rr.summary["empty_sites_count"] == 1
+    # card_summary populated (F1 sub2): 1 site examined, 1 empty.
+    assert rr.card_summary == {"examined": 1, "passed": 0, "failed": 1}
+    # Aggregate-style sibling rules leave card_summary=None (verified once here).
+    assert _rule(result, "op.data_quality.missing_os").card_summary is None
 
 
 def test_missing_os_skipped_when_disabled(fake_client, app_config):

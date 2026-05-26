@@ -134,6 +134,12 @@ def test_engine_with_no_sites_is_warn(fake_client, app_config):
     assert result.status == "warn"
     unpaired = _rule(result, "op.scan_engines.unpaired")
     assert any("not paired" in f.message.lower() for f in unpaired.findings)
+    # card_summary populated for engine-level op-check rules (F1 sub2):
+    # 1 engine examined, 1 failed (unpaired), 0 passed.
+    assert unpaired.card_summary == {"examined": 1, "passed": 0, "failed": 1}
+    # The other three engine rules also populate card_summary.
+    bad_status = _rule(result, "op.scan_engines.bad_status")
+    assert bad_status.card_summary == {"examined": 1, "passed": 1, "failed": 0}
 
 
 def test_unpaired_engine_finding_includes_identification_details(fake_client, app_config):

@@ -40,6 +40,7 @@ def test_warn_on_product_version_mismatch(fake_snapshot):
     r = EngineVersionDriftRule().run(fake_snapshot, "warn", False, 500, {})
     assert r.status == "warn"
     assert "productVersion" in r.findings[0].message
+    assert r.card_summary == {"examined": 1, "passed": 0, "failed": 1}
 
 
 def test_warn_on_content_version_mismatch(fake_snapshot):

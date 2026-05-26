@@ -677,8 +677,8 @@ def test_scan_engine_pools_returns_empty_on_404():
     assert snap.scan_engine_pools() == []
 
 
-def test_scan_engine_pools_propagates_non_404_errors():
-    """Non-404 errors must propagate, not be silently swallowed."""
+def test_scan_engine_pools_propagates_non_gateway_errors():
+    """500 and other non-gateway errors must propagate, not be silently swallowed."""
     from rapid7_healthcheck.client import Rapid7ClientError
 
     class _Client500(_FakeClient):
@@ -694,6 +694,28 @@ def test_scan_engine_pools_propagates_non_404_errors():
     snap = EnvSnapshot(c, full_scan=False, sample_size=500)
     with pytest.raises(Rapid7ClientError):
         snap.scan_engine_pools()
+
+
+@pytest.mark.parametrize("status_code", [502, 503, 504, None])
+def test_scan_engine_pools_returns_empty_on_gateway_or_network_error(status_code):
+    """Gateway errors (502/503/504) and pre-response failures (status_code is
+    None — read timeout, network error) must be swallowed so EngineUnpairedRule
+    falls back to direct-only pairing rather than emitting an error rule card.
+    Matches the agent_count() defensive pattern."""
+    from rapid7_healthcheck.client import Rapid7ClientError
+
+    class _ClientGateway(_FakeClient):
+        def get(self, path, params=None, **_kwargs):
+            if path == "/api/3/scan_engine_pools":
+                raise Rapid7ClientError(
+                    f"HTTP {status_code} from GET /api/3/scan_engine_pools: gateway error",
+                    status_code=status_code,
+                )
+            return super().get(path, params)
+
+    c = _ClientGateway()
+    snap = EnvSnapshot(c, full_scan=False, sample_size=500)
+    assert snap.scan_engine_pools() == []
 
 
 def test_asset_group_member_count_happy_path():

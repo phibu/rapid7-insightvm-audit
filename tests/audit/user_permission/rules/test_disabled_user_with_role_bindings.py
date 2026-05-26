@@ -30,6 +30,7 @@ def test_info_finding_for_disabled_user_with_role(fake_snapshot):
     assert r.status == "pass"
     assert r.summary["users_flagged"] == 1
     assert "stale" in r.findings[0].message
+    assert r.card_summary == {"examined": 1, "passed": 0, "failed": 1}
 
 
 def test_finding_severity_inherits_rule_severity(fake_snapshot):
