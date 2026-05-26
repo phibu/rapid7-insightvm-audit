@@ -33,12 +33,20 @@ def make_rule_result(
     default_severity: Severity = "warn",
     sampled: bool = False,
     sample_info: str | None = None,
+    examined: int | None = None,
+    failed: int | None = None,
 ) -> RuleResult:
     """Build a RuleResult for an operational check concept.
 
     Status is derived from the highest-severity finding (fail > warn > pass).
     `default_severity` is the rule's own severity tag — it's used by the
     state-blob/delta logic; individual finding severities still control rollup.
+
+    `examined` / `failed`: when BOTH are provided, build a standardized
+    `card_summary` of ``{"examined": N, "passed": N - failed, "failed": failed}``
+    for uniform rule-card rendering. `passed` is clamped to >= 0 defensively
+    (failed > examined is a programming bug, but render 0 not negative).
+    Pass None for rules where "examined" is genuinely ambiguous.
     """
     status: Status
     if any(f.severity == "fail" for f in findings):
@@ -48,6 +56,14 @@ def make_rule_result(
     else:
         status = "pass"
 
+    card_summary: dict[str, int] | None = None
+    if examined is not None and failed is not None:
+        card_summary = {
+            "examined": examined,
+            "passed": max(0, examined - failed),
+            "failed": failed,
+        }
+
     return RuleResult(
         rule_id=rule_id,
         rule_name=rule_name,
@@ -56,6 +72,7 @@ def make_rule_result(
         status=status,
         findings=list(findings),
         summary=summary or {},
+        card_summary=card_summary,
         sources=list(sources),
         duration_ms=duration_ms,
         sampled=sampled,

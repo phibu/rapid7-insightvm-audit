@@ -41,6 +41,15 @@ def _extract_diagnostics(e: Exception) -> tuple[str | None, int | None]:
 
 @dataclass
 class RuleResult:
+    """Result of running one audit rule or operational-check concept.
+
+    `card_summary` — three canonical counts the report renders uniformly
+    in the rule card header: ``{"examined": int, "passed": int, "failed": int}``.
+    Set when the rule has a meaningful per-item population it examined;
+    leave None for rules where "examined" is genuinely ambiguous
+    (ratio questions, single-entity questions). Separate from
+    ``summary`` to preserve the delta-blob signature on existing rules.
+    """
     rule_id: str
     rule_name: str
     description: str
@@ -48,6 +57,7 @@ class RuleResult:
     status: Status
     findings: list[Finding] = field(default_factory=list)
     summary: dict = field(default_factory=dict)
+    card_summary: dict[str, int] | None = None
     sampled: bool = False
     sample_info: str | None = None
     sources: list[str] = field(default_factory=list)

@@ -218,6 +218,53 @@ def test_make_rule_result_passes_sampled_and_sample_info():
     assert r.sample_info == "strategy=first-n; sampled=100; population=500000"
 
 
+def test_make_rule_result_with_examined_and_failed_populates_card_summary():
+    result = make_rule_result(
+        rule_id="op.test.rule",
+        rule_name="Test",
+        description="d",
+        findings=[],
+        examined=10,
+        failed=3,
+    )
+    assert result.card_summary == {"examined": 10, "passed": 7, "failed": 3}
+
+
+def test_make_rule_result_without_examined_leaves_card_summary_none():
+    result = make_rule_result(
+        rule_id="op.test.rule",
+        rule_name="Test",
+        description="d",
+        findings=[],
+    )
+    assert result.card_summary is None
+
+
+def test_make_rule_result_clamps_passed_to_zero_when_failed_exceeds_examined():
+    # Defensive: failed > examined is a programming bug, but render 0 not negative.
+    result = make_rule_result(
+        rule_id="op.test.rule",
+        rule_name="Test",
+        description="d",
+        findings=[],
+        examined=5,
+        failed=8,
+    )
+    assert result.card_summary == {"examined": 5, "passed": 0, "failed": 8}
+
+
+def test_make_rule_result_with_only_examined_leaves_card_summary_none():
+    """Both examined AND failed must be supplied to build card_summary."""
+    result = make_rule_result(
+        rule_id="op.test.rule",
+        rule_name="Test",
+        description="d",
+        findings=[],
+        examined=10,
+    )
+    assert result.card_summary is None
+
+
 class _IdRule:
     """Minimal rule shape for testing safe_run_rule."""
     RULE_ID = "op.test.id_rule"
