@@ -119,15 +119,20 @@ class ScanReportScheduleOverlapRule:
     ]
 
     def run(self, snapshot, severity, full_scan, sample_size, rule_config) -> RuleResult:
+        # Floor each knob at 1 minute: a zero would collapse the assumed
+        # window to a point in time (silently suppressing overlap findings);
+        # a negative would produce a negative timedelta. Non-numeric strings
+        # still raise ValueError, which safe_run surfaces as a status="error"
+        # rule card.
         report_duration = timedelta(
-            minutes=int(rule_config.get(
+            minutes=max(1, int(rule_config.get(
                 "assumed_report_duration_minutes", _DEFAULT_REPORT_DURATION_MINUTES
-            ))
+            )))
         )
         scan_duration_default = timedelta(
-            minutes=int(rule_config.get(
+            minutes=max(1, int(rule_config.get(
                 "assumed_scan_duration_minutes", _DEFAULT_SCAN_DURATION_MINUTES
-            ))
+            )))
         )
 
         all_sites = snapshot.sites()

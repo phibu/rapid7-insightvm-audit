@@ -134,3 +134,55 @@ def test_assumed_scan_duration_knob_widens_overlap_window(fake_snapshot):
     assert widened_result.status == "warn"
 
 
+def _overlap_fixture(fake_snapshot):
+    """Two scope-overlapping schedules with no `duration` (so the assumed
+    duration governs the window). Both start at the same instant, so any
+    strictly-positive assumed duration produces an overlap; a zero/negative
+    duration (the bug) would not."""
+    base = datetime(2026, 5, 1, 12, 0, tzinfo=timezone.utc)
+    fake_snapshot.set_sites([{"id": 1, "name": "A"}, {"id": 2, "name": "B"}])
+    fake_snapshot.set_site_schedules(1, [{"id": 10, "enabled": True,
+                                          "start": _iso(base), "repeat": None}])
+    fake_snapshot.set_site_schedules(2, [{"id": 20, "enabled": True,
+                                          "start": _iso(base),
+                                          "repeat": None}])
+    fake_snapshot.set_site_included_targets(1, [{"address": "10.0.0.0/24"}])
+    fake_snapshot.set_site_included_targets(2, [{"address": "10.0.0.0/24"}])
+
+
+def test_assumed_scan_duration_floored_at_one_minute_when_zero(fake_snapshot):
+    """A zero assumed_scan_duration_minutes would collapse the window to a
+    point in time and silently suppress findings. The knob must floor at 1."""
+    _overlap_fixture(fake_snapshot)
+    r = OverlappingScanWindowsRule().run(
+        fake_snapshot, "warn", False, 500,
+        {"assumed_scan_duration_minutes": 0},
+    )
+    assert r.status == "warn"
+    assert len(r.findings) == 1
+
+
+def test_assumed_scan_duration_floored_at_one_minute_when_negative(fake_snapshot):
+    """A negative assumed_scan_duration_minutes would produce a negative
+    timedelta. The knob must floor at 1."""
+    _overlap_fixture(fake_snapshot)
+    r = OverlappingScanWindowsRule().run(
+        fake_snapshot, "warn", False, 500,
+        {"assumed_scan_duration_minutes": -5},
+    )
+    assert r.status == "warn"
+    assert len(r.findings) == 1
+
+
+def test_assumed_scan_duration_non_numeric_raises_value_error(fake_snapshot):
+    """Non-numeric strings must continue to raise ValueError so the caller's
+    safe_run wrapper surfaces a status='error' rule card (preserves the
+    bad-config-is-error pattern)."""
+    import pytest
+
+    _overlap_fixture(fake_snapshot)
+    with pytest.raises(ValueError):
+        OverlappingScanWindowsRule().run(
+            fake_snapshot, "warn", False, 500,
+            {"assumed_scan_duration_minutes": "abc"},
+        )

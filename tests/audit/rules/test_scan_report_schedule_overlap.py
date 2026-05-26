@@ -191,3 +191,73 @@ def test_assumed_report_duration_knob(fake_snapshot):
         fake_snapshot, "warn", False, 500, {"assumed_report_duration_minutes": 5},
     )
     assert r.status == "warn"
+
+
+def _overlap_fixture(fake_snapshot):
+    """A scan with NO `duration` field and a report with NO explicit duration,
+    both on site 1, starting at the same instant. Any strictly-positive
+    assumed durations produce an overlap; zero/negative durations (the bug)
+    would collapse one window to a point and miss the overlap."""
+    fake_snapshot.set_sites([_site(1, "A")])
+    # Scan schedule with no `duration` key → assumed_scan_duration applies.
+    fake_snapshot.set_site_schedules(1, [{
+        "id": 10, "enabled": True, "start": "2026-05-01T08:00:00Z",
+    }])
+    fake_snapshot.set_reports([
+        _report(100, "rep", sites=[1], start="2026-05-01T08:00:00Z"),
+    ])
+
+
+def test_assumed_report_duration_floored_at_one_minute_when_zero(fake_snapshot):
+    """A zero assumed_report_duration_minutes would collapse the report
+    window to a point in time and silently suppress overlap findings."""
+    _overlap_fixture(fake_snapshot)
+    r = ScanReportScheduleOverlapRule().run(
+        fake_snapshot, "warn", False, 500,
+        {"assumed_report_duration_minutes": 0, "assumed_scan_duration_minutes": 60},
+    )
+    assert r.status == "warn"
+    assert len(r.findings) >= 1
+
+
+def test_assumed_scan_duration_floored_at_one_minute_when_zero(fake_snapshot):
+    """A zero assumed_scan_duration_minutes would collapse the scan window
+    to a point in time and silently suppress overlap findings."""
+    _overlap_fixture(fake_snapshot)
+    r = ScanReportScheduleOverlapRule().run(
+        fake_snapshot, "warn", False, 500,
+        {"assumed_report_duration_minutes": 30, "assumed_scan_duration_minutes": 0},
+    )
+    assert r.status == "warn"
+    assert len(r.findings) >= 1
+
+
+def test_assumed_durations_floored_at_one_minute_when_negative(fake_snapshot):
+    """Negative assumed_*_minutes values would produce negative timedeltas.
+    Both knobs must floor at 1."""
+    _overlap_fixture(fake_snapshot)
+    r = ScanReportScheduleOverlapRule().run(
+        fake_snapshot, "warn", False, 500,
+        {"assumed_report_duration_minutes": -10, "assumed_scan_duration_minutes": -5},
+    )
+    assert r.status == "warn"
+    assert len(r.findings) >= 1
+
+
+def test_assumed_durations_non_numeric_raise_value_error(fake_snapshot):
+    """Non-numeric strings must continue to raise ValueError so the caller's
+    safe_run wrapper surfaces a status='error' rule card (preserves the
+    bad-config-is-error pattern)."""
+    import pytest
+
+    _overlap_fixture(fake_snapshot)
+    with pytest.raises(ValueError):
+        ScanReportScheduleOverlapRule().run(
+            fake_snapshot, "warn", False, 500,
+            {"assumed_report_duration_minutes": "abc"},
+        )
+    with pytest.raises(ValueError):
+        ScanReportScheduleOverlapRule().run(
+            fake_snapshot, "warn", False, 500,
+            {"assumed_scan_duration_minutes": "xyz"},
+        )
