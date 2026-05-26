@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 import time
+from dataclasses import replace
 from typing import Callable, Iterable
 
 from rapid7_healthcheck.audit import RuleResult
@@ -142,7 +143,7 @@ def safe_run(
     """
     rule_start = time.monotonic()
     try:
-        return fn()
+        result = fn()
     except Exception as e:
         logger.exception("op-check rule %s raised", rule_id)
         return error_rule(
@@ -154,6 +155,13 @@ def safe_run(
             duration_ms=int((time.monotonic() - rule_start) * 1000),
             default_severity=default_severity,
         )
+    duration_ms = int((time.monotonic() - rule_start) * 1000)
+    # If the rule producer didn't set its own timing (the common case —
+    # make_rule_result() defaults duration_ms=0), stamp the wall-clock
+    # elapsed so the per-rule card in the report no longer renders 0ms.
+    if result.duration_ms == 0:
+        return replace(result, duration_ms=duration_ms)
+    return result
 
 
 def safe_run_rule(rule, fn: Callable[[], RuleResult]) -> RuleResult:
