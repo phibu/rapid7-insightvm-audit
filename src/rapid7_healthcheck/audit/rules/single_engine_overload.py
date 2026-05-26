@@ -40,6 +40,11 @@ class SingleEngineOverloadRule:
                 continue
             total = sum(snapshot.site_asset_count(sid) for sid in site_ids)
             if total > threshold:
+                # Defensive fallback: an engine_id in sites_by_engine came from
+                # a Site's `scanEngine` field, so it should always exist in
+                # /api/3/scan_engines (and thus in engines_by_id). The `id=N`
+                # form only fires on a pathological data inconsistency where
+                # the console returns a stale or unknown engine reference.
                 engine_name = engines_by_id.get(engine_id, {}).get("name", f"id={engine_id}")
                 findings.append(Finding(
                     severity=severity,
