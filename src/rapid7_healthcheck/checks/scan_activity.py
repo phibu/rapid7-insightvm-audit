@@ -402,7 +402,12 @@ class SitesOverdueScansRule:
                 "sites_with_recent_scans": sites_with_recent_scans,
                 "sites_total": len(parsed_sites),
             },
-            examined=len(parsed_sites),
+            # examined is sites this rule actually evaluated — those with at
+            # least one finished scan. Sites with no scan history are silently
+            # skipped above (and flagged separately by sites_never_scanned /
+            # sites_no_successful_scan), so counting them as "passed" here
+            # would be misleading.
+            examined=sites_with_recent_scans + len(findings),
             failed=len(findings),
             default_severity=self.DEFAULT_SEVERITY,
         )
