@@ -358,6 +358,14 @@ def test_build_pooled_sites_index_handles_missing_keys():
     assert idx == {}
 
 
+def test_build_pooled_sites_index_filters_bool_engine_ids():
+    # bool is a subclass of int in Python; a corrupt payload with True/False
+    # in `engines` must not be treated as engine_id=1/0. Defense in depth.
+    pools = [{"id": 1, "engines": [True, False, 5], "sites": [100]}]
+    idx = _build_pooled_sites_index(pools)
+    assert idx == {5: {100}}
+
+
 def test_unpaired_skips_engine_paired_only_via_pool_in_check(fake_client, app_config):
     """End-to-end: ScanEnginesCheck wires snapshot.scan_engine_pools() into
     the unpaired rule. An engine with empty `sites` but a pool membership

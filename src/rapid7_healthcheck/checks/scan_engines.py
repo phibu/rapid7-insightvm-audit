@@ -35,7 +35,7 @@ def _build_pooled_sites_index(pools: list[dict]) -> dict[int, set[int]]:
         pool_engines = pool.get("engines") or []
         pool_sites = set(pool.get("sites") or [])
         for engine_id in pool_engines:
-            if isinstance(engine_id, int):
+            if isinstance(engine_id, int) and not isinstance(engine_id, bool):
                 index.setdefault(engine_id, set()).update(pool_sites)
     return index
 
