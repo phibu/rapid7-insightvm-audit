@@ -45,6 +45,10 @@ def test_engine_missing_from_cloud_fails():
     fail = [f for f in result.findings if f.severity == "fail"]
     assert len(fail) == 1
     assert "engine-b" in fail[0].message
+    # Schema uniformity: matched_via is present (always None on missing path)
+    # so downstream consumers see the same details keys as the stale finding.
+    assert "matched_via" in fail[0].details
+    assert fail[0].details["matched_via"] is None
 
 
 def test_engine_present_but_stale_warns():

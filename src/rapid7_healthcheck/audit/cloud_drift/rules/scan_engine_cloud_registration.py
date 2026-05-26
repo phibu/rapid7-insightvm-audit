@@ -169,6 +169,7 @@ class ScanEngineCloudRegistrationRule:
                         "console_engine_id": engine.get("id"),
                         "console_address": address,
                         "missing_from_cloud": True,
+                        "matched_via": matched_via,  # always None here; key present for schema uniformity with the stale finding
                     },
                 ))
                 continue
