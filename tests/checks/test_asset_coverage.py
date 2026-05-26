@@ -294,6 +294,10 @@ def test_r1_dead_asset_groups_some_empty(fake_client, app_config):
     assert len(rule.findings) == 2
     names = {f.details["group_name"] for f in rule.findings}
     assert names == {"Decommissioned", "Old Pilot"}
+    # card_summary populated (F1 sub2): 3 groups examined, 2 dead, 1 alive.
+    assert rule.card_summary == {"examined": 3, "passed": 1, "failed": 2}
+    # Aggregate-style sibling rules (stale, never-scanned, agent-only) leave card_summary=None.
+    assert _rule(result, "op.asset_coverage.stale_assets").card_summary is None
 
 
 def test_r1_dead_asset_groups_no_groups(fake_client, app_config):

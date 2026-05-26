@@ -157,6 +157,8 @@ class SitesNeverScannedRule:
             findings=findings,
             sources=list(self.SOURCES),
             summary={"count": len(findings)},
+            examined=len(parsed_sites),
+            failed=len(findings),
             default_severity=self.DEFAULT_SEVERITY,
         )
 
@@ -187,6 +189,8 @@ class SitesNoSuccessfulScanRule:
             findings=findings,
             sources=list(self.SOURCES),
             summary={"count": len(findings)},
+            examined=len(parsed_sites),
+            failed=len(findings),
             default_severity=self.DEFAULT_SEVERITY,
         )
 
@@ -398,6 +402,8 @@ class SitesOverdueScansRule:
                 "sites_with_recent_scans": sites_with_recent_scans,
                 "sites_total": len(parsed_sites),
             },
+            examined=len(parsed_sites),
+            failed=len(findings),
             default_severity=self.DEFAULT_SEVERITY,
         )
 

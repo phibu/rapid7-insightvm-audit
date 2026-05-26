@@ -95,6 +95,11 @@ def test_site_with_zero_scans_fails(fake_client, app_config):
     result = ScanActivityCheck().run(fake_client, app_config)
     # Never scanned at all → fail
     assert result.status == "fail"
+    # card_summary populated for site-level rules (F1 sub2): 1 site, 1 flagged.
+    never = _rule(result, "op.scan_activity.sites_never_scanned")
+    assert never.card_summary == {"examined": 1, "passed": 0, "failed": 1}
+    # Stuck/recent-failed/recent-unknown have ambiguous denominators — None.
+    assert _rule(result, "op.scan_activity.stuck_scans").card_summary is None
 
 
 def test_unknown_status_scan_in_recent_window_warns(fake_client, app_config):

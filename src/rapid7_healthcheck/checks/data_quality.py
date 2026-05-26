@@ -131,7 +131,8 @@ class EmptySitesRule:
 
         rule_start = time.monotonic()
         empty_sites: list[dict] = []
-        for site in snapshot.sites():
+        sites = snapshot.sites()
+        for site in sites:
             site_id = site.get("id")
             count = snapshot.site_asset_count(site_id)
             if count == 0:
@@ -153,6 +154,8 @@ class EmptySitesRule:
             findings=findings,
             sources=self.SOURCES,
             summary={"empty_sites_count": len(empty_sites)},
+            examined=len(sites),
+            failed=len(empty_sites),
             duration_ms=int((time.monotonic() - rule_start) * 1000),
         )
 
