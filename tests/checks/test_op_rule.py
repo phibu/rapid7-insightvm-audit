@@ -100,7 +100,7 @@ def test_safe_run_handles_arbitrary_exception_types():
 def test_safe_run_sets_duration_ms_on_success_path():
     """safe_run measures wall-clock time on the success path and sets
     duration_ms on the returned RuleResult when the rule producer did not
-    populate it itself (i.e. it defaulted to 0)."""
+    populate it itself (i.e. it left duration_ms as None)."""
     def slow_rule():
         time.sleep(0.01)  # 10ms minimum
         return make_rule_result(
