@@ -142,6 +142,7 @@ class EnvSnapshot:
         self._reports: list[dict] | None = None
         self._administration_properties: dict | None = None
         self._total_asset_count: int | None = None
+        self._scans_total: int | None = None
         self._agents_cache: tuple[list[dict], int] | None = None
         self._agents_unavailable: bool = False
         self._agent_count_cache: int | None = None
@@ -599,6 +600,17 @@ class EnvSnapshot:
             body = self._client.get("/api/3/assets", params={"size": 1})
             self._total_asset_count = int(body.get("page", {}).get("totalResources", 0))
         return self._total_asset_count
+
+    def scans_total(self) -> int:
+        """Total scans across the deployment from /api/3/scans page metadata.
+
+        Reads page.totalResources only — does not enumerate the scan list.
+        Mirrors total_asset_count(). Cached on first call.
+        """
+        if self._scans_total is None:
+            body = self._client.get("/api/3/scans", params={"size": 1})
+            self._scans_total = int(body.get("page", {}).get("totalResources", 0))
+        return self._scans_total
 
     def _mark_agents_unavailable_from_gateway_error(self, e: Rapid7ClientError) -> bool:
         """Return True if `e` is a gateway/transient failure on /api/3/agents
