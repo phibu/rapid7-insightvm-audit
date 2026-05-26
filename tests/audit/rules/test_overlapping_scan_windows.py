@@ -40,7 +40,10 @@ def test_warn_when_time_and_scope_overlap(fake_snapshot):
     assert r.status == "warn"
     assert len(r.findings) == 1
     assert "10.0.0" in r.findings[0].message or True  # scope info present implicitly
-    assert r.card_summary == {"examined": 2, "passed": 1, "failed": 1}
+    # card_summary intentionally None: findings count pairwise overlaps,
+    # not windows, so "examined: 2, failed: N" would be nonsensical on
+    # dense overlap graphs. Template falls back to summary rendering.
+    assert r.card_summary is None
 
 
 def test_no_overlap_when_scope_disjoint(fake_snapshot):

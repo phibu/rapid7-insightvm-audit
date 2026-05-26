@@ -92,8 +92,13 @@ class UserWithRoleButNoAccessRule:
                 "users_flagged": len(findings),
             },
             card_summary={
-                "examined": len(users),
-                "passed": max(0, len(users) - len(findings)),
+                # examined is the user subset this rule actually evaluated:
+                # disabled users / Global Admins / superusers / users with
+                # wildcard roles are filtered out at the candidates step and
+                # never checked. Counting them as "passed" would mirror the
+                # sub2 sites_overdue_scans bug. Matches summary["users_examined"].
+                "examined": len(examined),
+                "passed": max(0, len(examined) - len(findings)),
                 "failed": len(findings),
             },
             sampled=sampled,
