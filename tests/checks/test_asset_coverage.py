@@ -168,9 +168,10 @@ def test_unscanned_check_skipped_when_disabled(fake_client, app_config):
         c for c in fc.calls
         if c[0] == "post_one" and c[1] == "/api/3/assets/search"
     ]
-    # never_scanned is skipped (off); only stale_assets searches /assets/search.
-    # Bounded fetch over an empty result set is exactly one POST.
-    assert len(search_calls) == 1
+    # never_scanned is skipped (off); stale_assets and ghost_assets each issue
+    # one search POST. Bounded fetch over an empty result set is one POST
+    # per rule, so 2 total.
+    assert len(search_calls) == 2
     # The never-scanned rule should be skipped.
     ns = _rule(result, "op.asset_coverage.never_scanned_assets")
     assert ns.status == "skipped"
@@ -246,7 +247,8 @@ def test_uses_is_earlier_than_operator_with_threshold(fake_client, app_config):
     fc.set_post_one_responder("/api/3/assets/search", _responder)
     AssetCoverageCheck().run(fc, app_config)
 
-    assert len(captured_filters) == 2  # stale + never-scanned
+    # stale + never-scanned (both last-scan-date) + ghost_assets (operating-system).
+    assert len(captured_filters) == 3
     # The regression guards stale and never_scanned: those two send a
     # single-filter body keyed on last-scan-date. They must use is-earlier-than;
     # neither may use is-empty.
@@ -777,13 +779,14 @@ def test_r4_all_in_scope_pass(fake_client, app_config):
 def test_run_returns_four_rule_results(fake_client, app_config):
     snap = _FakeSnapshot(asset_groups=[])
     result = AssetCoverageCheck().run(fake_client, app_config, snapshot=snap)
-    assert len(result.rule_results) == 4
+    assert len(result.rule_results) == 5
     rule_ids = [r.rule_id for r in result.rule_results]
     assert rule_ids == [
         "op.asset_coverage.stale_assets",
         "op.asset_coverage.never_scanned_assets",
         "op.asset_coverage.dead_asset_groups",
         "op.asset_coverage.agent_only_assets",
+        "op.asset_coverage.ghost_assets",
     ]
 
 
@@ -846,9 +849,9 @@ def test_per_rule_failure_isolated_other_rules_still_run(fake_client, app_config
     snap = _FakeSnapshot(asset_groups=[])
     result = AssetCoverageCheck().run(fake_client, app_config, snapshot=snap)
 
-    # All 4 rules produce a RuleResult (the failing one as 'error', the
+    # All 5 rules produce a RuleResult (the failing one as 'error', the
     # others normally).
-    assert len(result.rule_results) == 4
+    assert len(result.rule_results) == 5
     stale = _rule(result, "op.asset_coverage.stale_assets")
     assert stale.status == "error"
     assert "Read timed out" in (stale.error or "")
@@ -859,6 +862,7 @@ def test_per_rule_failure_isolated_other_rules_still_run(fake_client, app_config
         "op.asset_coverage.never_scanned_assets",
         "op.asset_coverage.dead_asset_groups",
         "op.asset_coverage.agent_only_assets",
+        "op.asset_coverage.ghost_assets",
     ):
         rr = _rule(result, rid)
         assert rr.status in ("pass", "warn", "fail", "skipped"), \
@@ -944,6 +948,151 @@ def test_rule_identity_matches_method_constants(fake_client, app_config):
         "op.asset_coverage.never_scanned_assets",
         "op.asset_coverage.dead_asset_groups",
         "op.asset_coverage.agent_only_assets",
+        "op.asset_coverage.ghost_assets",
     }
     actual_rule_ids = {rr.rule_id for rr in result.rule_results}
     assert actual_rule_ids == expected_rule_ids
+
+
+# ----- F1: ghost_assets -----
+
+
+def _ghost_responder(resources: list[dict]):
+    """Build a post_one responder that returns `resources` for the
+    `operating-system is-empty` filter (the ghost_assets server-side query)
+    and an empty envelope otherwise."""
+    def _responder(json_body: dict, params: dict | None) -> dict:
+        filters = json_body.get("filters", [])
+        if (
+            len(filters) == 1
+            and filters[0].get("field") == "operating-system"
+            and filters[0].get("operator") == "is-empty"
+        ):
+            return {
+                "resources": resources,
+                "page": {"totalResources": len(resources)},
+            }
+        # last-scan-date filters (stale / never-scanned) → empty.
+        return {"resources": [], "page": {"totalResources": 0, "totalPages": 0}}
+    return _responder
+
+
+def test_ghost_assets_emits_finding_when_asset_lacks_both_os_and_hostname(fake_client, app_config):
+    """Server-side: OS is-empty. Client-side: hostName empty narrows further."""
+    from tests.conftest import FakeRapid7Client
+    fc = FakeRapid7Client()
+    fc.set_post_one_responder(
+        "/api/3/assets/search",
+        _ghost_responder([
+            {"id": 1, "hostName": None, "ip": "10.0.0.1"},   # ghost
+            {"id": 2, "hostName": "foo", "ip": "10.0.0.2"},  # not ghost (has hostname)
+        ]),
+    )
+    result = AssetCoverageCheck().run(fc, app_config)
+    rule = _rule(result, "op.asset_coverage.ghost_assets")
+    assert rule.status == "fail"
+    assert rule.summary["ghost_count"] == 1
+    assert rule.summary["candidates_examined"] == 2
+    assert len(rule.findings) == 1
+    f = rule.findings[0]
+    assert f.severity == "fail"
+    assert f.details["id"] == 1
+    assert f.details["ip"] == "10.0.0.1"
+
+
+def test_ghost_assets_skipped_when_flag_disabled(fake_client, app_config):
+    """flag_ghost_assets=False → skipped_rule (status=skipped, no POST)."""
+    from rapid7_healthcheck.config import AssetCoverageThresholds
+    new_thresholds = replace(
+        app_config.thresholds,
+        asset_coverage=AssetCoverageThresholds(
+            stale_asset_days=30,
+            flag_unscanned_assets=True,
+            never_scanned_days=90,
+            flag_ghost_assets=False,
+        ),
+    )
+    cfg = replace(app_config, thresholds=new_thresholds)
+
+    from tests.conftest import FakeRapid7Client
+    fc = FakeRapid7Client()
+    # Even if the responder would return ghosts, the rule must not call it.
+    fc.set_post_one_responder(
+        "/api/3/assets/search",
+        _ghost_responder([{"id": 99, "hostName": None}]),
+    )
+    result = AssetCoverageCheck().run(fc, cfg)
+    rule = _rule(result, "op.asset_coverage.ghost_assets")
+    assert rule.status == "skipped"
+    # No OS-is-empty POST was issued.
+    os_calls = [
+        c for c in fc.calls
+        if c[0] == "post_one" and c[1] == "/api/3/assets/search"
+        and "operating-system" in str(c[3])
+    ]
+    assert os_calls == []
+
+
+def test_ghost_assets_caps_findings_at_per_item_cap_with_overflow_rollup(fake_client, app_config):
+    """When ghost count exceeds the per-item cap, emit cap fail-findings + 1 warn rollup."""
+    from rapid7_healthcheck.checks.asset_coverage import _PER_ITEM_FINDING_CAP
+    from tests.conftest import FakeRapid7Client
+
+    fc = FakeRapid7Client()
+    overflow = _PER_ITEM_FINDING_CAP + 10
+    # All have empty hostName → all are ghosts.
+    ghost_candidates = [
+        {"id": i, "hostName": None, "ip": f"10.0.0.{i % 254 + 1}"}
+        for i in range(overflow)
+    ]
+    fc.set_post_one_responder(
+        "/api/3/assets/search",
+        _ghost_responder(ghost_candidates),
+    )
+    result = AssetCoverageCheck().run(fc, app_config)
+    rule = _rule(result, "op.asset_coverage.ghost_assets")
+    assert rule.status == "fail"
+    # Exactly _PER_ITEM_FINDING_CAP fail-findings + 1 warn-finding rollup.
+    assert len(rule.findings) == _PER_ITEM_FINDING_CAP + 1
+    fail_findings = [f for f in rule.findings if f.severity == "fail"]
+    warn_findings = [f for f in rule.findings if f.severity == "warn"]
+    assert len(fail_findings) == _PER_ITEM_FINDING_CAP
+    assert len(warn_findings) == 1
+    rollup = warn_findings[0]
+    assert "additional ghost assets" in rollup.message
+    assert rollup.details["remainder"] == 10
+    assert rollup.details["total"] == overflow
+    assert rollup.details["cap"] == _PER_ITEM_FINDING_CAP
+    assert rule.summary["ghost_count"] == overflow
+
+
+def test_ghost_assets_handles_empty_candidates(fake_client, app_config):
+    """Empty candidate set → 0 findings, status=pass."""
+    from tests.conftest import FakeRapid7Client
+    fc = FakeRapid7Client()
+    fc.set_post_one_responder(
+        "/api/3/assets/search",
+        _ghost_responder([]),
+    )
+    result = AssetCoverageCheck().run(fc, app_config)
+    rule = _rule(result, "op.asset_coverage.ghost_assets")
+    assert rule.status == "pass"
+    assert rule.findings == []
+    assert rule.summary["ghost_count"] == 0
+    assert rule.summary["candidates_examined"] == 0
+
+
+def test_ghost_assets_whitespace_only_hostname_counts_as_empty(fake_client, app_config):
+    """A whitespace-only hostName should be treated as empty (strip())."""
+    from tests.conftest import FakeRapid7Client
+    fc = FakeRapid7Client()
+    fc.set_post_one_responder(
+        "/api/3/assets/search",
+        _ghost_responder([{"id": 1, "hostName": "   ", "ip": "10.0.0.5"}]),
+    )
+    result = AssetCoverageCheck().run(fc, app_config)
+    rule = _rule(result, "op.asset_coverage.ghost_assets")
+    assert rule.summary["ghost_count"] == 1
+    assert len(rule.findings) == 1
+    assert rule.findings[0].severity == "fail"
+    assert rule.findings[0].details["id"] == 1

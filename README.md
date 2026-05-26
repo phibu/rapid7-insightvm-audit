@@ -291,6 +291,7 @@ An operational health check that detects blind spots in scanning coverage: stale
 | `op.asset_coverage.never_scanned_assets` | Assets never scanned or not scanned within the never-scanned threshold (effectively expired). | fail | https://docs.rapid7.com/insightvm/filtered-asset-search |
 | `op.asset_coverage.dead_asset_groups` | Asset groups whose membership criteria match zero assets. Orphaned RBAC/report scopes. | warn | https://docs.rapid7.com/insightvm/asset-groups/ |
 | `op.asset_coverage.agent_only_assets` | Sampled (up to `audit.sample_size` agents). Reports Insight-Agent assets whose IP is outside every site's `included_targets`. Directional estimate, not full enumeration. | warn | https://docs.rapid7.com/insightvm/insight-agent-overview/ |
+| `op.asset_coverage.ghost_assets` | Assets with NO OS fingerprint AND NO hostname — phantom records the console knows about but cannot identify. Stricter than `op.data_quality.missing_os`. Toggle via `flag_ghost_assets`. | fail | https://docs.rapid7.com/insightvm/filtered-asset-search |
 
 Per-rule severity and enable/disable live in the `checks.asset_coverage` block of `config.yaml`.
 

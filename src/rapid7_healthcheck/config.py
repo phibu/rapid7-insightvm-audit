@@ -59,6 +59,7 @@ class AssetCoverageThresholds:
     flag_dead_asset_groups: bool = True
     flag_agent_only_assets: bool = False
     dead_groups_fallback_cap: int = 200
+    flag_ghost_assets: bool = True
 
 
 @dataclass(frozen=True)
