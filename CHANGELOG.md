@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-05-26
+
+### Added
+
+- **New audit vertical: Template Configuration Audit.** A 4th audit category alongside Configuration / User & Permission / Cloud Drift. InsightVM scan templates have 50+ tunable settings; a misconfigured template can complete scans successfully while producing wrong or degraded results. The new vertical walks every template via `/api/3/scan_templates` and flags 17 categories of settings that don't match best practices. Default-on; toggle via `checks.template_audit: false`. New `template_audit:` config block with per-rule severity and knobs. See README → [Template Configuration Audit](README.md#template-configuration-audit).
+- **17 new rules** spread across vulnerability-check + policy correctness (7), discovery / web spider / database / telnet (6), and hygiene / inventory (4):
+  - **Vuln + policy correctness**: `template.vuln_enabled_but_no_checks` (fail), `template.potential_checks_disabled` (warn), `template.correlate_disabled` (warn), `template.unsafe_checks_disabled` (info), `template.disabled_checks_in_individual_overrides` (warn), `template.policy_enabled_but_no_policies_selected` (fail), `template.policy_only_template_attached_to_vuln_site` (info).
+  - **Discovery / web spider / database / telnet**: `template.service_discovery_disabled` (warn), `template.web_spider_enabled_no_targets` (warn), `template.web_spider_credentials_missing` (warn), `template.database_targets_no_db_credentials` (warn), `template.telnet_regex_unset` (info), `template.telnet_regex_invalid` (warn).
+  - **Hygiene + inventory**: `template.template_inventory_summary` (info), `template.parallel_assets_extreme` (info), `template.enhanced_logging_in_prod` (info), `template.near_duplicate_templates` (info).
+- **`EnvSnapshot.templates_full()`** accessor returns the paginated list of all scan templates with full nested settings. Cached on first call. Read-only — no allowlist changes.
+
+### Internal
+
+- New `audit/template/` package mirroring the established `user_permission/` and `cloud_drift/` patterns: orchestrator, registry, decorator, side-effect imports. 17 rule files under `audit/template/rules/`, each self-registering via `@register_template_rule`.
+- All template-audit rules detect vuln-enabled state via `EnvSnapshot.template_vuln_enabled(t)` (not direct `t.get("vulnerabilityEnabled")` access), matching the established pattern in `agent_unauth_collision`, `discovery_template_on_prod_site`, `site_vuln_template_no_creds`, and `policy_and_vuln_in_same_template`. Older on-prem consoles using `template.vulnerabilityChecks.enabled` are honored correctly.
+- Cross-rule (template ⇄ site) wiring uses `EnvSnapshot.site_scan_template_id(site)` (dual-shape handler for `site.scanTemplate`) and `snapshot.site_credentials(site_id)`.
+
 ## [0.7.0] - 2026-05-26
 
 ### Added
