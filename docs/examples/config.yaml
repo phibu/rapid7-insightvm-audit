@@ -205,6 +205,21 @@ template_audit:
     template.telnet_regex_invalid:
       enabled: true             # enable/disable this rule
       severity: warn            # finding severity: info | warn | fail
+    template.template_inventory_summary:
+      enabled: true             # enable/disable this rule
+      severity: info            # finding severity: info | warn | fail (informational; emits no findings)
+    template.parallel_assets_extreme:
+      enabled: true             # enable/disable this rule
+      severity: info            # finding severity: info | warn | fail
+      parallel_assets_min: 2    # flag templates with maxParallelAssets below this
+      parallel_assets_max: 50   # flag templates with maxParallelAssets above this
+    template.enhanced_logging_in_prod:
+      enabled: true             # enable/disable this rule
+      severity: info            # finding severity: info | warn | fail
+    template.near_duplicate_templates:
+      enabled: true             # enable/disable this rule
+      severity: info            # finding severity: info | warn | fail
+      similarity_threshold: 0.95  # fraction of fields that must match to cluster (0.0-1.0); rule is O(N²) and skipped when template count > sample_size
 
 # -----------------------------------------------------------------------------
 # Cloud Integration — Insight Platform (v4 API), required for Cloud Drift Audit

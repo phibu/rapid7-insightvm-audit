@@ -129,6 +129,10 @@ _VALID_TEMPLATE_AUDIT_RULE_IDS: set[str] = {
     "template.database_targets_no_db_credentials",
     "template.telnet_regex_unset",
     "template.telnet_regex_invalid",
+    "template.template_inventory_summary",
+    "template.parallel_assets_extreme",
+    "template.enhanced_logging_in_prod",
+    "template.near_duplicate_templates",
 }
 
 
