@@ -187,6 +187,24 @@ template_audit:
     template.policy_only_template_attached_to_vuln_site:
       enabled: true             # enable/disable this rule
       severity: info            # finding severity: info | warn | fail
+    template.service_discovery_disabled:
+      enabled: true             # enable/disable this rule
+      severity: warn            # finding severity: info | warn | fail
+    template.web_spider_enabled_no_targets:
+      enabled: true             # enable/disable this rule
+      severity: warn            # finding severity: info | warn | fail
+    template.web_spider_credentials_missing:
+      enabled: true             # enable/disable this rule
+      severity: warn            # finding severity: info | warn | fail
+    template.database_targets_no_db_credentials:
+      enabled: true             # enable/disable this rule
+      severity: warn            # finding severity: info | warn | fail
+    template.telnet_regex_unset:
+      enabled: true             # enable/disable this rule
+      severity: info            # finding severity: info | warn | fail
+    template.telnet_regex_invalid:
+      enabled: true             # enable/disable this rule
+      severity: warn            # finding severity: info | warn | fail
 
 # -----------------------------------------------------------------------------
 # Cloud Integration — Insight Platform (v4 API), required for Cloud Drift Audit

@@ -123,6 +123,12 @@ _VALID_TEMPLATE_AUDIT_RULE_IDS: set[str] = {
     "template.disabled_checks_in_individual_overrides",
     "template.policy_enabled_but_no_policies_selected",
     "template.policy_only_template_attached_to_vuln_site",
+    "template.service_discovery_disabled",
+    "template.web_spider_enabled_no_targets",
+    "template.web_spider_credentials_missing",
+    "template.database_targets_no_db_credentials",
+    "template.telnet_regex_unset",
+    "template.telnet_regex_invalid",
 }
 
 
