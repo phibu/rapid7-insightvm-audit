@@ -164,7 +164,29 @@ template_audit:
   enabled: true                 # master toggle for the Template Configuration Audit
   full_scan: false              # true enumerates every template; false samples up to sample_size
   sample_size: 500              # per-rule sampling cap when full_scan is false
-  rules: {}                     # per-rule overrides will be added as rules land in 0.8.0
+  rules:
+    template.vuln_enabled_but_no_checks:
+      enabled: true             # enable/disable this rule
+      severity: fail            # finding severity: info | warn | fail
+    template.potential_checks_disabled:
+      enabled: true             # enable/disable this rule
+      severity: warn            # finding severity: info | warn | fail
+    template.correlate_disabled:
+      enabled: true             # enable/disable this rule
+      severity: warn            # finding severity: info | warn | fail
+    template.unsafe_checks_disabled:
+      enabled: true             # enable/disable this rule
+      severity: info            # finding severity: info | warn | fail (awareness-only)
+    template.disabled_checks_in_individual_overrides:
+      enabled: true             # enable/disable this rule
+      severity: warn            # finding severity: info | warn | fail
+      max_disabled_individual_checks: 20  # flag templates exceeding this individually-disabled-check count
+    template.policy_enabled_but_no_policies_selected:
+      enabled: true             # enable/disable this rule
+      severity: fail            # finding severity: info | warn | fail
+    template.policy_only_template_attached_to_vuln_site:
+      enabled: true             # enable/disable this rule
+      severity: info            # finding severity: info | warn | fail
 
 # -----------------------------------------------------------------------------
 # Cloud Integration — Insight Platform (v4 API), required for Cloud Drift Audit

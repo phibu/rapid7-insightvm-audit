@@ -115,7 +115,15 @@ _VALID_CLOUD_DRIFT_RULE_IDS = {
 # Keep in sync with @register_template_rule calls under
 # `src/rapid7_healthcheck/audit/template/rules/`. F1 lands empty; F2-F4 add
 # the 14 rules and each new rule_id must be appended here.
-_VALID_TEMPLATE_AUDIT_RULE_IDS: set[str] = set()
+_VALID_TEMPLATE_AUDIT_RULE_IDS: set[str] = {
+    "template.vuln_enabled_but_no_checks",
+    "template.potential_checks_disabled",
+    "template.correlate_disabled",
+    "template.unsafe_checks_disabled",
+    "template.disabled_checks_in_individual_overrides",
+    "template.policy_enabled_but_no_policies_selected",
+    "template.policy_only_template_attached_to_vuln_site",
+}
 
 
 @dataclass(frozen=True)
