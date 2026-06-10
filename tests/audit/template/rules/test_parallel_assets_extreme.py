@@ -24,6 +24,31 @@ def test_in_range_not_flagged(fake_snapshot):
     assert r.card_summary == {"examined": 1, "passed": 1, "failed": 0}
 
 
+def test_at_boundary_min_value_not_flagged(fake_snapshot):
+    """Boundary value at min_threshold is INCLUSIVE — a user setting
+    parallel_assets_min=2 means 'values 2 and up are acceptable.' Strictly-
+    below values flag; the boundary value itself does not.
+    """
+    fake_snapshot.set_templates_full([
+        {"id": "boundary-min", "name": "Boundary", "maxParallelAssets": 2},
+    ])
+    r = ParallelAssetsExtremeRule().run(fake_snapshot, "info", False, 500, {})
+    assert r.findings == []
+    assert r.card_summary == {"examined": 1, "passed": 1, "failed": 0}
+
+
+def test_at_boundary_max_value_not_flagged(fake_snapshot):
+    """Boundary value at max_threshold is INCLUSIVE — a user setting
+    parallel_assets_max=50 means 'up to 50 is acceptable.'
+    """
+    fake_snapshot.set_templates_full([
+        {"id": "boundary-max", "name": "Boundary", "maxParallelAssets": 50},
+    ])
+    r = ParallelAssetsExtremeRule().run(fake_snapshot, "info", False, 500, {})
+    assert r.findings == []
+    assert r.card_summary == {"examined": 1, "passed": 1, "failed": 0}
+
+
 def test_template_without_field_not_examined(fake_snapshot):
     """Templates without `maxParallelAssets` use the engine default and
     are not applicable to this rule — they must not inflate `examined`."""

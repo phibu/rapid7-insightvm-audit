@@ -44,6 +44,10 @@ class ParallelAssetsExtremeRule:
                 # Defensive: spec says integer but skip non-int values rather
                 # than crash. Treat as not applicable.
                 continue
+            # Inclusive bounds: a user setting min=2/max=50 means "values
+            # 2 through 50 are acceptable." Only flag values strictly
+            # outside the closed interval [min_threshold, max_threshold].
+            # The finding message reflects this with [..] bracket notation.
             if min_threshold <= value <= max_threshold:
                 continue
             findings.append(Finding(
