@@ -37,14 +37,16 @@ class TelnetRegexUnsetRule:
 
     def run(self, snapshot, severity, full_scan, sample_size, rule_config) -> RuleResult:
         templates = snapshot.templates_full()
-        examined = len(templates)
+        # Examined = templates that actually have a telnet block. Templates
+        # without a telnet block are not applicable to this rule and counting
+        # them would inflate the "passed" denominator with irrelevant
+        # population. Same pattern as 0.7.0's sites_overdue_scans fix.
+        templates_with_telnet = [t for t in templates if _telnet_block(t) is not None]
+        examined = len(templates_with_telnet)
 
         findings: list[Finding] = []
-        for t in templates:
+        for t in templates_with_telnet:
             telnet = _telnet_block(t)
-            if telnet is None:
-                # No telnet block — not applicable, skip silently.
-                continue
             if any(telnet.get(f) or "" for f in _TELNET_FIELDS):
                 continue
             findings.append(Finding(

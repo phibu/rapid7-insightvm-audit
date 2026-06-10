@@ -6,7 +6,15 @@ from rapid7_healthcheck.audit.template import register_template_rule
 from rapid7_healthcheck.checks import Finding
 
 
-_DB_SERVICES = {"oracle", "postgres", "postgresql", "db2", "as400"}
+# Credential `account.service` values that satisfy a template's database target.
+# Per the v3 spec, `ScanTemplateDatabase` only exposes `oracle`, `postgres`, and
+# `db2` target fields, so we only allowlist credential services that
+# authenticate to those three platforms. `postgresql` is the canonical
+# spec value; `postgres` is kept as a defensive alias for older payloads.
+# `as400` is a real credential service per the spec but is NOT a DB2 alias
+# (it's the IBM AS/400 mainframe platform); excluded so an as400 cred can't
+# falsely satisfy a db2 template target.
+_DB_SERVICES = {"oracle", "postgres", "postgresql", "db2"}
 
 
 def _db_targets(template: dict) -> dict:

@@ -46,8 +46,11 @@ def test_template_without_telnet_block_not_flagged(fake_snapshot):
     ])
     r = TelnetRegexUnsetRule().run(fake_snapshot, "info", False, 500, {})
     assert r.findings == []
-    # Examined denominator is total templates (1), but no finding emitted.
-    assert r.card_summary == {"examined": 1, "passed": 1, "failed": 0}
+    # Examined denominator excludes templates with no telnet block —
+    # they are not applicable to this rule. Avoids inflating "passed"
+    # with irrelevant population (same pattern as 0.7.0's
+    # sites_overdue_scans fix).
+    assert r.card_summary == {"examined": 0, "passed": 0, "failed": 0}
 
 
 def test_telnet_block_is_null_not_flagged(fake_snapshot):
