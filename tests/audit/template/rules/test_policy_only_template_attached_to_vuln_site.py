@@ -60,6 +60,36 @@ def test_no_finding_when_bound_site_is_normal_importance(fake_snapshot):
     assert r.card_summary == {"examined": 1, "passed": 1, "failed": 0}
 
 
+def test_old_shape_vuln_enabled_not_misclassified_as_policy_only(fake_snapshot):
+    """Older on-prem consoles expose vuln-enabled state at
+    template.vulnerabilityChecks.enabled. A template with policyEnabled:true
+    AND vulnerabilityChecks.enabled:true is vuln-and-policy, not policy-only,
+    so it must NOT be flagged. Direct `t.get("vulnerabilityEnabled")` access
+    would silently misclassify it (`not None` is truthy).
+    """
+    fake_snapshot.set_templates_full([
+        {
+            "id": "old-shape-vuln-and-policy",
+            "name": "OldShapeVuln+Policy",
+            "policyEnabled": True,
+            "vulnerabilityChecks": {"enabled": True},
+        },
+    ])
+    fake_snapshot.set_sites([
+        {
+            "id": 1,
+            "name": "Prod",
+            "importance": "high",
+            "scanTemplate": "old-shape-vuln-and-policy",
+        },
+    ])
+    r = PolicyOnlyTemplateAttachedToVulnSiteRule().run(fake_snapshot, "info", False, 500, {})
+    assert r.findings == []
+    # Template is vuln-enabled per the old-shape helper, so it's not
+    # examined by this policy-only rule at all.
+    assert r.card_summary == {"examined": 0, "passed": 0, "failed": 0}
+
+
 def test_no_finding_when_template_is_not_policy_only(fake_snapshot):
     fake_snapshot.set_templates_full([
         {

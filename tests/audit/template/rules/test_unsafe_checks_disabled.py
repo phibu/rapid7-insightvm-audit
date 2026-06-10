@@ -44,6 +44,28 @@ def test_pass_when_unsafe_key_missing(fake_snapshot):
     assert r.status == "pass"
 
 
+def test_old_shape_console_examined_but_unsafe_not_evaluated(fake_snapshot):
+    """Older on-prem consoles expose vuln-enabled state at
+    template.vulnerabilityChecks.enabled (handled by
+    EnvSnapshot.template_vuln_enabled()). The modern `checks.unsafe`
+    sub-field lives at `vulnerabilityChecks.unsafe` on the same console.
+    This rule reads modern-shape `checks.unsafe` only — on older shapes,
+    the template is correctly examined but never flagged. Documents the
+    known limitation.
+    """
+    fake_snapshot.set_templates_full([
+        {
+            "id": "old-shape",
+            "name": "OldShape",
+            "vulnerabilityChecks": {"enabled": True, "unsafe": False},
+        },
+    ])
+    r = UnsafeChecksDisabledRule().run(fake_snapshot, "info", False, 500, {})
+    assert r.status == "pass"
+    assert r.findings == []
+    assert r.card_summary == {"examined": 1, "passed": 1, "failed": 0}
+
+
 def test_vuln_disabled_template_not_examined(fake_snapshot):
     fake_snapshot.set_templates_full([
         {

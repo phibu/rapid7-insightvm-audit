@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from rapid7_healthcheck.audit import RuleResult
+from rapid7_healthcheck.audit.snapshot import EnvSnapshot
 from rapid7_healthcheck.audit.template import register_template_rule
 from rapid7_healthcheck.checks import Finding
 
@@ -26,7 +27,7 @@ class UnsafeChecksDisabledRule:
     def run(self, snapshot, severity, full_scan, sample_size, rule_config) -> RuleResult:
         templates = snapshot.templates_full()
 
-        vuln_enabled = [t for t in templates if t.get("vulnerabilityEnabled")]
+        vuln_enabled = [t for t in templates if EnvSnapshot.template_vuln_enabled(t)]
 
         findings: list[Finding] = []
         for t in vuln_enabled:

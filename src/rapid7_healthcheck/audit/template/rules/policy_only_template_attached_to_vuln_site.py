@@ -32,7 +32,7 @@ class PolicyOnlyTemplateAttachedToVulnSiteRule:
 
         policy_only = [
             t for t in templates
-            if t.get("policyEnabled") and not t.get("vulnerabilityEnabled")
+            if t.get("policyEnabled") and not EnvSnapshot.template_vuln_enabled(t)
         ]
         policy_only_ids = {t.get("id"): t for t in policy_only if t.get("id")}
 
