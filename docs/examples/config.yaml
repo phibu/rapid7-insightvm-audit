@@ -67,6 +67,7 @@ checks:
   configuration_audit: true     # audit category: configuration best practices
   user_permission_audit: true   # audit category: console users and authentication
   cloud_drift_audit: true       # audit category: console vs. Insight Platform drift
+  template_audit: true          # audit category: scan template configuration
 
 # -----------------------------------------------------------------------------
 # Configuration Audit
@@ -155,6 +156,15 @@ user_audit:
     superuser_flag_outside_global_admin:
       enabled: true             # enable/disable this rule
       severity: fail            # finding severity: info | warn | fail
+
+# -----------------------------------------------------------------------------
+# Template Configuration Audit
+# -----------------------------------------------------------------------------
+template_audit:
+  enabled: true                 # master toggle for the Template Configuration Audit
+  full_scan: false              # true enumerates every template; false samples up to sample_size
+  sample_size: 500              # per-rule sampling cap when full_scan is false
+  rules: {}                     # per-rule overrides will be added as rules land in 0.8.0
 
 # -----------------------------------------------------------------------------
 # Cloud Integration — Insight Platform (v4 API), required for Cloud Drift Audit

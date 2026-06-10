@@ -47,6 +47,27 @@ def test_scan_template_cached_per_id():
     assert sum(1 for p, _ in c.get_calls if p == "/api/3/scan_templates/full-audit") == 1
 
 
+def test_templates_full_accessor_paginates():
+    """templates_full() walks /api/3/scan_templates as a paginated collection
+    and returns every item across pages (the fake client yields the full list)."""
+    c = _FakeClient()
+    items = [{"id": f"tpl-{i}", "name": f"T{i}"} for i in range(7)]
+    c.set_paginate("/api/3/scan_templates", items)
+    s = EnvSnapshot(c, full_scan=False, sample_size=500)
+    assert [t["id"] for t in s.templates_full()] == [t["id"] for t in items]
+
+
+def test_templates_full_accessor_caches():
+    """Second call to templates_full() must not re-hit the client."""
+    c = _FakeClient()
+    c.set_paginate("/api/3/scan_templates", [{"id": "x"}])
+    s = EnvSnapshot(c, full_scan=False, sample_size=500)
+    s.templates_full()
+    s.templates_full()
+    paginate_paths = [p for p, _ in c.paginate_calls if p == "/api/3/scan_templates"]
+    assert len(paginate_paths) == 1
+
+
 def test_site_asset_count_falls_back_to_size_one_get_when_no_inline():
     """When sites() has not been loaded (or a site lacks the inline `assets`
     field), site_asset_count falls back to GET /sites/{id}/assets?size=1."""

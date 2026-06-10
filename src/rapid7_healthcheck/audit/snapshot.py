@@ -136,6 +136,7 @@ class EnvSnapshot:
         self._site_included_targets: dict[int, list[dict]] = {}
         self._site_asset_count: dict[int, int] = {}
         self._scan_templates: dict[str, dict] = {}
+        self._templates_full: list[dict] | None = None
         self._asset_samples: dict[int, tuple[list[dict], int]] = {}
         self._asset_groups: list[dict] | None = None
         self._tags: list[dict] | None = None
@@ -421,6 +422,21 @@ class EnvSnapshot:
                 f"/api/3/scan_templates/{template_id}"
             )
         return self._scan_templates[template_id]
+
+    def templates_full(self) -> list[dict]:
+        """Return all scan templates from /api/3/scan_templates with full
+        nested settings (checks, discovery, web, policy, database, telnet).
+
+        Paginated per v3 spec. Cached on first call. Each item is the full
+        ScanTemplate envelope per the v3 OpenAPI schema.
+
+        Distinct from `scan_template(id)`, which fetches a single template
+        by ID for callers that already know the ID — template_audit rules
+        walk the full list and benefit from one paginated fetch.
+        """
+        if self._templates_full is None:
+            self._templates_full = list(self._client.paginate("/api/3/scan_templates"))
+        return self._templates_full
 
     def asset_sample(self, site_id: int) -> tuple[list[dict], int]:
         if site_id not in self._asset_samples:

@@ -112,6 +112,11 @@ _VALID_CLOUD_DRIFT_RULE_IDS = {
     "cd.stale_assessment_cohort",
 }
 
+# Keep in sync with @register_template_rule calls under
+# `src/rapid7_healthcheck/audit/template/rules/`. F1 lands empty; F2-F4 add
+# the 14 rules and each new rule_id must be appended here.
+_VALID_TEMPLATE_AUDIT_RULE_IDS: set[str] = set()
+
 
 @dataclass(frozen=True)
 class RuleConfig:
@@ -191,6 +196,20 @@ def _default_cloud_drift() -> CloudDriftConfig:
 
 
 @dataclass(frozen=True)
+class TemplateAuditConfig:
+    """Sibling to AuditConfig / UserAuditConfig, scoped to the Template
+    Configuration Audit category."""
+    enabled: bool = True
+    full_scan: bool = False
+    sample_size: int = 500
+    rules: dict = field(default_factory=dict)  # str -> RuleConfig
+
+
+def _default_template_audit() -> TemplateAuditConfig:
+    return TemplateAuditConfig(enabled=True, full_scan=False, sample_size=500, rules={})
+
+
+@dataclass(frozen=True)
 class AppConfig:
     rapid7: Rapid7Config
     report: ReportConfig
@@ -200,6 +219,7 @@ class AppConfig:
     user_audit: UserAuditConfig = field(default_factory=_default_user_audit)
     cloud_integration: CloudIntegrationConfig = field(default_factory=_default_cloud_integration)
     cloud_drift: CloudDriftConfig = field(default_factory=_default_cloud_drift)
+    template_audit: TemplateAuditConfig = field(default_factory=_default_template_audit)
 
 
 def _check_scalar(field_name: str, value: Any, expected: type, path: str) -> None:
@@ -643,6 +663,56 @@ def _build_cloud_drift_config(data: dict | None) -> CloudDriftConfig:
     return CloudDriftConfig(rules=rules)
 
 
+def _build_template_audit_config(data: dict | None) -> TemplateAuditConfig:
+    """Validator for the `template_audit:` block. Mirrors
+    `_build_user_audit_config` but uses `_VALID_TEMPLATE_AUDIT_RULE_IDS`
+    and the `TemplateAuditConfig` shape."""
+    if data is None:
+        return _default_template_audit()
+    _validate_dict_schema(
+        data,
+        expected={"enabled", "full_scan", "sample_size", "rules"},
+        required=set(),
+        name="template_audit",
+    )
+    if not isinstance(data.get("enabled"), bool):
+        raise ConfigError("template_audit.enabled: expected bool")
+    if not isinstance(data.get("full_scan"), bool):
+        raise ConfigError("template_audit.full_scan: expected bool")
+    if (
+        not isinstance(data.get("sample_size"), int)
+        or isinstance(data.get("sample_size"), bool)
+        or data["sample_size"] <= 0
+    ):
+        raise ConfigError("template_audit.sample_size: expected positive int")
+
+    raw_rules = data.get("rules") or {}
+    if not isinstance(raw_rules, dict):
+        raise ConfigError("template_audit.rules: expected mapping")
+    rules: dict[str, RuleConfig] = {}
+    for rule_id, rule_body in raw_rules.items():
+        if rule_id not in _VALID_TEMPLATE_AUDIT_RULE_IDS:
+            raise ConfigError(f"template_audit.rules: unknown rule id '{rule_id}'")
+        if not isinstance(rule_body, dict):
+            raise ConfigError(f"template_audit.rules.{rule_id}: expected mapping")
+        if not isinstance(rule_body.get("enabled"), bool):
+            raise ConfigError(f"template_audit.rules.{rule_id}.enabled: expected bool")
+        sev = rule_body.get("severity")
+        if sev not in _VALID_SEVERITIES:
+            raise ConfigError(
+                f"template_audit.rules.{rule_id}.severity: must be one of {sorted(_VALID_SEVERITIES)}"
+            )
+        knobs = {k: v for k, v in rule_body.items() if k not in ("enabled", "severity")}
+        rules[rule_id] = RuleConfig(enabled=rule_body["enabled"], severity=sev, knobs=knobs)
+
+    return TemplateAuditConfig(
+        enabled=data["enabled"],
+        full_scan=data["full_scan"],
+        sample_size=data["sample_size"],
+        rules=rules,
+    )
+
+
 def _build_report_config(data: Any) -> ReportConfig:
     """Validate the `report:` block, allowing `delta_max_age_days` to be absent.
 
@@ -706,11 +776,12 @@ def _ensure_default_on(checks: dict, *names: str) -> dict:
 
 
 def _build_app_config(data: dict) -> AppConfig:
-    expected_root = {"rapid7", "report", "thresholds", "checks", "audit", "user_audit", "cloud_integration", "cloud_drift"}
+    expected_root = {"rapid7", "report", "thresholds", "checks", "audit", "user_audit", "cloud_integration", "cloud_drift", "template_audit"}
     unknown = set(data.keys()) - expected_root
     if unknown:
         raise ConfigError(f"unknown root key(s): {sorted(unknown)}")
-    required_root = expected_root - {"audit", "user_audit", "cloud_integration", "cloud_drift"}  # all four are optional
+    # The five audit/integration blocks are optional.
+    required_root = expected_root - {"audit", "user_audit", "cloud_integration", "cloud_drift", "template_audit"}
     missing = required_root - set(data.keys())
     if missing:
         raise ConfigError(f"missing required root key(s): {sorted(missing)}")
@@ -733,12 +804,14 @@ def _build_app_config(data: dict) -> AppConfig:
         "configuration_audit",
         "user_permission_audit",
         "cloud_drift_audit",
+        "template_audit",
     )
 
     audit = _build_audit_config(data.get("audit"))
     user_audit = _build_user_audit_config(data.get("user_audit"))
     cloud_integration = _build_cloud_integration_config(data.get("cloud_integration"))
     cloud_drift = _build_cloud_drift_config(data.get("cloud_drift"))
+    template_audit = _build_template_audit_config(data.get("template_audit"))
     return AppConfig(
         rapid7=rapid7,
         report=report,
@@ -748,6 +821,7 @@ def _build_app_config(data: dict) -> AppConfig:
         user_audit=user_audit,
         cloud_integration=cloud_integration,
         cloud_drift=cloud_drift,
+        template_audit=template_audit,
     )
 
 
