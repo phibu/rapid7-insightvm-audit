@@ -39,6 +39,7 @@ class FakeSnapshot:
         self._site_included_targets: dict[int, list[dict]] = {}
         self._site_asset_count: dict[int, int] = {}
         self._scan_templates: dict[str, dict] = {}
+        self._templates_full: list[dict] = []
         self._asset_samples: dict[int, tuple[list[dict], int]] = {}
         self._site_assets_iter: dict[int, list[dict]] = {}
         self._asset_groups: list[dict] = []
@@ -99,6 +100,7 @@ class FakeSnapshot:
     def set_site_included_targets(self, site_id: int, targets: list[dict]) -> None: self._site_included_targets[site_id] = targets
     def set_site_asset_count(self, site_id: int, n: int) -> None: self._site_asset_count[site_id] = n
     def set_scan_template(self, template_id: str, template: dict) -> None: self._scan_templates[template_id] = template
+    def set_templates_full(self, templates: list[dict]) -> None: self._templates_full = templates
     def set_asset_sample(self, site_id: int, assets: list[dict], total: int) -> None: self._asset_samples[site_id] = (assets, total)
     def set_site_assets_iter(self, site_id: int, assets: list[dict]) -> None: self._site_assets_iter[site_id] = assets
     def set_asset_groups(self, groups: list[dict]) -> None: self._asset_groups = groups
@@ -211,6 +213,9 @@ class FakeSnapshot:
         if template_id not in self._scan_templates:
             raise AssertionError(f"FakeSnapshot.scan_template({template_id!r}) not registered")
         return self._scan_templates[template_id]
+
+    def templates_full(self) -> list[dict]:
+        return list(self._templates_full)
 
     def asset_sample(self, site_id: int) -> tuple[list[dict], int]:
         if site_id not in self._asset_samples:

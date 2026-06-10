@@ -16,6 +16,7 @@ from dotenv import load_dotenv
 from rapid7_healthcheck import __version__
 from rapid7_healthcheck.audit import ConfigurationAuditCheck
 from rapid7_healthcheck.audit.cloud_drift import CloudDriftAuditCheck
+from rapid7_healthcheck.audit.template import TemplateAuditCheck
 from rapid7_healthcheck.audit.user_permission import UserPermissionAuditCheck
 from rapid7_healthcheck.checks import Check, CheckResult
 from rapid7_healthcheck.checks.asset_coverage import AssetCoverageCheck
@@ -50,6 +51,7 @@ _REGISTRY: dict[str, type[Check]] = {
     "configuration_audit": ConfigurationAuditCheck,
     "user_permission_audit": UserPermissionAuditCheck,
     "cloud_drift_audit": CloudDriftAuditCheck,
+    "template_audit": TemplateAuditCheck,
 }
 
 
@@ -246,7 +248,7 @@ def _run_checks(
         start = time.monotonic()
         try:
             try:
-                if name in ("configuration_audit", "user_permission_audit"):
+                if name in ("configuration_audit", "user_permission_audit", "template_audit"):
                     # These checks build their own snapshot internally today.
                     # Threading the shared one is a future cleanup (see backlog).
                     results.append(instance.run(client, cfg, progress=progress))

@@ -424,6 +424,44 @@ def test_user_permission_audit_check_toggle_default_true(tmp_path):
     assert cfg.checks["user_permission_audit"] is True
 
 
+# --- template_audit block -----------------------------------------------
+
+def test_template_audit_block_defaults_when_missing(tmp_path):
+    """Missing template_audit: block falls back to defaults (enabled=True, empty rules)."""
+    cfg = load_config(write(tmp_path, VALID_YAML))
+    assert cfg.template_audit.enabled is True
+    assert cfg.template_audit.full_scan is False
+    assert cfg.template_audit.sample_size == 500
+    assert cfg.template_audit.rules == {}
+
+
+def test_template_audit_check_toggle_default_true(tmp_path):
+    cfg = load_config(write(tmp_path, VALID_YAML))
+    assert cfg.checks["template_audit"] is True
+
+
+def test_template_audit_check_can_be_disabled(tmp_path):
+    body = VALID_YAML.replace(
+        "  data_quality: true\n",
+        "  data_quality: true\n  template_audit: false\n",
+    )
+    cfg = load_config(write(tmp_path, body))
+    assert cfg.checks["template_audit"] is False
+
+
+def test_template_audit_unknown_key_raises(tmp_path):
+    body = VALID_YAML + textwrap.dedent("""
+        template_audit:
+          enabled: true
+          full_scan: false
+          sample_size: 500
+          rules: {}
+          bogus: 1
+    """)
+    with pytest.raises(ConfigError, match="template_audit"):
+        load_config(write(tmp_path, body))
+
+
 def _yaml_with_rapid7_extras(*, parallel_pages: int | None = None, page_size: int | None = None) -> str:
     """Inject parallel_pages / page_size into the rapid7: block of VALID_YAML."""
     extras = []

@@ -2,14 +2,15 @@
 
 Read-only health check for a Rapid7 InsightVM environment. Calls the InsightVM Security Console API (v3) with a read-only API key and produces a single self-contained HTML report. The optional Cloud Drift Audit additionally calls the Insight Platform Cloud Integrations API (v4).
 
-### What's new in 0.6.5
+### What's new in 0.8.0
 
-- **`overlapping_scan_windows` gains an `assumed_scan_duration_minutes` knob** (default 60) for schedules that carry no explicit duration — parity with `scan_report_schedule_overlap`.
-- **Correctness fixes** — `multiple_global_administrators` now hard-fails a console with zero Global Administrators; `local_account_when_sso_configured` detects external auth sources robustly (by `type` or `external` flag); `cd.scan_engine_cloud_registration` no longer misses fallback matches on FQDN trailing dots / whitespace.
-- **Example `config.yaml` restructured** — inline tunable documentation removed; this README is now the authoritative reference for every config key (see [Configuration reference](#configuration-reference)). Example scan-engine last-contact thresholds raised to 24 h warn / 36 h fail.
+- **New audit category: Template Configuration Audit** — a 4th sibling alongside Configuration / User & Permission / Cloud Drift. InsightVM scan templates have 50+ tunable settings; a misconfigured template can complete scans successfully while producing wrong or degraded results. The new vertical walks every template and flags 17 categories of settings that don't match best practices (vuln-enabled with no checks selected, policy-enabled with no policies, web spider with no credentials, telnet regex that fails to compile, near-duplicate templates, etc.). Default-on; toggle via `checks.template_audit: false`. See [Template Configuration Audit](#template-configuration-audit).
 
 Highlights from earlier releases:
 
+- **0.7.0** — rule-card streamline. Every rule that has a meaningful per-item population renders a standardized `N examined · N passed · N failed` line in the report card. New `RuleResult.card_summary` field; existing `summary` keys unchanged (delta-blob byte-compatible).
+- **0.6.6** — Ghost Assets rule (`op.asset_coverage.ghost_assets` — fail when an asset has neither OS nor hostname); report header Inventory Totals strip (assets / sites / engines / asset groups / scans).
+- **0.6.5** — example `config.yaml` restructured (this README is now the authoritative key reference); per-rule severity & enable in user-permission audit; correctness fixes for zero-GA detection, SSO external-source detection, FQDN trailing-dot match.
 - **0.5.0** — new **Cloud Drift Audit** category (7th check), reconciling the Security Console against the Insight Platform v4 API.
 - **0.3.x** — **User & Permission Audit** category matured; `--progress` / `--no-progress` flags; per-call `audit.agents_timeout_seconds`.
 - **0.2.8** — opt-in concurrent pagination (`rapid7.parallel_pages`) and tunable `rapid7.page_size`; default request timeout raised to 60 s.
@@ -356,6 +357,48 @@ a clear configuration hint and the run continues normally. When enabled
 without the env var, the run exits `3` (startup error) — same exit code
 as the existing `R7_API_KEY` missing case.
 
+## Template Configuration Audit
+
+The Template Configuration Audit is a 4th audit category alongside Configuration / User & Permission / Cloud Drift. InsightVM scan templates have 50+ tunable settings; a misconfigured template can complete a scan successfully while producing wrong or degraded results. This category walks every template via `/api/3/scan_templates` and flags settings that don't match best practices.
+
+Toggled via `checks.template_audit` (default `true`) and configured via the `template_audit:` block in `config.yaml`. Each rule has per-rule severity and (where applicable) tuning knobs.
+
+### Vulnerability-check + policy correctness
+
+| Rule (`rule_id`) | Default | Notes |
+| --- | --- | --- |
+| Vulnerability Scan Enabled With No Checks Selected (`template.vuln_enabled_but_no_checks`) | fail | Template runs but performs zero vulnerability checks (`vulnerabilityEnabled: true` AND empty `checks.types.enabled` AND empty `checks.categories.enabled`). |
+| Potential Checks Disabled (`template.potential_checks_disabled`) | warn | `checks.potential: false` on a vuln-enabled template. Potential checks report findings the platform can't 100% confirm but strongly suspects — disabling them silently hides ~30% of findings. |
+| Vulnerability Check Correlation Disabled (`template.correlate_disabled`) | warn | `checks.correlate: false` on a vuln-enabled template. The OS-correlation step de-duplicates findings across check engines; disabling it produces noisy reports with duplicate vulns. |
+| Unsafe Vulnerability Checks Disabled (`template.unsafe_checks_disabled`) | info | `checks.unsafe: false`. Many orgs intentionally leave this off (unsafe = can crash the target). Info-only so it doesn't escalate check status. |
+| Excessive Per-Check Overrides (`template.disabled_checks_in_individual_overrides`) | warn | `len(checks.individual.disabled)` exceeds the threshold. Per-check overrides are a common dumping ground that drifts. Knob: `max_disabled_individual_checks` (default 20). |
+| Policy Engine Enabled With No Policies (`template.policy_enabled_but_no_policies_selected`) | fail | `policyEnabled: true` AND empty `policy.enabled`. Template runs the policy engine against zero policies. |
+| Policy-Only Template Attached To High-Importance Site (`template.policy_only_template_attached_to_vuln_site`) | info | A pure policy template bound to a `high`/`very_high`-importance site — coverage gap (no vuln assessment for that site via this binding). |
+
+### Discovery / web spider / database / telnet
+
+| Rule (`rule_id`) | Default | Notes |
+| --- | --- | --- |
+| Service Discovery Disabled (`template.service_discovery_disabled`) | warn | Vuln-enabled template with empty `discovery.asset.tcpPorts` AND `udpPorts`. Vulnerability checks can't target services that were never discovered. |
+| Web Spider Enabled With No Targets (`template.web_spider_enabled_no_targets`) | warn | `webEnabled: true` AND no `web.includedPaths` AND no `web.startPaths` AND not `web.discoveryEnabled`. Spider produces zero useful output. |
+| Web Spider Missing Credentials (`template.web_spider_credentials_missing`) | warn | `webEnabled: true` AND the bound site has no HTTP-form or HTTP-headers credential. Authenticated web scans return ~5× the findings of unauthenticated ones. Cross-references `snapshot.sites()` + `site_credentials()`. |
+| Database Targets Without Credentials (`template.database_targets_no_db_credentials`) | warn | Template names a database to scan (`database.oracle`, `postgres`, `db2` non-empty) but the bound site has no matching credential. Cross-references site credentials. |
+| Telnet Regex Fields All Unset (`template.telnet_regex_unset`) | info | Template has a `telnet` block but all four regex fields (`loginRegex`, `passwordPromptRegex`, `failedLoginRegex`, `questionableLoginRegex`) are empty. Cosmetic — telnet auth is rare today — but signals an untuned template. Templates without a telnet block are not flagged. |
+| Telnet Regex Invalid (`template.telnet_regex_invalid`) | warn | One or more telnet regex fields is a non-empty string that fails `re.compile()`. Silently-broken — the rule would never match. |
+
+### Hygiene + inventory
+
+| Rule (`rule_id`) | Default | Notes |
+| --- | --- | --- |
+| Template Inventory Summary (`template.template_inventory_summary`) | info | Always passes; emits no findings. Populates the rule card's summary with template counts (total, vuln-enabled, policy-enabled, discovery-only) so the category has an at-a-glance inventory line. |
+| Extreme Per-Engine Asset Parallelism (`template.parallel_assets_extreme`) | info | `maxParallelAssets` outside `[parallel_assets_min, parallel_assets_max]` (defaults `[2, 50]`, inclusive). Outliers signal performance fights. Templates without the field use the engine default and are not examined. |
+| Enhanced Logging On High-Importance Site (`template.enhanced_logging_in_prod`) | info | `enhancedLogging: true` on a template bound to a `high`/`very_high`-importance site. Useful for triage, not steady state. Cross-references `snapshot.sites()`. |
+| Near-Duplicate Templates (`template.near_duplicate_templates`) | info | Two or more templates with ≥`similarity_threshold` (default 0.95) identical top-level fields (ignoring `id`/`links`/`name`). One finding per duplicate cluster. Skipped when `len(templates) > sample_size` (O(N²)); `audit.full_scan: true` bypasses the cap. Knob: `similarity_threshold` (float, default 0.95). |
+
+**Two-shape compatibility.** Older on-prem consoles expose `vulnerabilityEnabled` as `template["vulnerabilityChecks"]["enabled"]` instead of the top-level field. All template-audit rules detect vuln-enabled state via `EnvSnapshot.template_vuln_enabled(t)` which handles both shapes. On older consoles, nested sub-fields like `checks.correlate` live under `vulnerabilityChecks.correlate` and are NOT read by these rules — those templates are still correctly examined for vuln-enabled state but their sub-field misconfigurations are not currently detected. Modern Rapid7-hosted consoles are unaffected.
+
+Per-rule severity, enable/disable, and knobs live in the `template_audit:` block of `config.yaml`. See `docs/examples/config.yaml` for the full block.
+
 ## Scheduling
 
 **Windows Task Scheduler (PowerShell):**
@@ -423,17 +466,17 @@ Register-ScheduledTask -TaskName "Rapid7 HealthCheck" -Action $action -Trigger $
 
 ### `checks:` — vertical toggles
 
-Seven booleans, each `true`/`false`. Setting one `false` makes that vertical appear as `SKIPPED` in the report: `scan_engines`, `scan_activity`, `asset_coverage`, `data_quality`, `configuration_audit`, `user_permission_audit`, `cloud_drift_audit`.
+Eight booleans, each `true`/`false`. Setting one `false` makes that vertical appear as `SKIPPED` in the report: `scan_engines`, `scan_activity`, `asset_coverage`, `data_quality`, `configuration_audit`, `user_permission_audit`, `cloud_drift_audit`, `template_audit`.
 
-### `audit:` / `user_audit:` — audit categories
+### `audit:` / `user_audit:` / `template_audit:` — audit categories
 
 | Key | Type / default | Purpose |
 |-----|----------------|---------|
 | `enabled` | bool, required | Master toggle for the category. |
 | `full_scan` | bool, required | `true` enumerates every entity; `false` samples up to `sample_size` per expensive rule. |
-| `sample_size` | int, required (example `500`) | Per-rule sampling cap when `full_scan` is `false`. Applies to Configuration Audit and User & Permission Audit only — never to operational checks or Cloud Drift. |
+| `sample_size` | int, required (example `500`) | Per-rule sampling cap when `full_scan` is `false`. Applies to Configuration Audit, User & Permission Audit, and Template Configuration Audit (the latter only for `near_duplicate_templates` O(N²) cap) — never to operational checks or Cloud Drift. |
 | `agents_timeout_seconds` | int, default `180` (`audit:` only) | Dedicated per-request timeout for the slow `/api/3/agents` endpoint. |
-| `rules:` | map | Per-rule `enabled`, `severity`, and rule-specific knobs — see the [Configuration Audit](#configuration-audit) and [User & Permission Audit](#user--permission-audit) rule tables. |
+| `rules:` | map | Per-rule `enabled`, `severity`, and rule-specific knobs — see the [Configuration Audit](#configuration-audit), [User & Permission Audit](#user--permission-audit), and [Template Configuration Audit](#template-configuration-audit) rule tables. |
 
 ### `cloud_integration:` — Insight Platform connection (v4 API)
 

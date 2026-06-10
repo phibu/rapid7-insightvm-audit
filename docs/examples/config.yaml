@@ -67,6 +67,7 @@ checks:
   configuration_audit: true     # audit category: configuration best practices
   user_permission_audit: true   # audit category: console users and authentication
   cloud_drift_audit: true       # audit category: console vs. Insight Platform drift
+  template_audit: true          # audit category: scan template configuration
 
 # -----------------------------------------------------------------------------
 # Configuration Audit
@@ -155,6 +156,70 @@ user_audit:
     superuser_flag_outside_global_admin:
       enabled: true             # enable/disable this rule
       severity: fail            # finding severity: info | warn | fail
+
+# -----------------------------------------------------------------------------
+# Template Configuration Audit
+# -----------------------------------------------------------------------------
+template_audit:
+  enabled: true                 # master toggle for the Template Configuration Audit
+  full_scan: false              # true enumerates every template; false samples up to sample_size
+  sample_size: 500              # per-rule sampling cap when full_scan is false
+  rules:
+    template.vuln_enabled_but_no_checks:
+      enabled: true             # enable/disable this rule
+      severity: fail            # finding severity: info | warn | fail
+    template.potential_checks_disabled:
+      enabled: true             # enable/disable this rule
+      severity: warn            # finding severity: info | warn | fail
+    template.correlate_disabled:
+      enabled: true             # enable/disable this rule
+      severity: warn            # finding severity: info | warn | fail
+    template.unsafe_checks_disabled:
+      enabled: true             # enable/disable this rule
+      severity: info            # finding severity: info | warn | fail (awareness-only)
+    template.disabled_checks_in_individual_overrides:
+      enabled: true             # enable/disable this rule
+      severity: warn            # finding severity: info | warn | fail
+      max_disabled_individual_checks: 20  # flag templates exceeding this individually-disabled-check count
+    template.policy_enabled_but_no_policies_selected:
+      enabled: true             # enable/disable this rule
+      severity: fail            # finding severity: info | warn | fail
+    template.policy_only_template_attached_to_vuln_site:
+      enabled: true             # enable/disable this rule
+      severity: info            # finding severity: info | warn | fail
+    template.service_discovery_disabled:
+      enabled: true             # enable/disable this rule
+      severity: warn            # finding severity: info | warn | fail
+    template.web_spider_enabled_no_targets:
+      enabled: true             # enable/disable this rule
+      severity: warn            # finding severity: info | warn | fail
+    template.web_spider_credentials_missing:
+      enabled: true             # enable/disable this rule
+      severity: warn            # finding severity: info | warn | fail
+    template.database_targets_no_db_credentials:
+      enabled: true             # enable/disable this rule
+      severity: warn            # finding severity: info | warn | fail
+    template.telnet_regex_unset:
+      enabled: true             # enable/disable this rule
+      severity: info            # finding severity: info | warn | fail
+    template.telnet_regex_invalid:
+      enabled: true             # enable/disable this rule
+      severity: warn            # finding severity: info | warn | fail
+    template.template_inventory_summary:
+      enabled: true             # enable/disable this rule
+      severity: info            # finding severity: info | warn | fail (informational; emits no findings)
+    template.parallel_assets_extreme:
+      enabled: true             # enable/disable this rule
+      severity: info            # finding severity: info | warn | fail
+      parallel_assets_min: 2    # flag templates with maxParallelAssets below this
+      parallel_assets_max: 50   # flag templates with maxParallelAssets above this
+    template.enhanced_logging_in_prod:
+      enabled: true             # enable/disable this rule
+      severity: info            # finding severity: info | warn | fail
+    template.near_duplicate_templates:
+      enabled: true             # enable/disable this rule
+      severity: info            # finding severity: info | warn | fail
+      similarity_threshold: 0.95  # fraction of fields that must match to cluster (0.0-1.0); rule is O(N²) and skipped when template count > sample_size
 
 # -----------------------------------------------------------------------------
 # Cloud Integration — Insight Platform (v4 API), required for Cloud Drift Audit
