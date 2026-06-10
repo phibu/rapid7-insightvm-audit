@@ -55,8 +55,12 @@ class NearDuplicateTemplatesRule:
 
         # O(N²) — skip when over sample_size unless full_scan is on.
         if not full_scan and total > sample_size:
+            # Skip-path is purely informational: hardcode severity="info"
+            # so a user who overrides the rule's severity to warn/fail
+            # doesn't accidentally see this skip notice in the warn-
+            # filtered report view (a skip is not a warning).
             skip_finding = Finding(
-                severity=severity,
+                severity="info",
                 message=(
                     f"Skipped: {total} templates exceeds sample_size "
                     f"threshold of {sample_size}. Rerun with "
