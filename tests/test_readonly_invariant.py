@@ -80,21 +80,24 @@ def test_no_direct_requests_write_calls_outside_client_module() -> None:
 
 
 def test_no_write_verb_methods_on_client_class() -> None:
-    """Rapid7Client must not grow methods named put/patch/delete.
+    """Neither HttpTransport nor Rapid7Client may grow put/patch/delete.
 
-    `post` is permitted (it's the existing legitimate method and is itself
-    guarded by the path allowlist inside _request).
+    The HTTP verbs live on HttpTransport now (Rapid7Client is a thin
+    adapter), so the guard checks both classes. `post` is permitted (it's
+    the existing legitimate method and is itself guarded by the path
+    allowlist inside _request).
     """
     tree = ast.parse(CLIENT_PATH.read_text(encoding="utf-8"))
     forbidden = {"put", "patch", "delete"}
+    guarded_classes = {"HttpTransport", "Rapid7Client"}
     offenders: list[str] = []
     for node in ast.walk(tree):
-        if isinstance(node, ast.ClassDef) and node.name == "Rapid7Client":
+        if isinstance(node, ast.ClassDef) and node.name in guarded_classes:
             for item in node.body:
                 if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)) and item.name in forbidden:
-                    offenders.append(f"client.py:{item.lineno}: def {item.name}")
+                    offenders.append(f"client.py:{item.lineno}: {node.name}.{item.name}")
     assert not offenders, (
-        "Rapid7Client must not expose write-verb methods:\n" + "\n".join(offenders)
+        "Client transport must not expose write-verb methods:\n" + "\n".join(offenders)
     )
 
 

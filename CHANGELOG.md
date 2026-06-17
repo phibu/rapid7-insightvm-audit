@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **v3 `Rapid7Client` now rejects `max_retries < 0` at construction** (raising `ValueError`), matching `CloudClient`. Previously the negative value was silently degenerate (the retry loop never executed). No caller passes a negative value.
+- **v4 auth-failure message** no longer carries the `"cloud "` prefix; it is now uniform with v3 — `"auth failed (<code>); check R7_CLOUD_API_KEY and base_url"`. Exception/log text only.
+
+### Internal
+
+- **Collapsed the v3 and v4 HTTP clients onto one deep `HttpTransport`.** `client.py` and `cloud_client.py` previously duplicated the entire transport — retry loop, exponential backoff, `Retry-After` parsing, the read-only verb/path allowlist *enforcement*, JSON parsing, and the page-0-probe-then-batch pagination machinery. That logic now lives once in `HttpTransport`; the only per-API differences (response-envelope keys, POST allowlist, failure exception class, auth hint) are injected as a frozen `ApiDialect`. `Rapid7Client` (`V3_DIALECT`) and `CloudClient` (`V4_DIALECT`) are now thin adapters — same public class names, constructor signatures, and observable behavior.
+- **Read-only invariant preserved and concentrated.** The verb/path check runs once in `HttpTransport._request`. `_ALLOWED_VERBS` has a single definition in `client.py` (re-exported by `cloud_client.py`); both `_ALLOWED_POST_PATHS` frozensets keep their unchanged contents and stay named module-level constants in `client.py` / `cloud_client.py`, so the pre-commit read-only grep and the static read-only tests still find them. The `test_no_write_verb_methods_on_client_class` AST guard now covers `HttpTransport` as well as `Rapid7Client`.
+- **New `tests/test_http_transport.py`** drives `HttpTransport` through a fake `ApiDialect` (distinctive envelope keys, allowlist, and error class), proving the per-API variation crosses the seam rather than being hardcoded.
+
 ## [0.8.0] - 2026-05-26
 
 ### Added

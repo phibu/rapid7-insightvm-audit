@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
 from typing import Any, Iterator
 from urllib.parse import urljoin
 
@@ -48,12 +49,16 @@ class ReadOnlyViolationError(Rapid7ClientError):
 
 _RETRY_STATUS = {429, 502, 503, 504}
 
-# Read-only invariant: only these HTTP verbs are permitted, ever.
+# Read-only invariant: only these HTTP verbs are permitted, ever. This is
+# the single definition shared by every transport (v3 and v4); the v4
+# client re-exports it. Never add PUT/PATCH/DELETE.
 _ALLOWED_VERBS = frozenset({"GET", "POST"})
 
 # POST is reserved for Rapid7 search endpoints whose filter criteria must
 # travel in the request body. The set is intentionally tiny: extending it
-# requires a deliberate code edit and review.
+# requires a deliberate code edit and review. This is the v3 allowlist; it
+# feeds V3_DIALECT below and stays a named constant so the pre-commit
+# read-only grep and the static read-only tests can find it.
 _ALLOWED_POST_PATHS = frozenset({"/api/3/assets/search"})
 
 _SENSITIVE_PARAM_SUBSTRINGS = ("key", "token", "secret", "password", "auth")
@@ -86,13 +91,57 @@ def _summarize_params(params: dict | None) -> str:
     return "?" + body
 
 
-class Rapid7Client:
+@dataclass(frozen=True)
+class ApiDialect:
+    """The per-API differences injected into an ``HttpTransport``.
+
+    The transport owns everything identical across the Console API (v3)
+    and the Cloud Integrations API (v4). A dialect carries the only things
+    that differ — pure data, no behaviour:
+
+    - ``resource_key`` / ``page_meta_key``: the response-envelope keys.
+      v3 wraps results in ``{resources, page}``; v4 in ``{data, metadata}``.
+    - ``allowed_post_paths``: the read-only POST allowlist for this API.
+    - ``error_cls``: the exception class raised for non-auth failures
+      (``Rapid7ClientError`` for v3, ``CloudClientError`` for v4).
+    - ``auth_hint``: the tail of the 401/403 message naming the relevant
+      credential env var.
+
+    It is the adapter at the transport's seam — two dialects (v3 and v4)
+    justify the seam; a fake dialect drives the transport's own tests.
+    """
+
+    resource_key: str
+    page_meta_key: str
+    allowed_post_paths: frozenset[str]
+    error_cls: type[Rapid7ClientError]
+    auth_hint: str
+
+
+class HttpTransport:
+    """Deep, read-only HTTP transport for the Rapid7 APIs.
+
+    Owns auth headers, retries, exponential backoff, ``Retry-After``
+    parsing, response validation, the read-only verb/path allowlist
+    *enforcement*, and the page-0-probe-then-batch pagination machinery.
+    The per-API differences arrive as an injected :class:`ApiDialect`, so
+    one transport serves both v3 and v4; ``Rapid7Client`` and
+    ``CloudClient`` are thin adapters that wire the right dialect and auth.
+
+    The read-only verb/path check in ``_request`` is stateless and runs
+    per-call before any network I/O, so concurrency does not weaken the
+    invariant. ``requests.Session`` is documented thread-safe for read
+    operations, so one session is shared across worker threads in
+    ``_paginate`` without explicit locks.
+    """
+
     def __init__(
         self,
         *,
         base_url: str,
-        api_key: str | None = None,
-        basic_auth: tuple[str, str] | None = None,
+        headers: dict[str, str],
+        auth: tuple[str, str] | None = None,
+        dialect: ApiDialect,
         verify_tls: bool = True,
         timeout_seconds: int = 60,
         max_retries: int = 3,
@@ -100,10 +149,6 @@ class Rapid7Client:
         default_page_size: int = 250,
         session: requests.Session | None = None,
     ) -> None:
-        if (api_key is None) == (basic_auth is None):
-            raise ValueError(
-                "Rapid7Client requires exactly one of api_key or basic_auth"
-            )
         if not (1 <= parallel_pages <= 16):
             raise ValueError(
                 f"parallel_pages must be in range [1, 16]; got {parallel_pages}"
@@ -112,20 +157,20 @@ class Rapid7Client:
             raise ValueError(
                 f"default_page_size must be in range [1, 500]; got {default_page_size}"
             )
+        if max_retries < 0:
+            raise ValueError(
+                f"max_retries must be non-negative; got {max_retries}"
+            )
         self._base_url = base_url.rstrip("/")
-        self._basic_auth = basic_auth
+        self._headers = dict(headers)
+        self._auth = auth
+        self._dialect = dialect
         self._verify = verify_tls
         self._timeout = timeout_seconds
         self._max_retries = max_retries
         self._parallel_pages = parallel_pages
         self._default_page_size = default_page_size
         self._session = session or requests.Session()
-        self._headers: dict[str, str] = {
-            "Accept": "application/json",
-            "User-Agent": f"rapid7-healthcheck/{__version__}",
-        }
-        if api_key is not None:
-            self._headers["X-Api-Key"] = api_key
 
     @property
     def parallel_pages(self) -> int:
@@ -138,10 +183,6 @@ class Rapid7Client:
         a worker count. Always in [1, 16] — validated in `__init__`.
         """
         return self._parallel_pages
-
-    def connect(self) -> None:
-        """Validate base URL and credentials by hitting /api/3."""
-        self.get("/api/3")
 
     # --- Public HTTP helpers ---
 
@@ -178,10 +219,10 @@ class Rapid7Client:
     ) -> dict:
         """Issue a single POST to a search endpoint and return the parsed response.
 
-        This does not iterate pages — useful when the
-        caller only needs `page.totalResources` and the first page of resources
-        (e.g. for count-with-examples summaries). The path must be in the
-        read-only POST allowlist (`_ALLOWED_POST_PATHS`).
+        This does not iterate pages — useful when the caller only needs the
+        total-resources count and the first page of resources (e.g. for
+        count-with-examples summaries). The path must be in the dialect's
+        read-only POST allowlist.
         """
         return self._request("POST", path, params=params, json_body=json_body, timeout=timeout)
 
@@ -198,16 +239,19 @@ class Rapid7Client:
         json_body: dict | None = None,
         timeout: int | None = None,
     ) -> Iterator[dict]:
+        resource_key = self._dialect.resource_key
+        page_meta_key = self._dialect.page_meta_key
+
         # Phase 1: probe page 0 sequentially. We need totalPages before
         # we can dispatch any parallel work.
         page0_params = dict(params or {})
         page0_params["page"] = 0
         page0_params["size"] = page_size
         body0 = self._request(method, path, params=page0_params, json_body=json_body, timeout=timeout)
-        for resource in body0.get("resources", []):
+        for resource in body0.get(resource_key, []):
             yield resource
 
-        meta = body0.get("page", {})
+        meta = body0.get(page_meta_key, {})
         total_pages = int(meta.get("totalPages", 0))
         if total_pages <= 1:
             return
@@ -220,7 +264,7 @@ class Rapid7Client:
                 page_params["page"] = page_num
                 page_params["size"] = page_size
                 body = self._request(method, path, params=page_params, json_body=json_body, timeout=timeout)
-                for resource in body.get("resources", []):
+                for resource in body.get(resource_key, []):
                     yield resource
             return
 
@@ -260,7 +304,7 @@ class Rapid7Client:
                         results[fut_to_page[fut]] = fut.result()
 
                     for page_num in batch:
-                        for resource in results[page_num].get("resources", []):
+                        for resource in results[page_num].get(resource_key, []):
                             yield resource
             except BaseException:
                 executor.shutdown(wait=False, cancel_futures=True)
@@ -281,12 +325,13 @@ class Rapid7Client:
             raise ReadOnlyViolationError(
                 f"refusing non-read verb {method!r}; allowed: {sorted(_ALLOWED_VERBS)}"
             )
-        if method == "POST" and path not in _ALLOWED_POST_PATHS:
+        if method == "POST" and path not in self._dialect.allowed_post_paths:
             raise ReadOnlyViolationError(
                 f"POST not allowed on {path!r}; "
-                f"allowlist: {sorted(_ALLOWED_POST_PATHS)}"
+                f"allowlist: {sorted(self._dialect.allowed_post_paths)}"
             )
 
+        error_cls = self._dialect.error_cls
         url = self._base_url + path if path.startswith("/") else urljoin(self._base_url + "/", path)
         attempt = 0
         last_error: Exception | None = None
@@ -300,7 +345,7 @@ class Rapid7Client:
                     params=params,
                     json=json_body,
                     headers=self._headers,
-                    auth=self._basic_auth,
+                    auth=self._auth,
                     timeout=timeout if timeout is not None else self._timeout,
                     verify=self._verify,
                 )
@@ -310,7 +355,7 @@ class Rapid7Client:
                 last_error = e
                 logger.debug("✗ %s %s network error: %s", method, path, e)
                 if attempt >= self._max_retries:
-                    raise Rapid7ClientError(
+                    raise error_cls(
                         f"network error after {attempt + 1} attempt(s) "
                         f"on {method} {path}: {e}"
                     ) from e
@@ -323,12 +368,12 @@ class Rapid7Client:
                     "✗ %s %s %d: auth failed", method, path, resp.status_code,
                 )
                 raise Rapid7AuthError(
-                    f"auth failed ({resp.status_code}); check R7_API_KEY and base_url",
+                    f"auth failed ({resp.status_code}); check {self._dialect.auth_hint}",
                     status_code=resp.status_code,
                 )
             if resp.status_code in _RETRY_STATUS:
                 if attempt >= self._max_retries:
-                    raise Rapid7ClientError(
+                    raise error_cls(
                         f"{resp.status_code} after {attempt + 1} attempts: {resp.text[:1500]}",
                         status_code=resp.status_code,
                     )
@@ -345,17 +390,17 @@ class Rapid7Client:
                     "✗ %s %s %d: %s", method, path, resp.status_code,
                     resp.text[:200] if resp.text else "<empty body>",
                 )
-                raise Rapid7ClientError(
+                raise error_cls(
                     f"HTTP {resp.status_code} from {method} {path}: {resp.text[:1500]}",
                     status_code=resp.status_code,
                 )
             try:
                 return resp.json()
             except ValueError as e:
-                raise Rapid7ClientError(f"non-JSON response from {path}: {e}") from e
+                raise error_cls(f"non-JSON response from {path}: {e}") from e
 
         # Unreachable, but keep the type checker happy.
-        raise Rapid7ClientError(f"exhausted retries; last error: {last_error}")
+        raise error_cls(f"exhausted retries; last error: {last_error}")
 
     @staticmethod
     def _retry_delay(resp: requests.Response, attempt: int) -> float:
@@ -366,3 +411,64 @@ class Rapid7Client:
             except ValueError:
                 pass
         return float(2 ** attempt)
+
+
+# The v3 Console API dialect: results in {resources, page}, X-Api-Key or
+# HTTP Basic auth, errors as Rapid7ClientError.
+V3_DIALECT = ApiDialect(
+    resource_key="resources",
+    page_meta_key="page",
+    allowed_post_paths=_ALLOWED_POST_PATHS,
+    error_cls=Rapid7ClientError,
+    auth_hint="R7_API_KEY and base_url",
+)
+
+
+class Rapid7Client(HttpTransport):
+    """Adapter for the v3 Security Console API (``/api/3/...``).
+
+    Wires :data:`V3_DIALECT` onto :class:`HttpTransport` and accepts the
+    two auth modes the Console API supports — ``X-Api-Key`` header or HTTP
+    Basic. Adds no transport behaviour; everything but construction and the
+    v3-only ``connect()`` probe is inherited.
+    """
+
+    def __init__(
+        self,
+        *,
+        base_url: str,
+        api_key: str | None = None,
+        basic_auth: tuple[str, str] | None = None,
+        verify_tls: bool = True,
+        timeout_seconds: int = 60,
+        max_retries: int = 3,
+        parallel_pages: int = 1,
+        default_page_size: int = 250,
+        session: requests.Session | None = None,
+    ) -> None:
+        if (api_key is None) == (basic_auth is None):
+            raise ValueError(
+                "Rapid7Client requires exactly one of api_key or basic_auth"
+            )
+        headers: dict[str, str] = {
+            "Accept": "application/json",
+            "User-Agent": f"rapid7-healthcheck/{__version__}",
+        }
+        if api_key is not None:
+            headers["X-Api-Key"] = api_key
+        super().__init__(
+            base_url=base_url,
+            headers=headers,
+            auth=basic_auth,
+            dialect=V3_DIALECT,
+            verify_tls=verify_tls,
+            timeout_seconds=timeout_seconds,
+            max_retries=max_retries,
+            parallel_pages=parallel_pages,
+            default_page_size=default_page_size,
+            session=session,
+        )
+
+    def connect(self) -> None:
+        """Validate base URL and credentials by hitting /api/3."""
+        self.get("/api/3")
