@@ -136,7 +136,7 @@ The template still has a defensive fallback branch for `CheckResult`s without `r
 
 This shape lets a new operational check be added with one file under `checks/` plus a `_REGISTRY` entry, and a new audit rule with one file under `audit/rules/` plus a `register()` decorator call.
 
-There is a second audit category sibling to the configuration audit: **User & Permission Audit**. Its rules live at `audit/user_permission/rules/` and self-register via `@register_user_rule` (a separate registry from `@register`). Its orchestrator (`UserPermissionAuditCheck`) reads from `config.user_audit` and `checks.user_permission_audit`. Adding a new user-audit rule mirrors the configuration-audit pattern: one file under `audit/user_permission/rules/`, decorated with `@register_user_rule`, and an entry in the new `_VALID_USER_AUDIT_RULE_IDS` set in `config.py` plus a side-effect import in `__main__.py`.
+There is a second audit category sibling to the configuration audit: **User & Permission Audit**. Its rules live at `audit/user_permission/rules/` and self-register via `@register_user_rule` (a separate registry from `@register`). Its orchestrator (`UserPermissionAuditCheck`) reads from `config.user_audit` and `checks.user_permission_audit`. Adding a new user-audit rule mirrors the configuration-audit pattern: one file under `audit/user_permission/rules/`, decorated with `@register_user_rule`, plus a side-effect import in `__main__.py`. Config validation sources its valid rule ids from the rule registries (`config._registry_rule_ids`), so a registered rule is accepted automatically — there is no per-category valid-id set to hand-edit.
 
 ### Audit subsystem internals
 

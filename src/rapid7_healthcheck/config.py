@@ -81,59 +81,85 @@ class Thresholds:
     data_quality: DataQualityThresholds
 
 
-_VALID_RULE_IDS = {
-    "agent_unauth_collision",
-    "site_vuln_template_no_creds",
-    "overlapping_scan_windows",
-    "single_engine_overload",
-    "discovery_template_on_prod_site",
-    "policy_and_vuln_in_same_template",
-    "local_engine_production_scope",
-    "dynamic_groups_and_nested_tags",
-    "scan_report_schedule_overlap",
-    "engine_version_drift",
-    "insight_agent_deployed",
-}
 _VALID_SEVERITIES = {"info", "warn", "fail"}
 
-_VALID_USER_AUDIT_RULE_IDS = {
-    "privileged_user_without_mfa",
-    "local_account_when_sso_configured",
-    "multiple_global_administrators",
-    "locked_user_account",
-    "disabled_user_with_role_bindings",
-    "user_with_role_but_no_access",
-    "superuser_flag_outside_global_admin",
-}
 
-_VALID_CLOUD_DRIFT_RULE_IDS = {
-    "cd.console_asset_count_drift",
-    "cd.scan_engine_cloud_registration",
-    "cd.stale_assessment_cohort",
-}
+def _registry_rule_ids() -> tuple[frozenset[str], frozenset[str], frozenset[str], frozenset[str]]:
+    """Return the valid rule ids for the four audit categories, sourced from
+    the live rule registries instead of hand-kept frozensets.
 
-# Keep in sync with @register_template_rule calls under
-# `src/rapid7_healthcheck/audit/template/rules/`. F1 lands empty; F2-F4 add
-# the 14 rules and each new rule_id must be appended here.
-_VALID_TEMPLATE_AUDIT_RULE_IDS: set[str] = {
-    "template.vuln_enabled_but_no_checks",
-    "template.potential_checks_disabled",
-    "template.correlate_disabled",
-    "template.unsafe_checks_disabled",
-    "template.disabled_checks_in_individual_overrides",
-    "template.policy_enabled_but_no_policies_selected",
-    "template.policy_only_template_attached_to_vuln_site",
-    "template.service_discovery_disabled",
-    "template.web_spider_enabled_no_targets",
-    "template.web_spider_credentials_missing",
-    "template.database_targets_no_db_credentials",
-    "template.telnet_regex_unset",
-    "template.telnet_regex_invalid",
-    "template.template_inventory_summary",
-    "template.parallel_assets_extreme",
-    "template.enhanced_logging_in_prod",
-    "template.near_duplicate_templates",
-}
+    Order: (configuration audit, user & permission audit, cloud drift,
+    template audit).
+
+    The import is lazy and deliberately so: ``config.py`` is a leaf module,
+    and every ``audit/**/__init__.py`` imports ``config.AppConfig`` — importing
+    the audit packages at this module's top level would be a circular import.
+    By the time this runs (inside ``load_config`` → the builders), the cycle is
+    resolved and the side-effect rule imports in each package's ``__init__``
+    have populated its registry. Importing here also *guarantees* population
+    rather than depending on the caller having imported the audit tree first,
+    so the "unknown rule id" rejection stays correct regardless of import order
+    (covered by ``test_registry_rule_ids_populates_when_config_imported_first``).
+
+    A new rule registered via ``@register`` / ``@register_user_rule`` /
+    ``@register_cloud_rule`` / ``@register_template_rule`` is accepted by config
+    automatically — there is no longer a third place to register a rule id.
+    """
+    from rapid7_healthcheck.audit import _RULE_REGISTRY
+    from rapid7_healthcheck.audit.cloud_drift import _CLOUD_RULE_REGISTRY
+    from rapid7_healthcheck.audit.template import _TEMPLATE_RULE_REGISTRY
+    from rapid7_healthcheck.audit.user_permission import _USER_RULE_REGISTRY
+
+    return (
+        frozenset(_RULE_REGISTRY),
+        frozenset(_USER_RULE_REGISTRY),
+        frozenset(_CLOUD_RULE_REGISTRY),
+        frozenset(_TEMPLATE_RULE_REGISTRY),
+    )
+
+
+def _validate_rules_block(
+    raw_rules: Any,
+    *,
+    valid_rule_ids: set[str] | frozenset[str],
+    path: str,
+) -> dict[str, "RuleConfig"]:
+    """Validate a ``rules:`` mapping and build its ``RuleConfig`` entries.
+
+    The single rule-validation loop shared by every audit builder
+    (``_build_audit_config``, ``_build_user_audit_config``,
+    ``_build_cloud_drift_config``, ``_build_template_audit_config``). Each rule
+    body must be a mapping with a bool ``enabled``, a ``severity`` in
+    ``_VALID_SEVERITIES``, and any remaining keys treated as opaque knobs.
+
+    ``path`` is the dotted config location (e.g. ``"audit.rules"``) used to
+    prefix every error so each builder keeps its existing, test-pinned wording:
+
+      - "{path}: unknown rule id '{rule_id}'"
+      - "{path}.{rule_id}: expected mapping"
+      - "{path}.{rule_id}.enabled: expected bool"
+      - "{path}.{rule_id}.severity: must be one of [...]"
+
+    Callers are responsible for the surrounding ``data.get("rules") or {}`` and
+    the "expected mapping" check on the rules container itself; this helper
+    assumes ``raw_rules`` is already a dict (it is, at every call site).
+    """
+    rules: dict[str, RuleConfig] = {}
+    for rule_id, rule_body in raw_rules.items():
+        if rule_id not in valid_rule_ids:
+            raise ConfigError(f"{path}: unknown rule id '{rule_id}'")
+        if not isinstance(rule_body, dict):
+            raise ConfigError(f"{path}.{rule_id}: expected mapping")
+        if not isinstance(rule_body.get("enabled"), bool):
+            raise ConfigError(f"{path}.{rule_id}.enabled: expected bool")
+        sev = rule_body.get("severity")
+        if sev not in _VALID_SEVERITIES:
+            raise ConfigError(
+                f"{path}.{rule_id}.severity: must be one of {sorted(_VALID_SEVERITIES)}"
+            )
+        knobs = {k: v for k, v in rule_body.items() if k not in ("enabled", "severity")}
+        rules[rule_id] = RuleConfig(enabled=rule_body["enabled"], severity=sev, knobs=knobs)
+    return rules
 
 
 @dataclass(frozen=True)
@@ -510,21 +536,8 @@ def _build_audit_config(data: dict | None) -> AuditConfig:
     raw_rules = data.get("rules") or {}
     if not isinstance(raw_rules, dict):
         raise ConfigError("audit.rules: expected mapping")
-    rules: dict[str, RuleConfig] = {}
-    for rule_id, rule_body in raw_rules.items():
-        if rule_id not in _VALID_RULE_IDS:
-            raise ConfigError(f"audit.rules: unknown rule id '{rule_id}'")
-        if not isinstance(rule_body, dict):
-            raise ConfigError(f"audit.rules.{rule_id}: expected mapping")
-        if not isinstance(rule_body.get("enabled"), bool):
-            raise ConfigError(f"audit.rules.{rule_id}.enabled: expected bool")
-        sev = rule_body.get("severity")
-        if sev not in _VALID_SEVERITIES:
-            raise ConfigError(
-                f"audit.rules.{rule_id}.severity: must be one of {sorted(_VALID_SEVERITIES)}"
-            )
-        knobs = {k: v for k, v in rule_body.items() if k not in ("enabled", "severity")}
-        rules[rule_id] = RuleConfig(enabled=rule_body["enabled"], severity=sev, knobs=knobs)
+    valid_audit_ids, _, _, _ = _registry_rule_ids()
+    rules = _validate_rules_block(raw_rules, valid_rule_ids=valid_audit_ids, path="audit.rules")
 
     return AuditConfig(
         enabled=data["enabled"],
@@ -537,7 +550,8 @@ def _build_audit_config(data: dict | None) -> AuditConfig:
 
 def _build_user_audit_config(data: dict | None) -> UserAuditConfig:
     """Validator for the `user_audit:` block. Mirrors `_build_audit_config`
-    but uses `_VALID_USER_AUDIT_RULE_IDS` and the `UserAuditConfig` shape."""
+    but validates against the user-rule registry and builds the
+    `UserAuditConfig` shape."""
     if data is None:
         return UserAuditConfig(enabled=False, full_scan=False, sample_size=500, rules={})
     _validate_dict_schema(
@@ -560,21 +574,8 @@ def _build_user_audit_config(data: dict | None) -> UserAuditConfig:
     raw_rules = data.get("rules") or {}
     if not isinstance(raw_rules, dict):
         raise ConfigError("user_audit.rules: expected mapping")
-    rules: dict[str, RuleConfig] = {}
-    for rule_id, rule_body in raw_rules.items():
-        if rule_id not in _VALID_USER_AUDIT_RULE_IDS:
-            raise ConfigError(f"user_audit.rules: unknown rule id '{rule_id}'")
-        if not isinstance(rule_body, dict):
-            raise ConfigError(f"user_audit.rules.{rule_id}: expected mapping")
-        if not isinstance(rule_body.get("enabled"), bool):
-            raise ConfigError(f"user_audit.rules.{rule_id}.enabled: expected bool")
-        sev = rule_body.get("severity")
-        if sev not in _VALID_SEVERITIES:
-            raise ConfigError(
-                f"user_audit.rules.{rule_id}.severity: must be one of {sorted(_VALID_SEVERITIES)}"
-            )
-        knobs = {k: v for k, v in rule_body.items() if k not in ("enabled", "severity")}
-        rules[rule_id] = RuleConfig(enabled=rule_body["enabled"], severity=sev, knobs=knobs)
+    _, valid_user_ids, _, _ = _registry_rule_ids()
+    rules = _validate_rules_block(raw_rules, valid_rule_ids=valid_user_ids, path="user_audit.rules")
 
     return UserAuditConfig(
         enabled=data["enabled"],
@@ -646,8 +647,8 @@ def _build_cloud_integration_config(data: dict | None) -> CloudIntegrationConfig
 def _build_cloud_drift_config(data: dict | None) -> CloudDriftConfig:
     """Validator for the optional `cloud_drift:` block.
 
-    Mirrors `_build_user_audit_config` rule-validation logic against
-    `_VALID_CLOUD_DRIFT_RULE_IDS`. Has no top-level `enabled`/`full_scan`/
+    Mirrors `_build_user_audit_config` rule-validation logic against the
+    cloud-drift rule registry. Has no top-level `enabled`/`full_scan`/
     `sample_size` keys — sampling does not apply to cloud-drift rules
     (they read aggregate counts) and the category-level enable lives in
     `checks.cloud_drift_audit` like every other check.
@@ -663,28 +664,15 @@ def _build_cloud_drift_config(data: dict | None) -> CloudDriftConfig:
     raw_rules = data.get("rules") or {}
     if not isinstance(raw_rules, dict):
         raise ConfigError("cloud_drift.rules: expected mapping")
-    rules: dict[str, RuleConfig] = {}
-    for rule_id, rule_body in raw_rules.items():
-        if rule_id not in _VALID_CLOUD_DRIFT_RULE_IDS:
-            raise ConfigError(f"cloud_drift.rules: unknown rule id '{rule_id}'")
-        if not isinstance(rule_body, dict):
-            raise ConfigError(f"cloud_drift.rules.{rule_id}: expected mapping")
-        if not isinstance(rule_body.get("enabled"), bool):
-            raise ConfigError(f"cloud_drift.rules.{rule_id}.enabled: expected bool")
-        sev = rule_body.get("severity")
-        if sev not in _VALID_SEVERITIES:
-            raise ConfigError(
-                f"cloud_drift.rules.{rule_id}.severity: must be one of {sorted(_VALID_SEVERITIES)}"
-            )
-        knobs = {k: v for k, v in rule_body.items() if k not in ("enabled", "severity")}
-        rules[rule_id] = RuleConfig(enabled=rule_body["enabled"], severity=sev, knobs=knobs)
+    _, _, valid_cloud_ids, _ = _registry_rule_ids()
+    rules = _validate_rules_block(raw_rules, valid_rule_ids=valid_cloud_ids, path="cloud_drift.rules")
     return CloudDriftConfig(rules=rules)
 
 
 def _build_template_audit_config(data: dict | None) -> TemplateAuditConfig:
     """Validator for the `template_audit:` block. Mirrors
-    `_build_user_audit_config` but uses `_VALID_TEMPLATE_AUDIT_RULE_IDS`
-    and the `TemplateAuditConfig` shape."""
+    `_build_user_audit_config` but validates against the template-rule
+    registry and builds the `TemplateAuditConfig` shape."""
     if data is None:
         return _default_template_audit()
     _validate_dict_schema(
@@ -707,21 +695,8 @@ def _build_template_audit_config(data: dict | None) -> TemplateAuditConfig:
     raw_rules = data.get("rules") or {}
     if not isinstance(raw_rules, dict):
         raise ConfigError("template_audit.rules: expected mapping")
-    rules: dict[str, RuleConfig] = {}
-    for rule_id, rule_body in raw_rules.items():
-        if rule_id not in _VALID_TEMPLATE_AUDIT_RULE_IDS:
-            raise ConfigError(f"template_audit.rules: unknown rule id '{rule_id}'")
-        if not isinstance(rule_body, dict):
-            raise ConfigError(f"template_audit.rules.{rule_id}: expected mapping")
-        if not isinstance(rule_body.get("enabled"), bool):
-            raise ConfigError(f"template_audit.rules.{rule_id}.enabled: expected bool")
-        sev = rule_body.get("severity")
-        if sev not in _VALID_SEVERITIES:
-            raise ConfigError(
-                f"template_audit.rules.{rule_id}.severity: must be one of {sorted(_VALID_SEVERITIES)}"
-            )
-        knobs = {k: v for k, v in rule_body.items() if k not in ("enabled", "severity")}
-        rules[rule_id] = RuleConfig(enabled=rule_body["enabled"], severity=sev, knobs=knobs)
+    _, _, _, valid_template_ids = _registry_rule_ids()
+    rules = _validate_rules_block(raw_rules, valid_rule_ids=valid_template_ids, path="template_audit.rules")
 
     return TemplateAuditConfig(
         enabled=data["enabled"],
