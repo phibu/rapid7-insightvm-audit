@@ -102,15 +102,8 @@ class UserPermissionAuditCheck:
         return AuditRunner().run(category, client=client, config=config, progress=progress)
 
 
-# Side-effect imports: register all 7 user-permission audit rules at
-# package-import time. Adding a new rule = one new file under
-# `audit/user_permission/rules/` + one line here.
-from rapid7_healthcheck.audit.user_permission.rules import (  # noqa: E402,F401
-    privileged_user_without_mfa,
-    local_account_when_sso_configured,
-    multiple_global_administrators,
-    locked_user_account,
-    disabled_user_with_role_bindings,
-    user_with_role_but_no_access,
-    superuser_flag_outside_global_admin,
-)
+# Register every user-permission audit rule at package-import time. The
+# directory is the single source of truth — see CONTEXT.md "Rule registration".
+from rapid7_healthcheck._rule_loader import load_rules  # noqa: E402
+
+load_rules("rapid7_healthcheck.audit.user_permission.rules")

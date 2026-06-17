@@ -90,8 +90,8 @@ class TemplateAuditCheck:
         return AuditRunner().run(category, client=client, config=config, progress=progress)
 
 
-# Side-effect imports: importing the rules subpackage executes its own
-# side-effect block, which registers every rule module with the
-# Template Configuration Audit registry. F1 lands with an empty registry;
-# F2-F4 will append imports to ``audit/template/rules/__init__.py``.
-from rapid7_healthcheck.audit.template import rules  # noqa: E402,F401
+# Register every template-audit rule at package-import time. The directory is
+# the single source of truth — see CONTEXT.md "Rule registration".
+from rapid7_healthcheck._rule_loader import load_rules  # noqa: E402
+
+load_rules("rapid7_healthcheck.audit.template.rules")

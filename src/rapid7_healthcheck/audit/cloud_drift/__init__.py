@@ -107,10 +107,8 @@ class CloudDriftAuditCheck:
         )
 
 
-# Side-effect imports: register all 3 cloud-drift rules at package-import time.
-# Adding a new rule = one new file under `audit/cloud_drift/rules/` + one line here.
-from rapid7_healthcheck.audit.cloud_drift.rules import (  # noqa: E402,F401
-    console_asset_count_drift,
-    scan_engine_cloud_registration,
-    stale_assessment_cohort,
-)
+# Register every cloud-drift rule at package-import time. The directory is the
+# single source of truth — see CONTEXT.md "Rule registration".
+from rapid7_healthcheck._rule_loader import load_rules  # noqa: E402
+
+load_rules("rapid7_healthcheck.audit.cloud_drift.rules")

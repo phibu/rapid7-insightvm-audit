@@ -142,18 +142,10 @@ class ConfigurationAuditCheck:
         return AuditRunner().run(category, client=client, config=config, progress=progress)
 
 
-# Side-effect imports: register all 12 audit rules at package-import time.
-# Adding a new rule = one new file under `audit/rules/` + one line here.
-from rapid7_healthcheck.audit.rules import (  # noqa: E402,F401
-    agent_unauth_collision,
-    site_vuln_template_no_creds,
-    overlapping_scan_windows,
-    single_engine_overload,
-    discovery_template_on_prod_site,
-    policy_and_vuln_in_same_template,
-    local_engine_production_scope,
-    dynamic_groups_and_nested_tags,
-    scan_report_schedule_overlap,
-    engine_version_drift,
-    insight_agent_deployed,
-)
+# Register every audit rule at package-import time by importing each module
+# under `audit/rules/` so its @register decorator fires. The directory is the
+# single source of truth — adding a new rule is just a new decorated file under
+# `audit/rules/`, no import line to maintain. See CONTEXT.md "Rule registration".
+from rapid7_healthcheck._rule_loader import load_rules  # noqa: E402
+
+load_rules("rapid7_healthcheck.audit.rules")
