@@ -205,11 +205,11 @@ class CloudIntegrationConfig:
     `enabled` is False or the env var is missing.
     """
     enabled: bool
-    base_url: str
-    api_key_env: str
-    timeout_seconds: int
-    max_retries: int
-    parallel_pages: int
+    base_url: str = ""
+    api_key_env: str = "R7_CLOUD_API_KEY"
+    timeout_seconds: int = 30
+    max_retries: int = 3
+    parallel_pages: int = 1
 
 
 def _default_cloud_integration() -> CloudIntegrationConfig:
@@ -365,68 +365,36 @@ _THRESHOLD_NESTED = {
 def _build_rapid7_config(data: Any) -> Rapid7Config:
     """Validator for the `rapid7:` block.
 
-    Mirrors `_from_dict` semantics (unknown keys reject, scalar types
-    enforced) but treats `auth_mode` as optional with a default and
-    additionally constrains it to the `_VALID_AUTH_MODES` allowlist.
+    Unknown keys reject, scalar types enforced by `_from_dict`. Enum
+    membership (auth_mode), positive-int fields (request_timeout_seconds,
+    max_retries), range checks (parallel_pages [1,16], page_size [1,500]),
+    and the >8 parallel_pages warning are enforced in the post_validate hook.
+
+    Note: the base_url HTTPS check lives in `_build_app_config`, not here.
     """
-    if not isinstance(data, dict):
-        raise ConfigError(f"rapid7: expected mapping, got {type(data).__name__}")
+    def pv(c: Rapid7Config) -> Rapid7Config:
+        if c.auth_mode not in _VALID_AUTH_MODES:
+            raise ConfigError(
+                f"rapid7.auth_mode: must be one of {list(_VALID_AUTH_MODES)}, got {c.auth_mode!r}"
+            )
+        _positive_int_fields(c, "rapid7", ("request_timeout_seconds", "max_retries"))
+        if not (1 <= c.parallel_pages <= 16):
+            raise ConfigError(
+                f"rapid7.parallel_pages must be in range [1, 16]; got {c.parallel_pages}"
+            )
+        if c.parallel_pages > 8:
+            logger.warning(
+                "rapid7.parallel_pages=%d exceeds the documented InsightVM "
+                "8-parallel-request limit; proceed at your own risk",
+                c.parallel_pages,
+            )
+        if not (1 <= c.page_size <= 500):
+            raise ConfigError(
+                f"rapid7.page_size must be in range [1, 500]; got {c.page_size}"
+            )
+        return c
 
-    required = {"base_url", "verify_tls", "request_timeout_seconds", "max_retries"}
-    optional = {"auth_mode", "parallel_pages", "page_size"}
-    expected = required | optional
-
-    unknown = set(data.keys()) - expected
-    if unknown:
-        raise ConfigError(f"rapid7: unknown key(s): {sorted(unknown)}")
-    missing = required - set(data.keys())
-    if missing:
-        raise ConfigError(f"rapid7: missing required key(s): {sorted(missing)}")
-
-    _check_scalar("base_url", data["base_url"], str, "rapid7")
-    _check_scalar("verify_tls", data["verify_tls"], bool, "rapid7")
-    _check_scalar("request_timeout_seconds", data["request_timeout_seconds"], int, "rapid7")
-    _check_scalar("max_retries", data["max_retries"], int, "rapid7")
-
-    auth_mode = data.get("auth_mode", "api_key")
-    if not isinstance(auth_mode, str):
-        raise ConfigError(
-            f"rapid7.auth_mode: expected str, got {type(auth_mode).__name__}"
-        )
-    if auth_mode not in _VALID_AUTH_MODES:
-        raise ConfigError(
-            f"rapid7.auth_mode: must be one of {list(_VALID_AUTH_MODES)}, got {auth_mode!r}"
-        )
-
-    parallel_pages = data.get("parallel_pages", 1)
-    _check_scalar("parallel_pages", parallel_pages, int, "rapid7")
-    if not (1 <= parallel_pages <= 16):
-        raise ConfigError(
-            f"rapid7.parallel_pages must be in range [1, 16]; got {parallel_pages}"
-        )
-    if parallel_pages > 8:
-        logger.warning(
-            "rapid7.parallel_pages=%d exceeds the documented InsightVM "
-            "8-parallel-request limit; proceed at your own risk",
-            parallel_pages,
-        )
-
-    page_size = data.get("page_size", 250)
-    _check_scalar("page_size", page_size, int, "rapid7")
-    if not (1 <= page_size <= 500):
-        raise ConfigError(
-            f"rapid7.page_size must be in range [1, 500]; got {page_size}"
-        )
-
-    return Rapid7Config(
-        base_url=data["base_url"],
-        verify_tls=data["verify_tls"],
-        request_timeout_seconds=data["request_timeout_seconds"],
-        max_retries=data["max_retries"],
-        auth_mode=auth_mode,
-        parallel_pages=parallel_pages,
-        page_size=page_size,
-    )
+    return _from_dict(Rapid7Config, data, "rapid7", post_validate=pv)
 
 
 def _positive_int_fields(obj: Any, path: str, field_names: tuple[str, ...]) -> Any:
@@ -537,60 +505,29 @@ def _build_user_audit_config(data: dict | None) -> UserAuditConfig:
 def _build_cloud_integration_config(data: dict | None) -> CloudIntegrationConfig:
     """Validator for the optional `cloud_integration:` block.
 
-    Mirrors `_build_audit_config` semantics: missing block = defaults
-    (disabled), unknown keys reject, type checks per field. When
-    `enabled: true`, `base_url` becomes required and must be HTTPS.
+    Missing block → disabled defaults. Unknown keys reject, scalar types
+    enforced by `_from_dict`. Cross-field rules (enabled→base_url required,
+    HTTPS prefix), api_key_env non-empty, positive-int fields, and
+    parallel_pages range are enforced in the post_validate hook.
     """
     if data is None:
         return _default_cloud_integration()
-    _validate_dict_schema(
-        data,
-        expected={
-            "enabled", "base_url", "api_key_env",
-            "timeout_seconds", "max_retries", "parallel_pages",
-        },
-        required=set(),
-        name="cloud_integration",
-    )
-    if not isinstance(data.get("enabled"), bool):
-        raise ConfigError("cloud_integration.enabled: expected bool")
-    enabled = data["enabled"]
 
-    base_url = data.get("base_url", "")
-    if not isinstance(base_url, str):
-        raise ConfigError("cloud_integration.base_url: expected str")
-    if enabled and not base_url:
-        raise ConfigError(
-            "cloud_integration.base_url: required when enabled is true"
-        )
-    if enabled and not base_url.startswith("https://"):
-        raise ConfigError("cloud_integration.base_url must start with https://")
+    def pv(c: CloudIntegrationConfig) -> CloudIntegrationConfig:
+        if c.enabled and not c.base_url:
+            raise ConfigError("cloud_integration.base_url: required when enabled is true")
+        if c.enabled and not c.base_url.startswith("https://"):
+            raise ConfigError("cloud_integration.base_url must start with https://")
+        if not c.api_key_env:
+            raise ConfigError("cloud_integration.api_key_env: expected non-empty str")
+        _positive_int_fields(c, "cloud_integration", ("timeout_seconds", "max_retries"))
+        if not (1 <= c.parallel_pages <= 16):
+            raise ConfigError(
+                f"cloud_integration.parallel_pages must be in range [1, 16]; got {c.parallel_pages}"
+            )
+        return c
 
-    api_key_env = data.get("api_key_env", "R7_CLOUD_API_KEY")
-    if not isinstance(api_key_env, str) or not api_key_env:
-        raise ConfigError("cloud_integration.api_key_env: expected non-empty str")
-
-    timeout_seconds = data.get("timeout_seconds", 30)
-    _check_scalar("timeout_seconds", timeout_seconds, int, "cloud_integration")
-
-    max_retries = data.get("max_retries", 3)
-    _check_scalar("max_retries", max_retries, int, "cloud_integration")
-
-    parallel_pages = data.get("parallel_pages", 1)
-    _check_scalar("parallel_pages", parallel_pages, int, "cloud_integration")
-    if not (1 <= parallel_pages <= 16):
-        raise ConfigError(
-            f"cloud_integration.parallel_pages must be in range [1, 16]; got {parallel_pages}"
-        )
-
-    return CloudIntegrationConfig(
-        enabled=enabled,
-        base_url=base_url,
-        api_key_env=api_key_env,
-        timeout_seconds=timeout_seconds,
-        max_retries=max_retries,
-        parallel_pages=parallel_pages,
-    )
+    return _from_dict(CloudIntegrationConfig, data, "cloud_integration", post_validate=pv)
 
 
 def _build_cloud_drift_config(data: dict | None) -> CloudDriftConfig:
@@ -601,6 +538,10 @@ def _build_cloud_drift_config(data: dict | None) -> CloudDriftConfig:
     `sample_size` keys — sampling does not apply to cloud-drift rules
     (they read aggregate counts) and the category-level enable lives in
     `checks.cloud_drift_audit` like every other check.
+
+    Not routed through `_from_dict`: the sole field is `rules: dict`, and
+    `_from_dict`/_check_scalar cannot validate a dict-typed field. This is
+    a deliberate non-migration, not an oversight.
     """
     if data is None:
         return _default_cloud_drift()
@@ -649,39 +590,31 @@ def _build_report_config(data: Any) -> ReportConfig:
       - null/None    -> delta disabled
     Rejects unknown keys (consistent with `_from_dict`).
 
-    Not routed through `_validate_dict_schema` because this validator has a
-    distinct error-message wording (`expected mapping, got <type>`) and a
-    custom optional/required split that doesn't generalize cleanly.
+    `delta_max_age_days` is `int | None`. `get_type_hints` resolves this to
+    `Optional[int]`, which `_check_scalar`'s `if expected is int` does NOT
+    match — it would hit the "unsupported declared type" branch and raise.
+    So we pop `delta_max_age_days` before calling `_from_dict`, validate it
+    by hand (non-negative int or None; reject bool and negative), then
+    re-attach it via `replace` after `_from_dict` returns.
     """
     if not isinstance(data, dict):
         raise ConfigError(f"report: expected mapping, got {type(data).__name__}")
-    expected = {"output_dir", "filename_pattern", "title", "delta_max_age_days", "log_format"}
-    unknown = set(data.keys()) - expected
-    if unknown:
-        raise ConfigError(f"report: unknown key(s): {sorted(unknown)}")
-    required = {"output_dir", "filename_pattern", "title"}
-    missing = required - set(data.keys())
-    if missing:
-        raise ConfigError(f"report: missing required key(s): {sorted(missing)}")
-    for k in ("output_dir", "filename_pattern", "title"):
-        if not isinstance(data[k], str):
-            raise ConfigError(f"report.{k}: expected str")
-    delta = data.get("delta_max_age_days", 30)
+    raw = dict(data)
+    # Pop the union field before _from_dict — validated and re-attached below.
+    delta = raw.pop("delta_max_age_days", 30)
     if delta is not None and (not isinstance(delta, int) or isinstance(delta, bool) or delta < 0):
         raise ConfigError("report.delta_max_age_days: expected non-negative int or null")
-    log_format = data.get("log_format", "plain")
-    if log_format not in ("plain", "cmtrace", "json"):
-        raise ConfigError(
-            f"report.log_format: invalid value {log_format!r}; "
-            f"must be one of: plain, cmtrace, json"
-        )
-    return ReportConfig(
-        output_dir=data["output_dir"],
-        filename_pattern=data["filename_pattern"],
-        title=data["title"],
-        delta_max_age_days=delta,
-        log_format=log_format,
-    )
+
+    def pv(c: ReportConfig) -> ReportConfig:
+        if c.log_format not in ("plain", "cmtrace", "json"):
+            raise ConfigError(
+                f"report.log_format: invalid value {c.log_format!r}; "
+                f"must be one of: plain, cmtrace, json"
+            )
+        return c
+
+    obj = _from_dict(ReportConfig, raw, "report", post_validate=pv)
+    return replace(obj, delta_max_age_days=delta)
 
 
 def _ensure_default_on(checks: dict, *names: str) -> dict:

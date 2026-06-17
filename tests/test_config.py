@@ -1294,3 +1294,189 @@ class TestBuildTemplateAuditConfigViaParity:
         from rapid7_healthcheck.config import ConfigError
         with pytest.raises(ConfigError, match="enabled"):
             self._make(enabled="yes")
+
+
+# ---------------------------------------------------------------------------
+# Task 5: parity/pin tests for cloud_integration / report / rapid7 builders
+# migrated through _from_dict + post_validate.
+# ---------------------------------------------------------------------------
+
+def _cfg(overrides: dict) -> dict:
+    """Build a minimal valid AppConfig raw dict with section overrides."""
+    base = {
+        "rapid7": {
+            "base_url": "https://console.example.com",
+            "verify_tls": True,
+            "request_timeout_seconds": 30,
+            "max_retries": 3,
+        },
+        "report": {
+            "output_dir": "./reports",
+            "filename_pattern": "r7-{timestamp}.html",
+            "title": "Test",
+        },
+        "thresholds": {
+            "scan_engines": {"last_contact_warn_hours": 2, "last_contact_fail_hours": 24},
+            "scan_activity": {"recent_window_days": 7, "stuck_scan_hours": 24, "site_no_scan_days": 14},
+            "asset_coverage": {"stale_asset_days": 30, "flag_unscanned_assets": True, "never_scanned_days": 90},
+            "data_quality": {"flag_missing_os": True, "flag_empty_sites": True},
+        },
+        "checks": {
+            "scan_engines": True,
+            "scan_activity": True,
+            "asset_coverage": True,
+            "data_quality": True,
+        },
+    }
+    base.update(overrides)
+    return base
+
+
+class TestTask5CloudIntegration:
+    """Pin cloud_integration cross-field + range behavior through migration."""
+
+    def test_cloud_integration_enabled_requires_https_base_url(self, tmp_path):
+        """base_url with http:// when enabled=true must be rejected."""
+        from rapid7_healthcheck.config import _build_app_config
+        cfg = _cfg({"cloud_integration": {"enabled": True, "base_url": "http://x"}})
+        with pytest.raises(ConfigError, match="https"):
+            _build_app_config(cfg)
+
+    def test_cloud_integration_parallel_pages_range(self, tmp_path):
+        """parallel_pages outside [1,16] must be rejected."""
+        from rapid7_healthcheck.config import _build_app_config
+        cfg = _cfg({"cloud_integration": {"enabled": True, "base_url": "https://x", "parallel_pages": 99}})
+        with pytest.raises(ConfigError, match="parallel_pages"):
+            _build_app_config(cfg)
+
+    def test_cloud_integration_max_retries_zero_rejected(self, tmp_path):
+        """max_retries=0 must be rejected (positive-only)."""
+        from rapid7_healthcheck.config import _build_app_config
+        cfg = _cfg({"cloud_integration": {"enabled": True, "base_url": "https://x", "max_retries": 0}})
+        with pytest.raises(ConfigError, match="max_retries"):
+            _build_app_config(cfg)
+
+    def test_cloud_integration_none_returns_default(self):
+        """None input returns the disabled default."""
+        from rapid7_healthcheck.config import _build_cloud_integration_config, _default_cloud_integration
+        assert _build_cloud_integration_config(None) == _default_cloud_integration()
+
+    def test_cloud_integration_unknown_key_rejected(self):
+        """Unknown keys under cloud_integration: raise ConfigError."""
+        from rapid7_healthcheck.config import _build_cloud_integration_config
+        with pytest.raises(ConfigError, match="unknown"):
+            _build_cloud_integration_config({
+                "enabled": False, "base_url": "", "api_key_env": "X",
+                "timeout_seconds": 30, "max_retries": 3, "parallel_pages": 1,
+                "bogus": 99,
+            })
+
+    def test_cloud_integration_timeout_seconds_zero_rejected(self):
+        """timeout_seconds=0 is not positive — must be rejected."""
+        from rapid7_healthcheck.config import _build_cloud_integration_config
+        with pytest.raises(ConfigError, match="timeout_seconds"):
+            _build_cloud_integration_config({
+                "enabled": False, "base_url": "", "api_key_env": "X",
+                "timeout_seconds": 0, "max_retries": 3, "parallel_pages": 1,
+            })
+
+
+class TestTask5Report:
+    """Pin report builder nullable union + log_format behavior through migration."""
+
+    def test_report_delta_max_age_days_zero_accepted(self, tmp_path):
+        """0 is a valid non-negative int for delta_max_age_days."""
+        from rapid7_healthcheck.config import _build_report_config
+        cfg = _build_report_config({
+            "output_dir": "./r", "filename_pattern": "f.html", "title": "T",
+            "delta_max_age_days": 0,
+        })
+        assert cfg.delta_max_age_days == 0
+
+    def test_report_delta_max_age_days_null_accepted(self, tmp_path):
+        """None (null) disables delta and is accepted."""
+        from rapid7_healthcheck.config import _build_report_config
+        cfg = _build_report_config({
+            "output_dir": "./r", "filename_pattern": "f.html", "title": "T",
+            "delta_max_age_days": None,
+        })
+        assert cfg.delta_max_age_days is None
+
+    def test_report_delta_max_age_days_negative_rejected(self, tmp_path):
+        """Negative values must be rejected."""
+        from rapid7_healthcheck.config import _build_report_config
+        with pytest.raises(ConfigError, match="non-negative"):
+            _build_report_config({
+                "output_dir": "./r", "filename_pattern": "f.html", "title": "T",
+                "delta_max_age_days": -1,
+            })
+
+    def test_report_log_format_invalid_rejected(self, tmp_path):
+        """Unknown log_format values must be rejected."""
+        from rapid7_healthcheck.config import _build_report_config
+        with pytest.raises(ConfigError, match="log_format"):
+            _build_report_config({
+                "output_dir": "./r", "filename_pattern": "f.html", "title": "T",
+                "log_format": "xml",
+            })
+
+    def test_report_non_mapping_rejected(self, tmp_path):
+        """Non-dict input must raise with the specific wording."""
+        from rapid7_healthcheck.config import _build_report_config
+        with pytest.raises(ConfigError, match="report: expected mapping, got list"):
+            _build_report_config([])
+
+    def test_report_delta_bool_rejected(self, tmp_path):
+        """bool True for delta_max_age_days must be rejected (bool is not int)."""
+        from rapid7_healthcheck.config import _build_report_config
+        with pytest.raises(ConfigError, match="non-negative"):
+            _build_report_config({
+                "output_dir": "./r", "filename_pattern": "f.html", "title": "T",
+                "delta_max_age_days": True,
+            })
+
+
+class TestTask5Rapid7:
+    """Pin rapid7 auth_mode/range behavior through migration."""
+
+    def test_rapid7_auth_mode_invalid_rejected(self, tmp_path):
+        """auth_mode not in allowlist must be rejected."""
+        from rapid7_healthcheck.config import _build_rapid7_config
+        with pytest.raises(ConfigError, match="auth_mode"):
+            _build_rapid7_config({
+                "base_url": "https://x", "verify_tls": True,
+                "request_timeout_seconds": 30, "max_retries": 3,
+                "auth_mode": "oauth2",
+            })
+
+    def test_rapid7_max_retries_zero_rejected(self, tmp_path):
+        """max_retries=0 is not positive — must be rejected."""
+        from rapid7_healthcheck.config import _build_rapid7_config
+        with pytest.raises(ConfigError, match="max_retries"):
+            _build_rapid7_config({
+                "base_url": "https://x", "verify_tls": True,
+                "request_timeout_seconds": 30, "max_retries": 0,
+            })
+
+    def test_rapid7_page_size_range_upper_rejected(self, tmp_path):
+        """page_size=501 exceeds max (500) and must be rejected."""
+        from rapid7_healthcheck.config import _build_rapid7_config
+        with pytest.raises(ConfigError, match="page_size"):
+            _build_rapid7_config({
+                "base_url": "https://x", "verify_tls": True,
+                "request_timeout_seconds": 30, "max_retries": 3,
+                "page_size": 501,
+            })
+
+    def test_rapid7_parallel_pages_above_8_warns(self, tmp_path, caplog):
+        """parallel_pages > 8 is accepted but emits a warning."""
+        from rapid7_healthcheck.config import _build_rapid7_config
+        import logging
+        with caplog.at_level(logging.WARNING):
+            cfg = _build_rapid7_config({
+                "base_url": "https://x", "verify_tls": True,
+                "request_timeout_seconds": 30, "max_retries": 3,
+                "parallel_pages": 9,
+            })
+        assert cfg.parallel_pages == 9
+        assert any("8-parallel" in r.message for r in caplog.records)
