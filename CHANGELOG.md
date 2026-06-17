@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.7] - 2026-06-17
+
+### Fixed
+
+- **Section rail did not stay pinned while scrolling** (regression in the 0.8.5 navigation feature). `position: sticky` was on the inner `<nav>` (`.rail-inner`), whose containing block is the short `<details class="section-rail">` grid item (sized to its own link list under `align-items: start`). A sticky element only holds while its containing block is in the scroll path, so the rail scrolled away once you passed the list height instead of staying visible. Moved `sticky` to the grid item itself (`.section-rail`, with `align-self: start`), scoped to the wide (≥64rem) breakpoint where the rail is a real column — on narrow screens it remains the inline `<details>` "Jump to section" disclosure and must not be sticky. The grid row is as tall as the content column, so the rail now stays pinned through the whole scroll (verified in a headless browser: rail top holds at its 8px offset while content scrolls past). New `test_report_nav.py::test_rail_is_sticky_on_the_grid_item_within_wide_breakpoint` guards the corrected structure and asserts `.rail-inner` is not the sticky element. No HTTP added; the read-only contract is unchanged.
+
 ## [0.8.6] - 2026-06-17
 
 ### Fixed

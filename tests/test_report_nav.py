@@ -149,3 +149,31 @@ def test_scroll_spy_uses_intersection_observer():
     html = render_report(_ctx_multi_check())
     assert "IntersectionObserver" in html, "scroll-spy IntersectionObserver code missing"
     assert "__refreshRail" in html, "filter-sync refreshRail hook missing"
+
+
+def test_rail_is_sticky_on_the_grid_item_within_wide_breakpoint():
+    """The rail must stay pinned while the content column scrolls.
+
+    For position:sticky to hold through a long page, the sticky element's
+    containing block must be as tall as the content column. The rail's grid
+    item satisfies that (the grid row is content-column height); the inner
+    <nav>, which is only as tall as the link list inside a short <details>,
+    does NOT — sticking it there lets the rail scroll away once you pass the
+    list. So sticky belongs on the GRID ITEM (.section-rail), scoped to the
+    wide breakpoint (where the rail is a real column, not the narrow-screen
+    <details> disclosure), paired with align-items/align-self start.
+    """
+    html = render_report(_ctx_multi_check())
+    # Isolate the wide-breakpoint media query block.
+    mq = re.search(r"@media \(min-width: 64rem\)\s*\{(.*?)\n  \}", html, re.S)
+    assert mq is not None, "wide-breakpoint (64rem) media query not found"
+    block = mq.group(1)
+    assert re.search(r"\.section-rail[^{}]*\{[^}]*position:\s*sticky", block), \
+        "rail grid item (.section-rail) is not position:sticky within the wide breakpoint"
+    # The grid must keep items top-aligned so the sticky item isn't stretched
+    # to full row height (which would defeat sticking).
+    assert re.search(r"align-items:\s*start", html) or re.search(r"align-self:\s*start", html), \
+        "grid does not top-align items (needed for sticky to work)"
+    # Guard against regression: the inner <nav> must NOT be the sticky element.
+    assert not re.search(r"\.rail-inner\s*\{[^}]*position:\s*sticky", html), \
+        ".rail-inner should not be the sticky element (its containing block is too short)"

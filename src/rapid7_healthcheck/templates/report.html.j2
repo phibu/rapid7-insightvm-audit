@@ -446,6 +446,17 @@
       grid-template-columns: 15rem minmax(0, 1100px);
       justify-content: center;
     }
+    /* Sticky belongs on the grid ITEM (.section-rail), not the inner <nav>:
+       the grid row is as tall as the content column, so the rail's sticky
+       containing block spans the whole scroll; the short inner nav would let
+       the rail scroll away once you pass the link list. align-self:start keeps
+       the item from stretching to full row height (which would defeat sticky). */
+    .section-rail {
+      position: sticky;
+      top: 0.5rem;
+      align-self: start;
+      max-height: calc(100vh - 1rem);
+    }
   }
 
   /* Status dot — reusable token, mapped to existing severity colors.
@@ -465,7 +476,6 @@
   /* Section rail — persistent left-column wayfinding. */
   .section-rail { font-size: 13px; }
   .section-rail .rail-inner {
-    position: sticky; top: 0.5rem;
     max-height: calc(100vh - 1rem);
     overflow-y: auto;
   }
