@@ -1,9 +1,10 @@
 import textwrap
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import pytest
 
-from rapid7_healthcheck.config import AppConfig, ConfigError, load_config
+from rapid7_healthcheck.config import AppConfig, ConfigError, _check_scalar, _from_dict, load_config
 
 
 VALID_YAML = textwrap.dedent("""
@@ -449,6 +450,47 @@ def test_template_audit_check_can_be_disabled(tmp_path):
     assert cfg.checks["template_audit"] is False
 
 
+def test_template_audit_partial_block_raises(tmp_path):
+    """Regression: a present-but-partial template_audit block must be rejected.
+
+    Before the refactor the builder hard-required enabled/full_scan/sample_size;
+    after the _from_dict migration TemplateAuditConfig's dataclass defaults were
+    silently filled in for any missing key, loosening validation incorrectly.
+    """
+    # present + empty → must reject (enabled missing)
+    body_empty = VALID_YAML + textwrap.dedent("""
+        template_audit: {}
+    """)
+    with pytest.raises(ConfigError, match="template_audit"):
+        load_config(write(tmp_path, body_empty))
+
+    # present with only enabled → must reject (full_scan, sample_size missing)
+    body_partial = VALID_YAML + textwrap.dedent("""
+        template_audit:
+          enabled: true
+    """)
+    with pytest.raises(ConfigError, match="template_audit"):
+        load_config(write(tmp_path, body_partial))
+
+    # present with only sample_size → must reject (enabled missing)
+    body_partial2 = VALID_YAML + textwrap.dedent("""
+        template_audit:
+          sample_size: 500
+    """)
+    with pytest.raises(ConfigError, match="template_audit"):
+        load_config(write(tmp_path, body_partial2))
+
+
+def test_template_audit_missing_block_still_defaults(tmp_path):
+    """Missing template_audit key (not present at all) must still yield defaults."""
+    # VALID_YAML has no template_audit key → defaults must be used (no error)
+    cfg = load_config(write(tmp_path, VALID_YAML))
+    assert cfg.template_audit.enabled is True
+    assert cfg.template_audit.full_scan is False
+    assert cfg.template_audit.sample_size == 500
+    assert cfg.template_audit.rules == {}
+
+
 def test_template_audit_unknown_key_raises(tmp_path):
     body = VALID_YAML + textwrap.dedent("""
         template_audit:
@@ -689,6 +731,41 @@ def test_audit_agents_timeout_seconds_rejects_bool():
         })
 
 
+# --- Task 3 boundary tests: post_validate value checks on thresholds --------
+
+def _thresholds_data(**section_overrides) -> dict:
+    """Build a minimal valid thresholds dict with per-section overrides."""
+    base = {
+        "scan_engines": {"last_contact_warn_hours": 2, "last_contact_fail_hours": 24},
+        "scan_activity": {"recent_window_days": 7, "stuck_scan_hours": 24, "site_no_scan_days": 14},
+        "asset_coverage": {"stale_asset_days": 30, "flag_unscanned_assets": True, "never_scanned_days": 90},
+        "data_quality": {"flag_missing_os": True, "flag_empty_sites": True},
+    }
+    for section, overrides in section_overrides.items():
+        base[section] = {**base[section], **overrides}
+    return base
+
+
+def test_thresholds_dead_groups_cap_zero_ok_after_refactor():
+    from rapid7_healthcheck.config import _build_thresholds
+    data = _thresholds_data(asset_coverage={"dead_groups_fallback_cap": 0})
+    _build_thresholds(data)  # must not raise
+
+
+def test_thresholds_dup_detection_zero_ok_after_refactor():
+    from rapid7_healthcheck.config import _build_thresholds
+    data = _thresholds_data(data_quality={"duplicate_detection_max_assets": 0})
+    _build_thresholds(data)  # must not raise
+
+
+def test_thresholds_positive_field_rejects_zero():
+    # last_contact_warn_hours is a positive-only int field (config.py:43).
+    from rapid7_healthcheck.config import _build_thresholds
+    data = _thresholds_data(scan_engines={"last_contact_warn_hours": 0})
+    with pytest.raises(ConfigError, match="last_contact_warn_hours"):
+        _build_thresholds(data)
+
+
 def test_load_audit_rejects_removed_rule_id():
     """Users upgrading from 0.3.6 with the old block must see a clear error.
 
@@ -865,3 +942,579 @@ def test_registry_rule_ids_populates_when_config_imported_first():
     r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
     assert r.stdout.strip() == "ok"
+
+
+# ---------------------------------------------------------------------------
+# Characterization safety net: int-boundary validation
+#
+# These tests pin the CURRENT observable validation behavior for every
+# zero/negative/bool boundary before the _from_dict collapse refactor
+# (Task 1 of refactor/config-from-dict-collapse).  They must remain green
+# against the unmodified code; later tasks must keep them green too.
+# ---------------------------------------------------------------------------
+
+class TestConfigCharacterization:
+    """Parametrized consolidation of int-boundary cases across all builders."""
+
+    # -- rapid7.max_retries -------------------------------------------------
+    # _check_scalar(..., int) rejects value <= 0.
+    # Error: "rapid7.max_retries: must be a positive integer, got N"
+
+    @pytest.mark.parametrize("value,ok", [(1, True), (3, True), (0, False), (-1, False)])
+    def test_char_rapid7_max_retries_boundary(self, tmp_path, value, ok):
+        body = VALID_YAML.replace("max_retries: 3", f"max_retries: {value}")
+        if ok:
+            cfg = load_config(write(tmp_path, body))
+            assert cfg.rapid7.max_retries == value
+        else:
+            with pytest.raises(ConfigError, match="max_retries"):
+                load_config(write(tmp_path, body))
+
+    # -- audit.sample_size --------------------------------------------------
+    # _build_audit_config rejects value <= 0 and bool values.
+    # ConfigError raised with match="sample_size"
+    # Called directly (same pattern as test_audit_agents_timeout_seconds_*).
+
+    @pytest.mark.parametrize("value,ok", [(1, True), (500, True), (0, False), (-1, False)])
+    def test_char_audit_sample_size_boundary(self, value, ok):
+        from rapid7_healthcheck.config import _build_audit_config
+        raw = {
+            "enabled": True,
+            "full_scan": False,
+            "sample_size": value,
+            "agents_timeout_seconds": 180,
+            "rules": {},
+        }
+        if ok:
+            cfg = _build_audit_config(raw)
+            assert cfg.sample_size == value
+        else:
+            with pytest.raises(ConfigError, match="sample_size"):
+                _build_audit_config(raw)
+
+    def test_char_audit_sample_size_bool_rejected(self):
+        """bool is a subclass of int; must be rejected like 0/-1."""
+        from rapid7_healthcheck.config import _build_audit_config
+        with pytest.raises(ConfigError, match="sample_size"):
+            _build_audit_config({
+                "enabled": True,
+                "full_scan": False,
+                "sample_size": True,
+                "agents_timeout_seconds": 180,
+                "rules": {},
+            })
+
+    # -- user_audit.sample_size ---------------------------------------------
+    # _build_user_audit_config rejects value <= 0 and bool values.
+    # ConfigError raised with match="sample_size"
+    # Called directly (same pattern as test_char_audit_sample_size_boundary;
+    # user_audit block has NO agents_timeout_seconds).
+
+    @pytest.mark.parametrize("value,ok", [(1, True), (500, True), (0, False), (-1, False)])
+    def test_char_user_audit_sample_size_boundary(self, value, ok):
+        from rapid7_healthcheck.config import _build_user_audit_config
+        raw = {
+            "enabled": True,
+            "full_scan": False,
+            "sample_size": value,
+            "rules": {},
+        }
+        if ok:
+            cfg = _build_user_audit_config(raw)
+            assert cfg.sample_size == value
+        else:
+            with pytest.raises(ConfigError, match="sample_size"):
+                _build_user_audit_config(raw)
+
+    def test_char_user_audit_sample_size_bool_rejected(self):
+        """bool is a subclass of int; must be rejected like 0/-1."""
+        from rapid7_healthcheck.config import _build_user_audit_config
+        with pytest.raises(ConfigError, match="sample_size"):
+            _build_user_audit_config({
+                "enabled": True,
+                "full_scan": False,
+                "sample_size": True,
+                "rules": {},
+            })
+
+    # -- thresholds.asset_coverage.dead_groups_fallback_cap -----------------
+    # 0 is accepted (= disable fallback); negative is rejected.
+    # Error: "thresholds.asset_coverage.dead_groups_fallback_cap: must be a non-negative integer"
+
+    @pytest.mark.parametrize("value,ok", [(0, True), (5, True), (-1, False)])
+    def test_char_dead_groups_fallback_cap_boundary(self, tmp_path, value, ok):
+        body = _yaml_with_dead_groups_cap(value)
+        if ok:
+            cfg = load_config(write(tmp_path, body))
+            assert cfg.thresholds.asset_coverage.dead_groups_fallback_cap == value
+        else:
+            with pytest.raises(ConfigError, match="dead_groups_fallback_cap"):
+                load_config(write(tmp_path, body))
+
+    # -- thresholds.data_quality.duplicate_detection_max_assets -------------
+    # 0 is accepted (= always skip); negative is rejected.
+    # Error: "thresholds.data_quality.duplicate_detection_max_assets: must be a non-negative integer"
+
+    @pytest.mark.parametrize("value,ok", [(0, True), (5, True), (-1, False)])
+    def test_char_duplicate_detection_max_assets_boundary(self, tmp_path, value, ok):
+        body = _yaml_with_duplicate_detection_max_assets(value)
+        if ok:
+            cfg = load_config(write(tmp_path, body))
+            assert cfg.thresholds.data_quality.duplicate_detection_max_assets == value
+        else:
+            with pytest.raises(ConfigError, match="non-negative"):
+                load_config(write(tmp_path, body))
+
+    # -- report.delta_max_age_days ------------------------------------------
+    # 0 and None (null) are both accepted; negative is rejected.
+    # Error: "report.delta_max_age_days: expected non-negative int or null"
+
+    @pytest.mark.parametrize("yaml_value,expected,ok", [
+        ("0", 0, True),
+        ("30", 30, True),
+        ("null", None, True),
+        ("-1", None, False),
+    ])
+    def test_char_delta_max_age_days_boundary(self, tmp_path, yaml_value, expected, ok):
+        cfg_text = _MINIMAL_CONFIG_TEXT + f"  delta_max_age_days: {yaml_value}\n"
+        if ok:
+            cfg = load_config(write(tmp_path, cfg_text))
+            assert cfg.report.delta_max_age_days == expected
+        else:
+            with pytest.raises(ConfigError, match="non-negative"):
+                load_config(write(tmp_path, cfg_text))
+
+    # -- rapid7.parallel_pages ----------------------------------------------
+    # Range [1, 16]; 0 rejected by _check_scalar (<=0); 17 rejected by range check.
+    # Already covered by individual tests; this parametrized form is the
+    # canonical cross-run regression anchor.
+
+    @pytest.mark.parametrize("value,ok", [(1, True), (16, True), (0, False), (17, False)])
+    def test_char_rapid7_parallel_pages_boundary(self, tmp_path, value, ok):
+        body = _yaml_with_rapid7_extras(parallel_pages=value)
+        if ok:
+            cfg = load_config(write(tmp_path, body))
+            assert cfg.rapid7.parallel_pages == value
+        else:
+            with pytest.raises(ConfigError, match="parallel_pages"):
+                load_config(write(tmp_path, body))
+
+    # -- cloud_integration enabled=true with empty base_url -----------------
+    # Error: "cloud_integration.base_url: required when enabled is true"
+
+    def test_char_cloud_integration_enabled_requires_base_url(self, tmp_path):
+        cloud_block = textwrap.dedent("""
+            cloud_integration:
+              enabled: true
+              base_url: ""
+        """)
+        with pytest.raises(ConfigError, match="base_url"):
+            load_config(write(tmp_path, VALID_YAML + cloud_block))
+
+    # -- bool rejected where int expected -----------------------------------
+    # In YAML, `true` parses as Python True (bool), a subclass of int.
+    # _build_audit_config has an explicit isinstance(v, bool) guard.
+    # ConfigError raised with match="sample_size"
+    # (Same as test_char_audit_sample_size_bool_rejected; kept here for
+    # completeness as the canonical "bool-for-int" characterization anchor.)
+
+    def test_char_bool_rejected_for_int_field_via_yaml(self, tmp_path):
+        """YAML `true` for audit.sample_size must be rejected (bool is not int)."""
+        audit_block = textwrap.dedent("""
+            audit:
+              enabled: true
+              full_scan: false
+              sample_size: true
+              rules: {}
+        """)
+        body = VALID_YAML.replace(
+            "  data_quality: true",
+            "  data_quality: true\n  configuration_audit: true",
+        ) + audit_block
+        with pytest.raises(ConfigError, match="sample_size"):
+            load_config(write(tmp_path, body))
+
+
+# ---------------------------------------------------------------------------
+# Task 2: unit tests for _check_scalar positive_int=False and _from_dict
+# post_validate + type-only behaviour
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class _Sample:
+    n: int
+    name: str = "x"
+
+
+class TestCheckScalarPositiveIntFalse:
+    def test_allows_zero_and_negative(self):
+        # type-only: 0 and negative ints must NOT raise
+        _check_scalar("x", 0, int, "p", positive_int=False)
+        _check_scalar("x", -5, int, "p", positive_int=False)
+
+    def test_still_rejects_bool(self):
+        with pytest.raises(ConfigError, match="expected int, got bool"):
+            _check_scalar("x", True, int, "p", positive_int=False)
+
+    def test_still_rejects_non_int(self):
+        with pytest.raises(ConfigError, match="expected int, got str"):
+            _check_scalar("x", "5", int, "p", positive_int=False)
+
+    def test_default_positive_int_true_still_rejects_zero(self):
+        # default positive_int=True preserves current behavior
+        with pytest.raises(ConfigError, match="must be a positive integer"):
+            _check_scalar("x", 0, int, "p")
+
+
+class TestFromDictTypeOnlyAndPostValidate:
+    def test_is_type_only_allows_zero(self):
+        # _from_dict must NOT enforce positive-int; that is post_validate's job
+        obj = _from_dict(_Sample, {"n": 0}, "s")
+        assert obj.n == 0
+
+    def test_still_rejects_wrong_type(self):
+        with pytest.raises(ConfigError, match="expected int, got str"):
+            _from_dict(_Sample, {"n": "5"}, "s")
+
+    def test_runs_post_validate(self):
+        def pv(obj):
+            if obj.n < 0:
+                raise ConfigError("s.n: must be non-negative")
+            return obj
+
+        assert _from_dict(_Sample, {"n": 3}, "s", post_validate=pv).n == 3
+        with pytest.raises(ConfigError, match="must be non-negative"):
+            _from_dict(_Sample, {"n": -1}, "s", post_validate=pv)
+
+    def test_post_validate_can_replace(self):
+        def pv(obj):
+            return replace(obj, name=obj.name.strip())
+
+        assert _from_dict(_Sample, {"n": 1, "name": "  y  "}, "s", post_validate=pv).name == "y"
+
+
+# ---------------------------------------------------------------------------
+# Task 4: parity tests for audit/user_audit/template_audit builders
+# via _from_dict — pin behaviors to preserve through the migration.
+# ---------------------------------------------------------------------------
+
+class TestBuildAuditConfigViaParity:
+    """Parity: _build_audit_config must behave the same before & after migration."""
+
+    def _make(self, **kw):
+        from rapid7_healthcheck.config import _build_audit_config
+        base = {
+            "enabled": True,
+            "full_scan": False,
+            "sample_size": 500,
+            "agents_timeout_seconds": 180,
+            "rules": {},
+        }
+        base.update(kw)
+        return _build_audit_config(base)
+
+    def test_audit_parity_roundtrip(self):
+        cfg = self._make()
+        assert cfg.enabled is True
+        assert cfg.full_scan is False
+        assert cfg.sample_size == 500
+        assert cfg.agents_timeout_seconds == 180
+        assert cfg.rules == {}
+
+    def test_audit_unknown_key_rejected(self):
+        from rapid7_healthcheck.config import _build_audit_config, ConfigError
+        with pytest.raises(ConfigError, match="unknown"):
+            _build_audit_config({
+                "enabled": True, "full_scan": False,
+                "sample_size": 500, "agents_timeout_seconds": 180,
+                "rules": {}, "bogus": 99,
+            })
+
+    def test_audit_sample_size_zero_rejected(self):
+        from rapid7_healthcheck.config import ConfigError
+        with pytest.raises(ConfigError, match="sample_size"):
+            self._make(sample_size=0)
+
+    def test_audit_sample_size_negative_rejected(self):
+        from rapid7_healthcheck.config import ConfigError
+        with pytest.raises(ConfigError, match="sample_size"):
+            self._make(sample_size=-1)
+
+    def test_audit_agents_timeout_zero_rejected(self):
+        from rapid7_healthcheck.config import ConfigError
+        with pytest.raises(ConfigError, match="agents_timeout_seconds"):
+            self._make(agents_timeout_seconds=0)
+
+    def test_audit_enabled_non_bool_rejected(self):
+        from rapid7_healthcheck.config import ConfigError
+        with pytest.raises(ConfigError, match="enabled"):
+            self._make(enabled="yes")
+
+    def test_audit_full_scan_non_bool_rejected(self):
+        from rapid7_healthcheck.config import ConfigError
+        with pytest.raises(ConfigError, match="full_scan"):
+            self._make(full_scan=1)
+
+
+class TestBuildUserAuditConfigViaParity:
+    """Parity: _build_user_audit_config must behave the same before & after migration."""
+
+    def _make(self, **kw):
+        from rapid7_healthcheck.config import _build_user_audit_config
+        base = {
+            "enabled": True,
+            "full_scan": False,
+            "sample_size": 500,
+            "rules": {},
+        }
+        base.update(kw)
+        return _build_user_audit_config(base)
+
+    def test_user_audit_parity_roundtrip(self):
+        cfg = self._make()
+        assert cfg.enabled is True
+        assert cfg.sample_size == 500
+        assert cfg.rules == {}
+
+    def test_user_audit_unknown_key_rejected(self):
+        from rapid7_healthcheck.config import _build_user_audit_config, ConfigError
+        with pytest.raises(ConfigError, match="unknown"):
+            _build_user_audit_config({
+                "enabled": True, "full_scan": False,
+                "sample_size": 500, "rules": {}, "bogus": 99,
+            })
+
+    def test_user_audit_sample_size_zero_rejected(self):
+        from rapid7_healthcheck.config import ConfigError
+        with pytest.raises(ConfigError, match="sample_size"):
+            self._make(sample_size=0)
+
+    def test_user_audit_enabled_non_bool_rejected(self):
+        from rapid7_healthcheck.config import ConfigError
+        with pytest.raises(ConfigError, match="enabled"):
+            self._make(enabled="yes")
+
+
+class TestBuildTemplateAuditConfigViaParity:
+    """Parity: _build_template_audit_config must behave the same before & after migration."""
+
+    def _make(self, **kw):
+        from rapid7_healthcheck.config import _build_template_audit_config
+        base = {
+            "enabled": True,
+            "full_scan": False,
+            "sample_size": 500,
+            "rules": {},
+        }
+        base.update(kw)
+        return _build_template_audit_config(base)
+
+    def test_template_audit_parity_roundtrip(self):
+        cfg = self._make()
+        assert cfg.enabled is True
+        assert cfg.sample_size == 500
+        assert cfg.rules == {}
+
+    def test_template_audit_unknown_key_rejected(self):
+        from rapid7_healthcheck.config import _build_template_audit_config, ConfigError
+        with pytest.raises(ConfigError, match="unknown"):
+            _build_template_audit_config({
+                "enabled": True, "full_scan": False,
+                "sample_size": 500, "rules": {}, "bogus": 99,
+            })
+
+    def test_template_audit_sample_size_zero_rejected(self):
+        from rapid7_healthcheck.config import ConfigError
+        with pytest.raises(ConfigError, match="sample_size"):
+            self._make(sample_size=0)
+
+    def test_template_audit_enabled_non_bool_rejected(self):
+        from rapid7_healthcheck.config import ConfigError
+        with pytest.raises(ConfigError, match="enabled"):
+            self._make(enabled="yes")
+
+
+# ---------------------------------------------------------------------------
+# Task 5: parity/pin tests for cloud_integration / report / rapid7 builders
+# migrated through _from_dict + post_validate.
+# ---------------------------------------------------------------------------
+
+def _cfg(overrides: dict) -> dict:
+    """Build a minimal valid AppConfig raw dict with section overrides."""
+    base = {
+        "rapid7": {
+            "base_url": "https://console.example.com",
+            "verify_tls": True,
+            "request_timeout_seconds": 30,
+            "max_retries": 3,
+        },
+        "report": {
+            "output_dir": "./reports",
+            "filename_pattern": "r7-{timestamp}.html",
+            "title": "Test",
+        },
+        "thresholds": {
+            "scan_engines": {"last_contact_warn_hours": 2, "last_contact_fail_hours": 24},
+            "scan_activity": {"recent_window_days": 7, "stuck_scan_hours": 24, "site_no_scan_days": 14},
+            "asset_coverage": {"stale_asset_days": 30, "flag_unscanned_assets": True, "never_scanned_days": 90},
+            "data_quality": {"flag_missing_os": True, "flag_empty_sites": True},
+        },
+        "checks": {
+            "scan_engines": True,
+            "scan_activity": True,
+            "asset_coverage": True,
+            "data_quality": True,
+        },
+    }
+    base.update(overrides)
+    return base
+
+
+class TestTask5CloudIntegration:
+    """Pin cloud_integration cross-field + range behavior through migration."""
+
+    def test_cloud_integration_enabled_requires_https_base_url(self, tmp_path):
+        """base_url with http:// when enabled=true must be rejected."""
+        from rapid7_healthcheck.config import _build_app_config
+        cfg = _cfg({"cloud_integration": {"enabled": True, "base_url": "http://x"}})
+        with pytest.raises(ConfigError, match="https"):
+            _build_app_config(cfg)
+
+    def test_cloud_integration_parallel_pages_range(self, tmp_path):
+        """parallel_pages outside [1,16] must be rejected."""
+        from rapid7_healthcheck.config import _build_app_config
+        cfg = _cfg({"cloud_integration": {"enabled": True, "base_url": "https://x", "parallel_pages": 99}})
+        with pytest.raises(ConfigError, match="parallel_pages"):
+            _build_app_config(cfg)
+
+    def test_cloud_integration_max_retries_zero_rejected(self, tmp_path):
+        """max_retries=0 must be rejected (positive-only)."""
+        from rapid7_healthcheck.config import _build_app_config
+        cfg = _cfg({"cloud_integration": {"enabled": True, "base_url": "https://x", "max_retries": 0}})
+        with pytest.raises(ConfigError, match="max_retries"):
+            _build_app_config(cfg)
+
+    def test_cloud_integration_none_returns_default(self):
+        """None input returns the disabled default."""
+        from rapid7_healthcheck.config import _build_cloud_integration_config, _default_cloud_integration
+        assert _build_cloud_integration_config(None) == _default_cloud_integration()
+
+    def test_cloud_integration_unknown_key_rejected(self):
+        """Unknown keys under cloud_integration: raise ConfigError."""
+        from rapid7_healthcheck.config import _build_cloud_integration_config
+        with pytest.raises(ConfigError, match="unknown"):
+            _build_cloud_integration_config({
+                "enabled": False, "base_url": "", "api_key_env": "X",
+                "timeout_seconds": 30, "max_retries": 3, "parallel_pages": 1,
+                "bogus": 99,
+            })
+
+    def test_cloud_integration_timeout_seconds_zero_rejected(self):
+        """timeout_seconds=0 is not positive — must be rejected."""
+        from rapid7_healthcheck.config import _build_cloud_integration_config
+        with pytest.raises(ConfigError, match="timeout_seconds"):
+            _build_cloud_integration_config({
+                "enabled": False, "base_url": "", "api_key_env": "X",
+                "timeout_seconds": 0, "max_retries": 3, "parallel_pages": 1,
+            })
+
+
+class TestTask5Report:
+    """Pin report builder nullable union + log_format behavior through migration."""
+
+    def test_report_delta_max_age_days_zero_accepted(self, tmp_path):
+        """0 is a valid non-negative int for delta_max_age_days."""
+        from rapid7_healthcheck.config import _build_report_config
+        cfg = _build_report_config({
+            "output_dir": "./r", "filename_pattern": "f.html", "title": "T",
+            "delta_max_age_days": 0,
+        })
+        assert cfg.delta_max_age_days == 0
+
+    def test_report_delta_max_age_days_null_accepted(self, tmp_path):
+        """None (null) disables delta and is accepted."""
+        from rapid7_healthcheck.config import _build_report_config
+        cfg = _build_report_config({
+            "output_dir": "./r", "filename_pattern": "f.html", "title": "T",
+            "delta_max_age_days": None,
+        })
+        assert cfg.delta_max_age_days is None
+
+    def test_report_delta_max_age_days_negative_rejected(self, tmp_path):
+        """Negative values must be rejected."""
+        from rapid7_healthcheck.config import _build_report_config
+        with pytest.raises(ConfigError, match="non-negative"):
+            _build_report_config({
+                "output_dir": "./r", "filename_pattern": "f.html", "title": "T",
+                "delta_max_age_days": -1,
+            })
+
+    def test_report_log_format_invalid_rejected(self, tmp_path):
+        """Unknown log_format values must be rejected."""
+        from rapid7_healthcheck.config import _build_report_config
+        with pytest.raises(ConfigError, match="log_format"):
+            _build_report_config({
+                "output_dir": "./r", "filename_pattern": "f.html", "title": "T",
+                "log_format": "xml",
+            })
+
+    def test_report_non_mapping_rejected(self, tmp_path):
+        """Non-dict input must raise with the specific wording."""
+        from rapid7_healthcheck.config import _build_report_config
+        with pytest.raises(ConfigError, match="report: expected mapping, got list"):
+            _build_report_config([])
+
+    def test_report_delta_bool_rejected(self, tmp_path):
+        """bool True for delta_max_age_days must be rejected (bool is not int)."""
+        from rapid7_healthcheck.config import _build_report_config
+        with pytest.raises(ConfigError, match="non-negative"):
+            _build_report_config({
+                "output_dir": "./r", "filename_pattern": "f.html", "title": "T",
+                "delta_max_age_days": True,
+            })
+
+
+class TestTask5Rapid7:
+    """Pin rapid7 auth_mode/range behavior through migration."""
+
+    def test_rapid7_auth_mode_invalid_rejected(self, tmp_path):
+        """auth_mode not in allowlist must be rejected."""
+        from rapid7_healthcheck.config import _build_rapid7_config
+        with pytest.raises(ConfigError, match="auth_mode"):
+            _build_rapid7_config({
+                "base_url": "https://x", "verify_tls": True,
+                "request_timeout_seconds": 30, "max_retries": 3,
+                "auth_mode": "oauth2",
+            })
+
+    def test_rapid7_max_retries_zero_rejected(self, tmp_path):
+        """max_retries=0 is not positive — must be rejected."""
+        from rapid7_healthcheck.config import _build_rapid7_config
+        with pytest.raises(ConfigError, match="max_retries"):
+            _build_rapid7_config({
+                "base_url": "https://x", "verify_tls": True,
+                "request_timeout_seconds": 30, "max_retries": 0,
+            })
+
+    def test_rapid7_page_size_range_upper_rejected(self, tmp_path):
+        """page_size=501 exceeds max (500) and must be rejected."""
+        from rapid7_healthcheck.config import _build_rapid7_config
+        with pytest.raises(ConfigError, match="page_size"):
+            _build_rapid7_config({
+                "base_url": "https://x", "verify_tls": True,
+                "request_timeout_seconds": 30, "max_retries": 3,
+                "page_size": 501,
+            })
+
+    def test_rapid7_parallel_pages_above_8_warns(self, tmp_path, caplog):
+        """parallel_pages > 8 is accepted but emits a warning."""
+        from rapid7_healthcheck.config import _build_rapid7_config
+        import logging
+        with caplog.at_level(logging.WARNING):
+            cfg = _build_rapid7_config({
+                "base_url": "https://x", "verify_tls": True,
+                "request_timeout_seconds": 30, "max_retries": 3,
+                "parallel_pages": 9,
+            })
+        assert cfg.parallel_pages == 9
+        assert any("8-parallel" in r.message for r in caplog.records)

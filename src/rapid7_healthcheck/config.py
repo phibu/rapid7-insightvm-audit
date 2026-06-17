@@ -4,7 +4,7 @@ import logging
 import typing
 from dataclasses import MISSING, dataclass, field, fields, replace
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import yaml
 
@@ -174,8 +174,8 @@ class AuditConfig:
     enabled: bool
     full_scan: bool
     sample_size: int
-    agents_timeout_seconds: int
-    rules: dict  # str -> RuleConfig
+    agents_timeout_seconds: int = 180
+    rules: dict = field(default_factory=dict)  # str -> RuleConfig
 
 
 @dataclass(frozen=True)
@@ -184,7 +184,7 @@ class UserAuditConfig:
     enabled: bool
     full_scan: bool
     sample_size: int
-    rules: dict  # str -> RuleConfig
+    rules: dict = field(default_factory=dict)  # str -> RuleConfig
 
 
 def _default_audit() -> AuditConfig:
@@ -205,11 +205,11 @@ class CloudIntegrationConfig:
     `enabled` is False or the env var is missing.
     """
     enabled: bool
-    base_url: str
-    api_key_env: str
-    timeout_seconds: int
-    max_retries: int
-    parallel_pages: int
+    base_url: str = ""
+    api_key_env: str = "R7_CLOUD_API_KEY"
+    timeout_seconds: int = 30
+    max_retries: int = 3
+    parallel_pages: int = 1
 
 
 def _default_cloud_integration() -> CloudIntegrationConfig:
@@ -232,7 +232,7 @@ class CloudDriftConfig:
     self-skips when `cloud_integration` is disabled regardless of what
     this block contains.
     """
-    rules: dict  # str -> RuleConfig
+    rules: dict = field(default_factory=dict)  # str -> RuleConfig
 
 
 def _default_cloud_drift() -> CloudDriftConfig:
@@ -266,14 +266,16 @@ class AppConfig:
     template_audit: TemplateAuditConfig = field(default_factory=_default_template_audit)
 
 
-def _check_scalar(field_name: str, value: Any, expected: type, path: str) -> None:
+def _check_scalar(
+    field_name: str, value: Any, expected: type, path: str, *, positive_int: bool = True
+) -> None:
     # bool is a subclass of int, so handle it carefully.
     if expected is int:
         if isinstance(value, bool) or not isinstance(value, int):
             raise ConfigError(
                 f"{path}.{field_name}: expected int, got {type(value).__name__}"
             )
-        if value <= 0:
+        if positive_int and value <= 0:
             raise ConfigError(
                 f"{path}.{field_name}: must be a positive integer, got {value}"
             )
@@ -326,7 +328,7 @@ def _validate_dict_schema(
     return data
 
 
-def _from_dict(cls: type, data: Any, path: str) -> Any:
+def _from_dict(cls: type, data: Any, path: str, *, post_validate: Callable[[Any], Any] | None = None) -> Any:
     if not isinstance(data, dict):
         raise ConfigError(f"{path}: expected mapping, got {type(data).__name__}")
     expected = {f.name for f in fields(cls)}
@@ -346,9 +348,10 @@ def _from_dict(cls: type, data: Any, path: str) -> Any:
     kwargs: dict[str, Any] = {}
     for f in fields(cls):
         if f.name in data:
-            _check_scalar(f.name, data[f.name], hints[f.name], path)
+            _check_scalar(f.name, data[f.name], hints[f.name], path, positive_int=False)
             kwargs[f.name] = data[f.name]
-    return cls(**kwargs)
+    obj = cls(**kwargs)
+    return post_validate(obj) if post_validate is not None else obj
 
 
 _THRESHOLD_NESTED = {
@@ -362,68 +365,54 @@ _THRESHOLD_NESTED = {
 def _build_rapid7_config(data: Any) -> Rapid7Config:
     """Validator for the `rapid7:` block.
 
-    Mirrors `_from_dict` semantics (unknown keys reject, scalar types
-    enforced) but treats `auth_mode` as optional with a default and
-    additionally constrains it to the `_VALID_AUTH_MODES` allowlist.
+    Unknown keys reject, scalar types enforced by `_from_dict`. Enum
+    membership (auth_mode), positive-int fields (request_timeout_seconds,
+    max_retries), range checks (parallel_pages [1,16], page_size [1,500]),
+    and the >8 parallel_pages warning are enforced in the post_validate hook.
+
+    Note: the base_url HTTPS check lives in `_build_app_config`, not here.
     """
-    if not isinstance(data, dict):
-        raise ConfigError(f"rapid7: expected mapping, got {type(data).__name__}")
+    def pv(c: Rapid7Config) -> Rapid7Config:
+        if c.auth_mode not in _VALID_AUTH_MODES:
+            raise ConfigError(
+                f"rapid7.auth_mode: must be one of {list(_VALID_AUTH_MODES)}, got {c.auth_mode!r}"
+            )
+        _positive_int_fields(c, "rapid7", ("request_timeout_seconds", "max_retries"))
+        if not (1 <= c.parallel_pages <= 16):
+            raise ConfigError(
+                f"rapid7.parallel_pages must be in range [1, 16]; got {c.parallel_pages}"
+            )
+        if c.parallel_pages > 8:
+            logger.warning(
+                "rapid7.parallel_pages=%d exceeds the documented InsightVM "
+                "8-parallel-request limit; proceed at your own risk",
+                c.parallel_pages,
+            )
+        if not (1 <= c.page_size <= 500):
+            raise ConfigError(
+                f"rapid7.page_size must be in range [1, 500]; got {c.page_size}"
+            )
+        return c
 
-    required = {"base_url", "verify_tls", "request_timeout_seconds", "max_retries"}
-    optional = {"auth_mode", "parallel_pages", "page_size"}
-    expected = required | optional
+    return _from_dict(Rapid7Config, data, "rapid7", post_validate=pv)
 
-    unknown = set(data.keys()) - expected
-    if unknown:
-        raise ConfigError(f"rapid7: unknown key(s): {sorted(unknown)}")
-    missing = required - set(data.keys())
-    if missing:
-        raise ConfigError(f"rapid7: missing required key(s): {sorted(missing)}")
 
-    _check_scalar("base_url", data["base_url"], str, "rapid7")
-    _check_scalar("verify_tls", data["verify_tls"], bool, "rapid7")
-    _check_scalar("request_timeout_seconds", data["request_timeout_seconds"], int, "rapid7")
-    _check_scalar("max_retries", data["max_retries"], int, "rapid7")
+def _positive_int_fields(obj: Any, path: str, field_names: tuple[str, ...]) -> Any:
+    """Raise ConfigError if any named int field on obj is <= 0."""
+    for name in field_names:
+        val = getattr(obj, name)
+        if isinstance(val, int) and not isinstance(val, bool) and val <= 0:
+            raise ConfigError(f"{path}.{name}: must be a positive integer, got {val}")
+    return obj
 
-    auth_mode = data.get("auth_mode", "api_key")
-    if not isinstance(auth_mode, str):
-        raise ConfigError(
-            f"rapid7.auth_mode: expected str, got {type(auth_mode).__name__}"
-        )
-    if auth_mode not in _VALID_AUTH_MODES:
-        raise ConfigError(
-            f"rapid7.auth_mode: must be one of {list(_VALID_AUTH_MODES)}, got {auth_mode!r}"
-        )
 
-    parallel_pages = data.get("parallel_pages", 1)
-    _check_scalar("parallel_pages", parallel_pages, int, "rapid7")
-    if not (1 <= parallel_pages <= 16):
-        raise ConfigError(
-            f"rapid7.parallel_pages must be in range [1, 16]; got {parallel_pages}"
-        )
-    if parallel_pages > 8:
-        logger.warning(
-            "rapid7.parallel_pages=%d exceeds the documented InsightVM "
-            "8-parallel-request limit; proceed at your own risk",
-            parallel_pages,
-        )
-
-    page_size = data.get("page_size", 250)
-    _check_scalar("page_size", page_size, int, "rapid7")
-    if not (1 <= page_size <= 500):
-        raise ConfigError(
-            f"rapid7.page_size must be in range [1, 500]; got {page_size}"
-        )
-
-    return Rapid7Config(
-        base_url=data["base_url"],
-        verify_tls=data["verify_tls"],
-        request_timeout_seconds=data["request_timeout_seconds"],
-        max_retries=data["max_retries"],
-        auth_mode=auth_mode,
-        parallel_pages=parallel_pages,
-        page_size=page_size,
-    )
+def _non_negative_int_fields(obj: Any, path: str, field_names: tuple[str, ...]) -> Any:
+    """Raise ConfigError if any named int field on obj is < 0."""
+    for name in field_names:
+        val = getattr(obj, name)
+        if isinstance(val, int) and not isinstance(val, bool) and val < 0:
+            raise ConfigError(f"{path}.{name}: must be a non-negative integer, got {val}")
+    return obj
 
 
 def _build_thresholds(data: Any) -> Thresholds:
@@ -437,115 +426,58 @@ def _build_thresholds(data: Any) -> Thresholds:
     if missing:
         raise ConfigError(f"thresholds: missing required key(s): {sorted(missing)}")
 
-    # asset_coverage.dead_groups_fallback_cap accepts 0 (= disable fallback),
-    # which the generic _check_scalar (>0) rejects. Pull the field out, build
-    # the rest via the normal path, then re-attach the validated value.
-    ac_raw = data["asset_coverage"]
-    if not isinstance(ac_raw, dict):
-        raise ConfigError(
-            f"thresholds.asset_coverage: expected mapping, got {type(ac_raw).__name__}"
-        )
-    ac_data = dict(ac_raw)
-    cap: int | None = None
-    if "dead_groups_fallback_cap" in ac_data:
-        cap = ac_data.pop("dead_groups_fallback_cap")
-        if isinstance(cap, bool) or not isinstance(cap, int):
-            raise ConfigError(
-                f"thresholds.asset_coverage.dead_groups_fallback_cap: "
-                f"expected int, got {type(cap).__name__}"
-            )
-        if cap < 0:
-            raise ConfigError(
-                f"thresholds.asset_coverage.dead_groups_fallback_cap: "
-                f"must be a non-negative integer, got {cap}"
-            )
-
-    asset_coverage = _from_dict(
-        AssetCoverageThresholds, ac_data, "thresholds.asset_coverage"
-    )
-    if cap is not None:
-        asset_coverage = replace(asset_coverage, dead_groups_fallback_cap=cap)
-
-    # data_quality.duplicate_detection_max_assets accepts 0 (= always skip),
-    # which the generic _check_scalar (>0) rejects. Pull it out, build the
-    # rest via the normal path, then re-attach the validated value. Mirrors
-    # the asset_coverage.dead_groups_fallback_cap handling above.
-    dq_raw = data["data_quality"]
-    if not isinstance(dq_raw, dict):
-        raise ConfigError(
-            f"thresholds.data_quality: expected mapping, got {type(dq_raw).__name__}"
-        )
-    dq_data = dict(dq_raw)
-    dup_cap: int | None = None
-    if "duplicate_detection_max_assets" in dq_data:
-        dup_cap = dq_data.pop("duplicate_detection_max_assets")
-        if isinstance(dup_cap, bool) or not isinstance(dup_cap, int):
-            raise ConfigError(
-                f"thresholds.data_quality.duplicate_detection_max_assets: "
-                f"expected int, got {type(dup_cap).__name__}"
-            )
-        if dup_cap < 0:
-            raise ConfigError(
-                f"thresholds.data_quality.duplicate_detection_max_assets: "
-                f"must be a non-negative integer, got {dup_cap}"
-            )
-
-    data_quality = _from_dict(
-        DataQualityThresholds, dq_data, "thresholds.data_quality"
-    )
-    if dup_cap is not None:
-        data_quality = replace(data_quality, duplicate_detection_max_assets=dup_cap)
+    # Field classification (confirmed against the dataclasses, config.py:41-73).
+    # POS_* = positive-only int fields, NN_* = non-negative int fields.
+    # bool fields are validated by _from_dict's _check_scalar(bool) and are NOT
+    # listed here.
+    POS_SCAN_ENGINES = ("last_contact_warn_hours", "last_contact_fail_hours")
+    POS_SCAN_ACTIVITY = ("recent_window_days", "stuck_scan_hours", "site_no_scan_days")
+    POS_ASSET_COVERAGE = ("stale_asset_days", "never_scanned_days")
+    NN_ASSET_COVERAGE = ("dead_groups_fallback_cap",)
+    POS_DATA_QUALITY = ("stale_asset_days",)
+    NN_DATA_QUALITY = ("duplicate_detection_max_assets",)
 
     return Thresholds(
-        scan_engines=_from_dict(ScanEngineThresholds, data["scan_engines"], "thresholds.scan_engines"),
-        scan_activity=_from_dict(ScanActivityThresholds, data["scan_activity"], "thresholds.scan_activity"),
-        asset_coverage=asset_coverage,
-        data_quality=data_quality,
+        scan_engines=_from_dict(
+            ScanEngineThresholds, data["scan_engines"], "thresholds.scan_engines",
+            post_validate=lambda o: _positive_int_fields(o, "thresholds.scan_engines", POS_SCAN_ENGINES),
+        ),
+        scan_activity=_from_dict(
+            ScanActivityThresholds, data["scan_activity"], "thresholds.scan_activity",
+            post_validate=lambda o: _positive_int_fields(o, "thresholds.scan_activity", POS_SCAN_ACTIVITY),
+        ),
+        asset_coverage=_from_dict(
+            AssetCoverageThresholds, data["asset_coverage"], "thresholds.asset_coverage",
+            post_validate=lambda o: _non_negative_int_fields(
+                _positive_int_fields(o, "thresholds.asset_coverage", POS_ASSET_COVERAGE),
+                "thresholds.asset_coverage", NN_ASSET_COVERAGE),
+        ),
+        data_quality=_from_dict(
+            DataQualityThresholds, data["data_quality"], "thresholds.data_quality",
+            post_validate=lambda o: _non_negative_int_fields(
+                _positive_int_fields(o, "thresholds.data_quality", POS_DATA_QUALITY),
+                "thresholds.data_quality", NN_DATA_QUALITY),
+        ),
     )
 
 
 def _build_audit_config(data: dict | None) -> AuditConfig:
     if data is None:
         return AuditConfig(enabled=False, full_scan=False, sample_size=500, agents_timeout_seconds=180, rules={})
-    _validate_dict_schema(
-        data,
-        expected={"enabled", "full_scan", "sample_size", "agents_timeout_seconds", "rules"},
-        required=set(),  # legacy: only `unknown` was checked here, missing
-                         # keys fall through to the field checks below
-        name="audit",
-    )
-    if not isinstance(data.get("enabled"), bool):
-        raise ConfigError("audit.enabled: expected bool")
-    if not isinstance(data.get("full_scan"), bool):
-        raise ConfigError("audit.full_scan: expected bool")
-    if (
-        not isinstance(data.get("sample_size"), int)
-        or isinstance(data.get("sample_size"), bool)
-        or data["sample_size"] <= 0
-    ):
-        raise ConfigError("audit.sample_size: expected positive int")
-
-    agents_timeout_seconds = data.get("agents_timeout_seconds", 180)
-    if (
-        not isinstance(agents_timeout_seconds, int)
-        or isinstance(agents_timeout_seconds, bool)
-        or agents_timeout_seconds <= 0
-    ):
-        raise ConfigError("audit.agents_timeout_seconds: expected positive int")
-
-    raw_rules = data.get("rules") or {}
+    if not isinstance(data, dict):
+        raise ConfigError("audit: expected mapping")
+    raw = dict(data)
+    raw_rules = raw.pop("rules", None) or {}
     if not isinstance(raw_rules, dict):
         raise ConfigError("audit.rules: expected mapping")
+
+    def pv(obj):
+        return _positive_int_fields(obj, "audit", ("sample_size", "agents_timeout_seconds"))
+
+    obj = _from_dict(AuditConfig, raw, "audit", post_validate=pv)
     valid_audit_ids, _, _, _ = _registry_rule_ids()
     rules = _validate_rules_block(raw_rules, valid_rule_ids=valid_audit_ids, path="audit.rules")
-
-    return AuditConfig(
-        enabled=data["enabled"],
-        full_scan=data["full_scan"],
-        sample_size=data["sample_size"],
-        agents_timeout_seconds=agents_timeout_seconds,
-        rules=rules,
-    )
+    return replace(obj, rules=rules)
 
 
 def _build_user_audit_config(data: dict | None) -> UserAuditConfig:
@@ -554,94 +486,48 @@ def _build_user_audit_config(data: dict | None) -> UserAuditConfig:
     `UserAuditConfig` shape."""
     if data is None:
         return UserAuditConfig(enabled=False, full_scan=False, sample_size=500, rules={})
-    _validate_dict_schema(
-        data,
-        expected={"enabled", "full_scan", "sample_size", "rules"},
-        required=set(),
-        name="user_audit",
-    )
-    if not isinstance(data.get("enabled"), bool):
-        raise ConfigError("user_audit.enabled: expected bool")
-    if not isinstance(data.get("full_scan"), bool):
-        raise ConfigError("user_audit.full_scan: expected bool")
-    if (
-        not isinstance(data.get("sample_size"), int)
-        or isinstance(data.get("sample_size"), bool)
-        or data["sample_size"] <= 0
-    ):
-        raise ConfigError("user_audit.sample_size: expected positive int")
-
-    raw_rules = data.get("rules") or {}
+    if not isinstance(data, dict):
+        raise ConfigError("user_audit: expected mapping")
+    raw = dict(data)
+    raw_rules = raw.pop("rules", None) or {}
     if not isinstance(raw_rules, dict):
         raise ConfigError("user_audit.rules: expected mapping")
+
+    def pv(obj):
+        return _positive_int_fields(obj, "user_audit", ("sample_size",))
+
+    obj = _from_dict(UserAuditConfig, raw, "user_audit", post_validate=pv)
     _, valid_user_ids, _, _ = _registry_rule_ids()
     rules = _validate_rules_block(raw_rules, valid_rule_ids=valid_user_ids, path="user_audit.rules")
-
-    return UserAuditConfig(
-        enabled=data["enabled"],
-        full_scan=data["full_scan"],
-        sample_size=data["sample_size"],
-        rules=rules,
-    )
+    return replace(obj, rules=rules)
 
 
 def _build_cloud_integration_config(data: dict | None) -> CloudIntegrationConfig:
     """Validator for the optional `cloud_integration:` block.
 
-    Mirrors `_build_audit_config` semantics: missing block = defaults
-    (disabled), unknown keys reject, type checks per field. When
-    `enabled: true`, `base_url` becomes required and must be HTTPS.
+    Missing block → disabled defaults. Unknown keys reject, scalar types
+    enforced by `_from_dict`. Cross-field rules (enabled→base_url required,
+    HTTPS prefix), api_key_env non-empty, positive-int fields, and
+    parallel_pages range are enforced in the post_validate hook.
     """
     if data is None:
         return _default_cloud_integration()
-    _validate_dict_schema(
-        data,
-        expected={
-            "enabled", "base_url", "api_key_env",
-            "timeout_seconds", "max_retries", "parallel_pages",
-        },
-        required=set(),
-        name="cloud_integration",
-    )
-    if not isinstance(data.get("enabled"), bool):
-        raise ConfigError("cloud_integration.enabled: expected bool")
-    enabled = data["enabled"]
 
-    base_url = data.get("base_url", "")
-    if not isinstance(base_url, str):
-        raise ConfigError("cloud_integration.base_url: expected str")
-    if enabled and not base_url:
-        raise ConfigError(
-            "cloud_integration.base_url: required when enabled is true"
-        )
-    if enabled and not base_url.startswith("https://"):
-        raise ConfigError("cloud_integration.base_url must start with https://")
+    def pv(c: CloudIntegrationConfig) -> CloudIntegrationConfig:
+        if c.enabled and not c.base_url:
+            raise ConfigError("cloud_integration.base_url: required when enabled is true")
+        if c.enabled and not c.base_url.startswith("https://"):
+            raise ConfigError("cloud_integration.base_url must start with https://")
+        if not c.api_key_env:
+            raise ConfigError("cloud_integration.api_key_env: expected non-empty str")
+        _positive_int_fields(c, "cloud_integration", ("timeout_seconds", "max_retries"))
+        if not (1 <= c.parallel_pages <= 16):
+            raise ConfigError(
+                f"cloud_integration.parallel_pages must be in range [1, 16]; got {c.parallel_pages}"
+            )
+        return c
 
-    api_key_env = data.get("api_key_env", "R7_CLOUD_API_KEY")
-    if not isinstance(api_key_env, str) or not api_key_env:
-        raise ConfigError("cloud_integration.api_key_env: expected non-empty str")
-
-    timeout_seconds = data.get("timeout_seconds", 30)
-    _check_scalar("timeout_seconds", timeout_seconds, int, "cloud_integration")
-
-    max_retries = data.get("max_retries", 3)
-    _check_scalar("max_retries", max_retries, int, "cloud_integration")
-
-    parallel_pages = data.get("parallel_pages", 1)
-    _check_scalar("parallel_pages", parallel_pages, int, "cloud_integration")
-    if not (1 <= parallel_pages <= 16):
-        raise ConfigError(
-            f"cloud_integration.parallel_pages must be in range [1, 16]; got {parallel_pages}"
-        )
-
-    return CloudIntegrationConfig(
-        enabled=enabled,
-        base_url=base_url,
-        api_key_env=api_key_env,
-        timeout_seconds=timeout_seconds,
-        max_retries=max_retries,
-        parallel_pages=parallel_pages,
-    )
+    return _from_dict(CloudIntegrationConfig, data, "cloud_integration", post_validate=pv)
 
 
 def _build_cloud_drift_config(data: dict | None) -> CloudDriftConfig:
@@ -652,6 +538,10 @@ def _build_cloud_drift_config(data: dict | None) -> CloudDriftConfig:
     `sample_size` keys — sampling does not apply to cloud-drift rules
     (they read aggregate counts) and the category-level enable lives in
     `checks.cloud_drift_audit` like every other check.
+
+    Not routed through `_from_dict`: the sole field is `rules: dict`, and
+    `_from_dict`/_check_scalar cannot validate a dict-typed field. This is
+    a deliberate non-migration, not an oversight.
     """
     if data is None:
         return _default_cloud_drift()
@@ -675,35 +565,26 @@ def _build_template_audit_config(data: dict | None) -> TemplateAuditConfig:
     registry and builds the `TemplateAuditConfig` shape."""
     if data is None:
         return _default_template_audit()
-    _validate_dict_schema(
-        data,
-        expected={"enabled", "full_scan", "sample_size", "rules"},
-        required=set(),
-        name="template_audit",
-    )
-    if not isinstance(data.get("enabled"), bool):
-        raise ConfigError("template_audit.enabled: expected bool")
-    if not isinstance(data.get("full_scan"), bool):
-        raise ConfigError("template_audit.full_scan: expected bool")
-    if (
-        not isinstance(data.get("sample_size"), int)
-        or isinstance(data.get("sample_size"), bool)
-        or data["sample_size"] <= 0
-    ):
-        raise ConfigError("template_audit.sample_size: expected positive int")
-
-    raw_rules = data.get("rules") or {}
+    if not isinstance(data, dict):
+        raise ConfigError("template_audit: expected mapping")
+    raw = dict(data)
+    raw_rules = raw.pop("rules", None) or {}
+    required = {"enabled", "full_scan", "sample_size"}
+    missing = required - set(raw.keys())
+    if missing:
+        raise ConfigError(
+            f"template_audit: missing required key(s): {sorted(missing)}"
+        )
     if not isinstance(raw_rules, dict):
         raise ConfigError("template_audit.rules: expected mapping")
+
+    def pv(obj):
+        return _positive_int_fields(obj, "template_audit", ("sample_size",))
+
+    obj = _from_dict(TemplateAuditConfig, raw, "template_audit", post_validate=pv)
     _, _, _, valid_template_ids = _registry_rule_ids()
     rules = _validate_rules_block(raw_rules, valid_rule_ids=valid_template_ids, path="template_audit.rules")
-
-    return TemplateAuditConfig(
-        enabled=data["enabled"],
-        full_scan=data["full_scan"],
-        sample_size=data["sample_size"],
-        rules=rules,
-    )
+    return replace(obj, rules=rules)
 
 
 def _build_report_config(data: Any) -> ReportConfig:
@@ -715,39 +596,31 @@ def _build_report_config(data: Any) -> ReportConfig:
       - null/None    -> delta disabled
     Rejects unknown keys (consistent with `_from_dict`).
 
-    Not routed through `_validate_dict_schema` because this validator has a
-    distinct error-message wording (`expected mapping, got <type>`) and a
-    custom optional/required split that doesn't generalize cleanly.
+    `delta_max_age_days` is `int | None`. `get_type_hints` resolves this to
+    `Optional[int]`, which `_check_scalar`'s `if expected is int` does NOT
+    match — it would hit the "unsupported declared type" branch and raise.
+    So we pop `delta_max_age_days` before calling `_from_dict`, validate it
+    by hand (non-negative int or None; reject bool and negative), then
+    re-attach it via `replace` after `_from_dict` returns.
     """
     if not isinstance(data, dict):
         raise ConfigError(f"report: expected mapping, got {type(data).__name__}")
-    expected = {"output_dir", "filename_pattern", "title", "delta_max_age_days", "log_format"}
-    unknown = set(data.keys()) - expected
-    if unknown:
-        raise ConfigError(f"report: unknown key(s): {sorted(unknown)}")
-    required = {"output_dir", "filename_pattern", "title"}
-    missing = required - set(data.keys())
-    if missing:
-        raise ConfigError(f"report: missing required key(s): {sorted(missing)}")
-    for k in ("output_dir", "filename_pattern", "title"):
-        if not isinstance(data[k], str):
-            raise ConfigError(f"report.{k}: expected str")
-    delta = data.get("delta_max_age_days", 30)
+    raw = dict(data)
+    # Pop the union field before _from_dict — validated and re-attached below.
+    delta = raw.pop("delta_max_age_days", 30)
     if delta is not None and (not isinstance(delta, int) or isinstance(delta, bool) or delta < 0):
         raise ConfigError("report.delta_max_age_days: expected non-negative int or null")
-    log_format = data.get("log_format", "plain")
-    if log_format not in ("plain", "cmtrace", "json"):
-        raise ConfigError(
-            f"report.log_format: invalid value {log_format!r}; "
-            f"must be one of: plain, cmtrace, json"
-        )
-    return ReportConfig(
-        output_dir=data["output_dir"],
-        filename_pattern=data["filename_pattern"],
-        title=data["title"],
-        delta_max_age_days=delta,
-        log_format=log_format,
-    )
+
+    def pv(c: ReportConfig) -> ReportConfig:
+        if c.log_format not in ("plain", "cmtrace", "json"):
+            raise ConfigError(
+                f"report.log_format: invalid value {c.log_format!r}; "
+                f"must be one of: plain, cmtrace, json"
+            )
+        return c
+
+    obj = _from_dict(ReportConfig, raw, "report", post_validate=pv)
+    return replace(obj, delta_max_age_days=delta)
 
 
 def _ensure_default_on(checks: dict, *names: str) -> dict:
