@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.4] - 2026-06-17
+
+### Internal
+
+- **Uniform check dispatch — `__main__` no longer routes by check name.** The `Check` protocol now declares the honest signature every check is actually called with: `run(client, config, *, snapshot=None, cloud_client=None, progress=None)`. `__main__._run_checks` hands all three optional kwargs to every check uniformly; each check uses only what it needs (op-checks read `snapshot`, cloud-drift reads `cloud_client`, audits read `progress`) and tolerates the rest via `**_kwargs`. This deletes the name-literal dispatch branch that matched check identity to decide which kwargs to pass — the one remaining violation of the "`__main__` only wires modules, no business logic" layer rule. Adding a check is now one `_REGISTRY` entry, no dispatch-branch edit. Behavior-preserving.
+- **Rule auto-discovery via `load_rules` — dropped the hand-maintained import lists.** New `_rule_loader.load_rules(package)` walks a `rules/` package with `pkgutil.iter_modules` (sorted) and imports each module so its `@register*` decorator fires. The four audit categories now call it instead of carrying explicit "import every rule module" blocks (38 import lines across the four `__init__`s) — a third, silent-on-omission place to register a rule: forget the import line and the rule simply wasn't there, with no error. The `rules/` directory is now the single source of truth — a new decorated rule file registers itself, no import line to maintain. All 38 rules still register (Configuration 11 / User & Permission 7 / Cloud Drift 3 / Template 17).
+- **One cosmetic, self-correcting change for upgraders:** rule registry insertion order is now alphabetical-by-module (it was the order of the hand-maintained import lists). The footer **Run hash** is the SHA-256 of the serialized state blob, whose arrays are emitted in registry order, so the first run after upgrading will show a different Run hash even with no environment change. This is purely cosmetic: the cross-run delta ("what changed since last run") matches findings by content signature (`rule_id` + message + details), never by position, so resolved / new / severity-changed detection is unaffected. Every run after the first is stable again.
+- CONTEXT.md gains "Check dispatch" (the `Check` protocol, `_REGISTRY`) and "Rule registration" (`load_rules`) sections. New `tests/test_main.py` uniform-dispatch test and `tests/test_rule_loader.py`. No HTTP added; the read-only contract is unchanged.
+
 ## [0.8.3] - 2026-06-17
 
 ### Internal
