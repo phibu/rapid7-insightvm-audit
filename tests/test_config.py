@@ -689,6 +689,41 @@ def test_audit_agents_timeout_seconds_rejects_bool():
         })
 
 
+# --- Task 3 boundary tests: post_validate value checks on thresholds --------
+
+def _thresholds_data(**section_overrides) -> dict:
+    """Build a minimal valid thresholds dict with per-section overrides."""
+    base = {
+        "scan_engines": {"last_contact_warn_hours": 2, "last_contact_fail_hours": 24},
+        "scan_activity": {"recent_window_days": 7, "stuck_scan_hours": 24, "site_no_scan_days": 14},
+        "asset_coverage": {"stale_asset_days": 30, "flag_unscanned_assets": True, "never_scanned_days": 90},
+        "data_quality": {"flag_missing_os": True, "flag_empty_sites": True},
+    }
+    for section, overrides in section_overrides.items():
+        base[section] = {**base[section], **overrides}
+    return base
+
+
+def test_thresholds_dead_groups_cap_zero_ok_after_refactor():
+    from rapid7_healthcheck.config import _build_thresholds
+    data = _thresholds_data(asset_coverage={"dead_groups_fallback_cap": 0})
+    _build_thresholds(data)  # must not raise
+
+
+def test_thresholds_dup_detection_zero_ok_after_refactor():
+    from rapid7_healthcheck.config import _build_thresholds
+    data = _thresholds_data(data_quality={"duplicate_detection_max_assets": 0})
+    _build_thresholds(data)  # must not raise
+
+
+def test_thresholds_positive_field_rejects_zero():
+    # last_contact_warn_hours is a positive-only int field (config.py:43).
+    from rapid7_healthcheck.config import _build_thresholds
+    data = _thresholds_data(scan_engines={"last_contact_warn_hours": 0})
+    with pytest.raises(ConfigError, match="last_contact_warn_hours"):
+        _build_thresholds(data)
+
+
 def test_load_audit_rejects_removed_rule_id():
     """Users upgrading from 0.3.6 with the old block must see a clear error.
 

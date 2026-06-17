@@ -4,7 +4,7 @@ import logging
 import typing
 from dataclasses import MISSING, dataclass, field, fields, replace
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import yaml
 
@@ -328,7 +328,7 @@ def _validate_dict_schema(
     return data
 
 
-def _from_dict(cls: type, data: Any, path: str, *, post_validate=None) -> Any:
+def _from_dict(cls: type, data: Any, path: str, *, post_validate: Callable[[Any], Any] | None = None) -> Any:
     if not isinstance(data, dict):
         raise ConfigError(f"{path}: expected mapping, got {type(data).__name__}")
     expected = {f.name for f in fields(cls)}
@@ -429,6 +429,24 @@ def _build_rapid7_config(data: Any) -> Rapid7Config:
     )
 
 
+def _positive_int_fields(obj: Any, path: str, field_names: tuple[str, ...]) -> Any:
+    """Raise ConfigError if any named int field on obj is <= 0."""
+    for name in field_names:
+        val = getattr(obj, name)
+        if isinstance(val, int) and not isinstance(val, bool) and val <= 0:
+            raise ConfigError(f"{path}.{name}: must be a positive integer, got {val}")
+    return obj
+
+
+def _non_negative_int_fields(obj: Any, path: str, field_names: tuple[str, ...]) -> Any:
+    """Raise ConfigError if any named int field on obj is < 0."""
+    for name in field_names:
+        val = getattr(obj, name)
+        if isinstance(val, int) and not isinstance(val, bool) and val < 0:
+            raise ConfigError(f"{path}.{name}: must be a non-negative integer, got {val}")
+    return obj
+
+
 def _build_thresholds(data: Any) -> Thresholds:
     if not isinstance(data, dict):
         raise ConfigError("thresholds: expected mapping")
@@ -440,70 +458,38 @@ def _build_thresholds(data: Any) -> Thresholds:
     if missing:
         raise ConfigError(f"thresholds: missing required key(s): {sorted(missing)}")
 
-    # asset_coverage.dead_groups_fallback_cap accepts 0 (= disable fallback),
-    # which the generic _check_scalar (>0) rejects. Pull the field out, build
-    # the rest via the normal path, then re-attach the validated value.
-    ac_raw = data["asset_coverage"]
-    if not isinstance(ac_raw, dict):
-        raise ConfigError(
-            f"thresholds.asset_coverage: expected mapping, got {type(ac_raw).__name__}"
-        )
-    ac_data = dict(ac_raw)
-    cap: int | None = None
-    if "dead_groups_fallback_cap" in ac_data:
-        cap = ac_data.pop("dead_groups_fallback_cap")
-        if isinstance(cap, bool) or not isinstance(cap, int):
-            raise ConfigError(
-                f"thresholds.asset_coverage.dead_groups_fallback_cap: "
-                f"expected int, got {type(cap).__name__}"
-            )
-        if cap < 0:
-            raise ConfigError(
-                f"thresholds.asset_coverage.dead_groups_fallback_cap: "
-                f"must be a non-negative integer, got {cap}"
-            )
-
-    asset_coverage = _from_dict(
-        AssetCoverageThresholds, ac_data, "thresholds.asset_coverage"
-    )
-    if cap is not None:
-        asset_coverage = replace(asset_coverage, dead_groups_fallback_cap=cap)
-
-    # data_quality.duplicate_detection_max_assets accepts 0 (= always skip),
-    # which the generic _check_scalar (>0) rejects. Pull it out, build the
-    # rest via the normal path, then re-attach the validated value. Mirrors
-    # the asset_coverage.dead_groups_fallback_cap handling above.
-    dq_raw = data["data_quality"]
-    if not isinstance(dq_raw, dict):
-        raise ConfigError(
-            f"thresholds.data_quality: expected mapping, got {type(dq_raw).__name__}"
-        )
-    dq_data = dict(dq_raw)
-    dup_cap: int | None = None
-    if "duplicate_detection_max_assets" in dq_data:
-        dup_cap = dq_data.pop("duplicate_detection_max_assets")
-        if isinstance(dup_cap, bool) or not isinstance(dup_cap, int):
-            raise ConfigError(
-                f"thresholds.data_quality.duplicate_detection_max_assets: "
-                f"expected int, got {type(dup_cap).__name__}"
-            )
-        if dup_cap < 0:
-            raise ConfigError(
-                f"thresholds.data_quality.duplicate_detection_max_assets: "
-                f"must be a non-negative integer, got {dup_cap}"
-            )
-
-    data_quality = _from_dict(
-        DataQualityThresholds, dq_data, "thresholds.data_quality"
-    )
-    if dup_cap is not None:
-        data_quality = replace(data_quality, duplicate_detection_max_assets=dup_cap)
+    # Field classification (confirmed against the dataclasses, config.py:41-73).
+    # POS_* = positive-only int fields, NN_* = non-negative int fields.
+    # bool fields are validated by _from_dict's _check_scalar(bool) and are NOT
+    # listed here.
+    POS_SCAN_ENGINES = ("last_contact_warn_hours", "last_contact_fail_hours")
+    POS_SCAN_ACTIVITY = ("recent_window_days", "stuck_scan_hours", "site_no_scan_days")
+    POS_ASSET_COVERAGE = ("stale_asset_days", "never_scanned_days")
+    NN_ASSET_COVERAGE = ("dead_groups_fallback_cap",)
+    POS_DATA_QUALITY = ("stale_asset_days",)
+    NN_DATA_QUALITY = ("duplicate_detection_max_assets",)
 
     return Thresholds(
-        scan_engines=_from_dict(ScanEngineThresholds, data["scan_engines"], "thresholds.scan_engines"),
-        scan_activity=_from_dict(ScanActivityThresholds, data["scan_activity"], "thresholds.scan_activity"),
-        asset_coverage=asset_coverage,
-        data_quality=data_quality,
+        scan_engines=_from_dict(
+            ScanEngineThresholds, data["scan_engines"], "thresholds.scan_engines",
+            post_validate=lambda o: _positive_int_fields(o, "thresholds.scan_engines", POS_SCAN_ENGINES),
+        ),
+        scan_activity=_from_dict(
+            ScanActivityThresholds, data["scan_activity"], "thresholds.scan_activity",
+            post_validate=lambda o: _positive_int_fields(o, "thresholds.scan_activity", POS_SCAN_ACTIVITY),
+        ),
+        asset_coverage=_from_dict(
+            AssetCoverageThresholds, data["asset_coverage"], "thresholds.asset_coverage",
+            post_validate=lambda o: _non_negative_int_fields(
+                _positive_int_fields(o, "thresholds.asset_coverage", POS_ASSET_COVERAGE),
+                "thresholds.asset_coverage", NN_ASSET_COVERAGE),
+        ),
+        data_quality=_from_dict(
+            DataQualityThresholds, data["data_quality"], "thresholds.data_quality",
+            post_validate=lambda o: _non_negative_int_fields(
+                _positive_int_fields(o, "thresholds.data_quality", POS_DATA_QUALITY),
+                "thresholds.data_quality", NN_DATA_QUALITY),
+        ),
     )
 
 
