@@ -865,3 +865,161 @@ def test_registry_rule_ids_populates_when_config_imported_first():
     r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
     assert r.stdout.strip() == "ok"
+
+
+# ---------------------------------------------------------------------------
+# Characterization safety net: int-boundary validation
+#
+# These tests pin the CURRENT observable validation behavior for every
+# zero/negative/bool boundary before the _from_dict collapse refactor
+# (Task 1 of refactor/config-from-dict-collapse).  They must remain green
+# against the unmodified code; later tasks must keep them green too.
+# ---------------------------------------------------------------------------
+
+class TestConfigCharacterization:
+    """Parametrized consolidation of int-boundary cases across all builders."""
+
+    # -- rapid7.max_retries -------------------------------------------------
+    # _check_scalar(..., int) rejects value <= 0.
+    # Error: "rapid7.max_retries: must be a positive integer, got N"
+
+    @pytest.mark.parametrize("value,ok", [(1, True), (3, True), (0, False), (-1, False)])
+    def test_char_rapid7_max_retries_boundary(self, tmp_path, value, ok):
+        body = VALID_YAML.replace("max_retries: 3", f"max_retries: {value}")
+        if ok:
+            cfg = load_config(write(tmp_path, body))
+            assert cfg.rapid7.max_retries == value
+        else:
+            with pytest.raises(ConfigError, match="max_retries"):
+                load_config(write(tmp_path, body))
+
+    # -- audit.sample_size --------------------------------------------------
+    # _build_audit_config rejects value <= 0 and bool values.
+    # Error: "audit.sample_size: expected positive int"
+    # Called directly (same pattern as test_audit_agents_timeout_seconds_*).
+
+    @pytest.mark.parametrize("value,ok", [(1, True), (500, True), (0, False), (-1, False)])
+    def test_char_audit_sample_size_boundary(self, value, ok):
+        from rapid7_healthcheck.config import _build_audit_config
+        raw = {
+            "enabled": True,
+            "full_scan": False,
+            "sample_size": value,
+            "agents_timeout_seconds": 180,
+            "rules": {},
+        }
+        if ok:
+            cfg = _build_audit_config(raw)
+            assert cfg.sample_size == value
+        else:
+            with pytest.raises(ConfigError, match="sample_size"):
+                _build_audit_config(raw)
+
+    def test_char_audit_sample_size_bool_rejected(self):
+        """bool is a subclass of int; must be rejected like 0/-1."""
+        from rapid7_healthcheck.config import _build_audit_config
+        with pytest.raises(ConfigError, match="sample_size"):
+            _build_audit_config({
+                "enabled": True,
+                "full_scan": False,
+                "sample_size": True,
+                "agents_timeout_seconds": 180,
+                "rules": {},
+            })
+
+    # -- thresholds.asset_coverage.dead_groups_fallback_cap -----------------
+    # 0 is accepted (= disable fallback); negative is rejected.
+    # Error: "thresholds.asset_coverage.dead_groups_fallback_cap: must be a non-negative integer"
+
+    @pytest.mark.parametrize("value,ok", [(0, True), (5, True), (-1, False)])
+    def test_char_dead_groups_fallback_cap_boundary(self, tmp_path, value, ok):
+        body = _yaml_with_dead_groups_cap(value)
+        if ok:
+            cfg = load_config(write(tmp_path, body))
+            assert cfg.thresholds.asset_coverage.dead_groups_fallback_cap == value
+        else:
+            with pytest.raises(ConfigError, match="dead_groups_fallback_cap"):
+                load_config(write(tmp_path, body))
+
+    # -- thresholds.data_quality.duplicate_detection_max_assets -------------
+    # 0 is accepted (= always skip); negative is rejected.
+    # Error: "thresholds.data_quality.duplicate_detection_max_assets: must be a non-negative integer"
+
+    @pytest.mark.parametrize("value,ok", [(0, True), (5, True), (-1, False)])
+    def test_char_duplicate_detection_max_assets_boundary(self, tmp_path, value, ok):
+        body = _yaml_with_duplicate_detection_max_assets(value)
+        if ok:
+            cfg = load_config(write(tmp_path, body))
+            assert cfg.thresholds.data_quality.duplicate_detection_max_assets == value
+        else:
+            with pytest.raises(ConfigError, match="non-negative"):
+                load_config(write(tmp_path, body))
+
+    # -- report.delta_max_age_days ------------------------------------------
+    # 0 and None (null) are both accepted; negative is rejected.
+    # Error: "report.delta_max_age_days: expected non-negative int or null"
+
+    @pytest.mark.parametrize("yaml_value,expected,ok", [
+        ("0", 0, True),
+        ("30", 30, True),
+        ("null", None, True),
+        ("-1", None, False),
+    ])
+    def test_char_delta_max_age_days_boundary(self, tmp_path, yaml_value, expected, ok):
+        cfg_text = _MINIMAL_CONFIG_TEXT + f"  delta_max_age_days: {yaml_value}\n"
+        if ok:
+            cfg = load_config(write(tmp_path, cfg_text))
+            assert cfg.report.delta_max_age_days == expected
+        else:
+            with pytest.raises(ConfigError, match="non-negative"):
+                load_config(write(tmp_path, cfg_text))
+
+    # -- rapid7.parallel_pages ----------------------------------------------
+    # Range [1, 16]; 0 rejected by _check_scalar (<=0); 17 rejected by range check.
+    # Already covered by individual tests; this parametrized form is the
+    # canonical cross-run regression anchor.
+
+    @pytest.mark.parametrize("value,ok", [(1, True), (16, True), (0, False), (17, False)])
+    def test_char_rapid7_parallel_pages_boundary(self, tmp_path, value, ok):
+        body = _yaml_with_rapid7_extras(parallel_pages=value)
+        if ok:
+            cfg = load_config(write(tmp_path, body))
+            assert cfg.rapid7.parallel_pages == value
+        else:
+            with pytest.raises(ConfigError, match="parallel_pages"):
+                load_config(write(tmp_path, body))
+
+    # -- cloud_integration enabled=true with empty base_url -----------------
+    # Error: "cloud_integration.base_url: required when enabled is true"
+
+    def test_char_cloud_integration_enabled_requires_base_url(self, tmp_path):
+        cloud_block = textwrap.dedent("""
+            cloud_integration:
+              enabled: true
+              base_url: ""
+        """)
+        with pytest.raises(ConfigError, match="base_url"):
+            load_config(write(tmp_path, VALID_YAML + cloud_block))
+
+    # -- bool rejected where int expected -----------------------------------
+    # In YAML, `true` parses as Python True (bool), a subclass of int.
+    # _build_audit_config has an explicit isinstance(v, bool) guard.
+    # Error: "audit.sample_size: expected positive int"
+    # (Same as test_char_audit_sample_size_bool_rejected; kept here for
+    # completeness as the canonical "bool-for-int" characterization anchor.)
+
+    def test_char_bool_rejected_for_int_field_via_yaml(self, tmp_path):
+        """YAML `true` for audit.sample_size must be rejected (bool is not int)."""
+        audit_block = textwrap.dedent("""
+            audit:
+              enabled: true
+              full_scan: false
+              sample_size: true
+              rules: {}
+        """)
+        body = VALID_YAML.replace(
+            "  data_quality: true",
+            "  data_quality: true\n  configuration_audit: true",
+        ) + audit_block
+        with pytest.raises(ConfigError, match="sample_size"):
+            load_config(write(tmp_path, body))
