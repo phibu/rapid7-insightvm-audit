@@ -1,9 +1,10 @@
 import textwrap
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import pytest
 
-from rapid7_healthcheck.config import AppConfig, ConfigError, load_config
+from rapid7_healthcheck.config import AppConfig, ConfigError, _check_scalar, _from_dict, load_config
 
 
 VALID_YAML = textwrap.dedent("""
@@ -930,7 +931,7 @@ class TestConfigCharacterization:
 
     # -- audit.sample_size --------------------------------------------------
     # _build_audit_config rejects value <= 0 and bool values.
-    # Error: "audit.sample_size: expected positive int"
+    # ConfigError raised with match="sample_size"
     # Called directly (same pattern as test_audit_agents_timeout_seconds_*).
 
     @pytest.mark.parametrize("value,ok", [(1, True), (500, True), (0, False), (-1, False)])
@@ -964,7 +965,7 @@ class TestConfigCharacterization:
 
     # -- user_audit.sample_size ---------------------------------------------
     # _build_user_audit_config rejects value <= 0 and bool values.
-    # Error: "user_audit.sample_size: expected positive int"
+    # ConfigError raised with match="sample_size"
     # Called directly (same pattern as test_char_audit_sample_size_boundary;
     # user_audit block has NO agents_timeout_seconds).
 
@@ -1072,7 +1073,7 @@ class TestConfigCharacterization:
     # -- bool rejected where int expected -----------------------------------
     # In YAML, `true` parses as Python True (bool), a subclass of int.
     # _build_audit_config has an explicit isinstance(v, bool) guard.
-    # Error: "audit.sample_size: expected positive int"
+    # ConfigError raised with match="sample_size"
     # (Same as test_char_audit_sample_size_bool_rejected; kept here for
     # completeness as the canonical "bool-for-int" characterization anchor.)
 
@@ -1097,10 +1098,6 @@ class TestConfigCharacterization:
 # Task 2: unit tests for _check_scalar positive_int=False and _from_dict
 # post_validate + type-only behaviour
 # ---------------------------------------------------------------------------
-
-from dataclasses import dataclass, replace  # noqa: E402
-from rapid7_healthcheck.config import _check_scalar, _from_dict  # noqa: E402
-
 
 @dataclass(frozen=True)
 class _Sample:
