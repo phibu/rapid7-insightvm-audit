@@ -74,11 +74,15 @@ git tag -a vX.Y.Z -m "Release X.Y.Z - <one-line summary>"
 git push origin vX.Y.Z
 
 # 2. Build the runtime zip (excludes tests/ and docs/superpowers/)
+#    The excludes use the directory-form pathspec (`:(exclude)tests`, no
+#    trailing glob) anchored against an explicit `'.'` include. git excludes
+#    the whole directory, and this form is verified against the v0.8.5/v0.8.6
+#    runtime zips.
 git archive --format=zip \
   --prefix=rapid7-insightvm-audit-X.Y.Z/ \
   -o /tmp/rapid7-insightvm-audit-X.Y.Z.zip \
   vX.Y.Z \
-  -- ':(exclude)tests/*' ':(exclude)docs/superpowers/*'
+  -- '.' ':(exclude)tests' ':(exclude)docs/superpowers'
 
 # 3. Create the GitHub release with the zip attached
 gh release create vX.Y.Z /tmp/rapid7-insightvm-audit-X.Y.Z.zip \
