@@ -450,6 +450,47 @@ def test_template_audit_check_can_be_disabled(tmp_path):
     assert cfg.checks["template_audit"] is False
 
 
+def test_template_audit_partial_block_raises(tmp_path):
+    """Regression: a present-but-partial template_audit block must be rejected.
+
+    Before the refactor the builder hard-required enabled/full_scan/sample_size;
+    after the _from_dict migration TemplateAuditConfig's dataclass defaults were
+    silently filled in for any missing key, loosening validation incorrectly.
+    """
+    # present + empty → must reject (enabled missing)
+    body_empty = VALID_YAML + textwrap.dedent("""
+        template_audit: {}
+    """)
+    with pytest.raises(ConfigError, match="template_audit"):
+        load_config(write(tmp_path, body_empty))
+
+    # present with only enabled → must reject (full_scan, sample_size missing)
+    body_partial = VALID_YAML + textwrap.dedent("""
+        template_audit:
+          enabled: true
+    """)
+    with pytest.raises(ConfigError, match="template_audit"):
+        load_config(write(tmp_path, body_partial))
+
+    # present with only sample_size → must reject (enabled missing)
+    body_partial2 = VALID_YAML + textwrap.dedent("""
+        template_audit:
+          sample_size: 500
+    """)
+    with pytest.raises(ConfigError, match="template_audit"):
+        load_config(write(tmp_path, body_partial2))
+
+
+def test_template_audit_missing_block_still_defaults(tmp_path):
+    """Missing template_audit key (not present at all) must still yield defaults."""
+    # VALID_YAML has no template_audit key → defaults must be used (no error)
+    cfg = load_config(write(tmp_path, VALID_YAML))
+    assert cfg.template_audit.enabled is True
+    assert cfg.template_audit.full_scan is False
+    assert cfg.template_audit.sample_size == 500
+    assert cfg.template_audit.rules == {}
+
+
 def test_template_audit_unknown_key_raises(tmp_path):
     body = VALID_YAML + textwrap.dedent("""
         template_audit:

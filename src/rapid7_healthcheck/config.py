@@ -569,6 +569,12 @@ def _build_template_audit_config(data: dict | None) -> TemplateAuditConfig:
         raise ConfigError("template_audit: expected mapping")
     raw = dict(data)
     raw_rules = raw.pop("rules", None) or {}
+    required = {"enabled", "full_scan", "sample_size"}
+    missing = required - set(raw.keys())
+    if missing:
+        raise ConfigError(
+            f"template_audit: missing required key(s): {sorted(missing)}"
+        )
     if not isinstance(raw_rules, dict):
         raise ConfigError("template_audit.rules: expected mapping")
 
