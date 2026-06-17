@@ -268,6 +268,43 @@ def test_run_checks_dispatches_every_check_with_uniform_kwargs():
         assert received[name]["cloud_client"] is sentinel_cloud
 
 
+def test_every_registered_check_run_accepts_uniform_kwargs():
+    """Every REAL check class in _REGISTRY must accept the uniform kwarg superset
+    (snapshot, cloud_client, progress) that _run_checks hands to all of them.
+
+    Regression guard: test_run_checks_dispatches_every_check_with_uniform_kwargs
+    uses a hand-written _FakeCheck, so it verifies the dispatch but not the real
+    signatures. A check that omits **_kwargs (or a needed named kwarg) raises
+    TypeError "unexpected keyword argument 'cloud_client'" only when actually
+    invoked — and most e2e tests disable the op-checks. This binds the real
+    signatures directly: introspect each run() and assert it can be called with
+    all three kwargs without a TypeError from the parameter binding.
+    """
+    import inspect
+
+    from rapid7_healthcheck.__main__ import _REGISTRY
+
+    for name, check_cls in _REGISTRY.items():
+        sig = inspect.signature(check_cls.run)
+        # Bind the uniform call _run_checks makes: run(client, cfg, snapshot=,
+        # cloud_client=, progress=). bind() raises TypeError if a kwarg has no
+        # matching parameter and the signature has no **kwargs to absorb it.
+        try:
+            sig.bind(
+                object(),          # self
+                object(),          # client
+                object(),          # config
+                snapshot=None,
+                cloud_client=None,
+                progress=None,
+            )
+        except TypeError as e:  # pragma: no cover - failure path is the assertion
+            raise AssertionError(
+                f"{check_cls.__name__}.run() rejects the uniform dispatch kwargs "
+                f"(needs **_kwargs or the named params): {e}"
+            ) from e
+
+
 def test_run_check_exception_becomes_error_status(tmp_path, monkeypatch):
     # Arrange: enable scan_engines, but force its run() to raise.
     body = textwrap.dedent(f"""

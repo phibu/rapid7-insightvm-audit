@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.6] - 2026-06-17
+
+### Fixed
+
+- **Crash when the Asset Coverage check is enabled** — `AssetCoverageCheck.run() got an unexpected keyword argument 'cloud_client'`. The 0.8.4 uniform-dispatch refactor made `__main__._run_checks` hand `snapshot`, `cloud_client`, and `progress` to every check, with the contract that each check's `run()` absorbs the unused kwargs via `**_kwargs`. `AssetCoverageCheck` was the one check missed — its signature accepted only `snapshot`, so enabling `asset_coverage` raised a `TypeError` (surfaced as an `error`-status check at `__main__.py:255`). Added `**_kwargs` to match its three sibling operational checks. The bug went undetected because the existing dispatch test used a hand-written fake check (correct signature) and every end-to-end test ran with `asset_coverage` disabled. New `test_main.py::test_every_registered_check_run_accepts_uniform_kwargs` introspects every real registered check and asserts its `run()` accepts the uniform dispatch kwargs, so any future check that omits `**_kwargs` fails immediately. No HTTP added; the read-only contract is unchanged.
+
 ## [0.8.5] - 2026-06-17
 
 ### Added

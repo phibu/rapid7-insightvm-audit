@@ -734,7 +734,14 @@ class AssetCoverageCheck:
     name = "Asset Coverage"
     description = "Stale and never-scanned assets relative to configured thresholds."
 
-    def run(self, client: Any, config: AppConfig, *, snapshot: "EnvSnapshot | None" = None) -> CheckResult:
+    def run(
+        self,
+        client: Any,
+        config: AppConfig,
+        *,
+        snapshot: "EnvSnapshot | None" = None,
+        **_kwargs: object,
+    ) -> CheckResult:
         descriptor = OpCheckDescriptor(
             name=self.name,
             description=self.description,
