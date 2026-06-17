@@ -176,3 +176,17 @@ The 0.1.9 layout embeds a `<script id="report-state" type="application/json">` b
 `audit.sample_size` and `user_audit.sample_size` apply **only** to the audit verticals (Configuration Audit, User & Permission Audit). Operational checks (`checks/*.py` — scan engines, scan activity, asset coverage, data quality) run against the full population by design and do not honor `sample_size`. They produce aggregate counts where sampling would give a misleading smaller number; if a count is too slow, the fix is to compute it more efficiently (e.g. read `page.totalResources` from the first response), not to sample.
 
 The `R7_API_KEY` environment variable is the only secret. The tool also loads `.env` via `python-dotenv` (non-overriding) at startup.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in this repo's GitHub Issues (`phibu/rapid7-insightvm-audit`), managed via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five canonical triage roles use their default label strings (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
