@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 import re
-import time
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
@@ -110,97 +109,34 @@ class ConfigurationAuditCheck:
     description = "Best-practice configuration audits sourced from Rapid7 documentation."
 
     def run(self, client: Any, config: AppConfig, *, progress=None) -> CheckResult:
-        start = time.monotonic()
+        from rapid7_healthcheck.audit._runner import AuditCategory, AuditRunner, GateDecision
 
-        if not config.audit.enabled:
-            return CheckResult(
-                name=self.name,
-                description=self.description,
-                status="skipped",
-                findings=[],
-                summary={"reason": "audit.enabled is false"},
-                duration_ms=int((time.monotonic() - start) * 1000),
-                rule_results=[],
+        def gate(client, config, _cloud) -> GateDecision:
+            return GateDecision(
+                enabled=config.audit.enabled,
+                skip_reason="audit.enabled is false",
             )
 
-        snapshot = EnvSnapshot(
-            client,
-            full_scan=config.audit.full_scan,
-            sample_size=config.audit.sample_size,
-            agents_timeout_seconds=config.audit.agents_timeout_seconds,
-        )
+        def build_snapshot(client, config, _cloud) -> EnvSnapshot:
+            return EnvSnapshot(
+                client,
+                full_scan=config.audit.full_scan,
+                sample_size=config.audit.sample_size,
+                agents_timeout_seconds=config.audit.agents_timeout_seconds,
+            )
 
-        rule_results: list[RuleResult] = []
-        total_rules = len(_RULE_REGISTRY)
-        for rule_idx, (rule_id, rule_cls) in enumerate(_RULE_REGISTRY.items(), start=1):
-            rule_cfg = config.audit.rules.get(rule_id)
-            if rule_cfg is None or not rule_cfg.enabled:
-                rule_results.append(RuleResult(
-                    rule_id=rule_id,
-                    rule_name=rule_cls.rule_name,
-                    description=rule_cls.description,
-                    severity="info",
-                    status="skipped",
-                    sources=list(rule_cls.sources),
-                ))
-                if progress is not None:
-                    skipped_label = f"audit: {rule_id} (skipped)"
-                    progress.step(rule_idx, total_rules, skipped_label)
-                    progress.done(rule_idx, total_rules, skipped_label, duration_ms=0)
-                continue
-            label = f"audit: {rule_id}"
-            if progress is not None:
-                progress.step(rule_idx, total_rules, label)
-            rule_start = time.monotonic()
-            try:
-                try:
-                    result = rule_cls().run(
-                        snapshot,
-                        rule_cfg.severity,
-                        config.audit.full_scan,
-                        config.audit.sample_size,
-                        rule_cfg.knobs,
-                    )
-                    result.duration_ms = int((time.monotonic() - rule_start) * 1000)
-                    rule_results.append(result)
-                except Exception as e:
-                    logger.exception("audit rule %s raised", rule_id)
-                    error_path, error_status_code = _extract_diagnostics(e)
-                    rule_results.append(RuleResult(
-                        rule_id=rule_id,
-                        rule_name=rule_cls.rule_name,
-                        description=rule_cls.description,
-                        severity=rule_cfg.severity,
-                        status="error",
-                        sources=list(rule_cls.sources),
-                        error=str(e),
-                        duration_ms=int((time.monotonic() - rule_start) * 1000),
-                        error_path=error_path,
-                        error_status_code=error_status_code,
-                    ))
-            finally:
-                if progress is not None:
-                    progress.done(
-                        rule_idx, total_rules, label,
-                        duration_ms=int((time.monotonic() - rule_start) * 1000),
-                    )
-
-        return CheckResult(
+        category = AuditCategory(
             name=self.name,
             description=self.description,
-            status=_rollup_audit_status(rule_results),
-            findings=_flatten_findings(rule_results),
-            summary={
-                "rules_total": len(rule_results),
-                "rules_pass": sum(1 for r in rule_results if r.status == "pass"),
-                "rules_warn": sum(1 for r in rule_results if r.status == "warn"),
-                "rules_fail": sum(1 for r in rule_results if r.status == "fail"),
-                "rules_error": sum(1 for r in rule_results if r.status == "error"),
-                "rules_skipped": sum(1 for r in rule_results if r.status == "skipped"),
-            },
-            duration_ms=int((time.monotonic() - start) * 1000),
-            rule_results=rule_results,
+            progress_prefix="audit",
+            registry=_RULE_REGISTRY,
+            rules_config=lambda c: c.audit.rules,
+            full_scan=config.audit.full_scan,
+            sample_size=config.audit.sample_size,
+            gate=gate,
+            build_snapshot=build_snapshot,
         )
+        return AuditRunner().run(category, client=client, config=config, progress=progress)
 
 
 # Side-effect imports: register all 12 audit rules at package-import time.
