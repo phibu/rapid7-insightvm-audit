@@ -108,7 +108,10 @@ class ConfigurationAuditCheck:
     name = "Configuration Audit"
     description = "Best-practice configuration audits sourced from Rapid7 documentation."
 
-    def run(self, client: Any, config: AppConfig, *, progress=None) -> CheckResult:
+    def run(self, client: Any, config: AppConfig, *, progress=None, **_kwargs: Any) -> CheckResult:
+        # Accepts the uniform check-dispatch kwarg superset (snapshot,
+        # cloud_client, progress) and uses only what it needs. See CONTEXT.md
+        # "Check dispatch": __main__ hands every check the same kwargs.
         from rapid7_healthcheck.audit._runner import AuditCategory, AuditRunner, GateDecision
 
         def gate(client, config, _cloud) -> GateDecision:

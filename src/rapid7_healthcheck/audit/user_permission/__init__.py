@@ -42,7 +42,9 @@ class UserPermissionAuditCheck:
         "belong to a Global Administrator."
     )
 
-    def run(self, client: Any, config: AppConfig, *, progress=None) -> CheckResult:
+    def run(self, client: Any, config: AppConfig, *, progress=None, **_kwargs: Any) -> CheckResult:
+        # Accepts the uniform check-dispatch kwarg superset (see CONTEXT.md
+        # "Check dispatch"); uses only progress.
         from rapid7_healthcheck.audit._runner import AuditCategory, AuditRunner, GateDecision
 
         def gate(client, config, _cloud) -> GateDecision:

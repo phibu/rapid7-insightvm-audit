@@ -70,4 +70,10 @@ class Check(Protocol):
         config: AppConfig,
         *,
         snapshot: "EnvSnapshot | None" = None,
-    ) -> CheckResult: ...
+        cloud_client: Any = None,
+        progress: Any = None,
+    ) -> CheckResult:
+        """Run the check. ``__main__`` hands every check the same optional-kwarg
+        superset (``snapshot``/``cloud_client``/``progress``); each uses only
+        what it needs and ignores the rest. See CONTEXT.md "Check dispatch"."""
+        ...

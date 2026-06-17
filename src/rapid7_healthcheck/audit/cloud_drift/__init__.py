@@ -51,7 +51,10 @@ class CloudDriftAuditCheck:
         *,
         progress=None,
         cloud_client: Any = None,
+        **_kwargs: Any,
     ) -> CheckResult:
+        # Accepts the uniform check-dispatch kwarg superset (see CONTEXT.md
+        # "Check dispatch"); uses progress and cloud_client.
         from rapid7_healthcheck.audit._runner import AuditCategory, AuditRunner, GateDecision
 
         def gate(client, config, cloud_client) -> GateDecision:
