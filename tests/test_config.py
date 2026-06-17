@@ -927,6 +927,39 @@ class TestConfigCharacterization:
                 "rules": {},
             })
 
+    # -- user_audit.sample_size ---------------------------------------------
+    # _build_user_audit_config rejects value <= 0 and bool values.
+    # Error: "user_audit.sample_size: expected positive int"
+    # Called directly (same pattern as test_char_audit_sample_size_boundary;
+    # user_audit block has NO agents_timeout_seconds).
+
+    @pytest.mark.parametrize("value,ok", [(1, True), (500, True), (0, False), (-1, False)])
+    def test_char_user_audit_sample_size_boundary(self, value, ok):
+        from rapid7_healthcheck.config import _build_user_audit_config
+        raw = {
+            "enabled": True,
+            "full_scan": False,
+            "sample_size": value,
+            "rules": {},
+        }
+        if ok:
+            cfg = _build_user_audit_config(raw)
+            assert cfg.sample_size == value
+        else:
+            with pytest.raises(ConfigError, match="sample_size"):
+                _build_user_audit_config(raw)
+
+    def test_char_user_audit_sample_size_bool_rejected(self):
+        """bool is a subclass of int; must be rejected like 0/-1."""
+        from rapid7_healthcheck.config import _build_user_audit_config
+        with pytest.raises(ConfigError, match="sample_size"):
+            _build_user_audit_config({
+                "enabled": True,
+                "full_scan": False,
+                "sample_size": True,
+                "rules": {},
+            })
+
     # -- thresholds.asset_coverage.dead_groups_fallback_cap -----------------
     # 0 is accepted (= disable fallback); negative is rejected.
     # Error: "thresholds.asset_coverage.dead_groups_fallback_cap: must be a non-negative integer"
