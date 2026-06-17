@@ -692,8 +692,9 @@ def test_audit_agents_timeout_seconds_rejects_bool():
 def test_load_audit_rejects_removed_rule_id():
     """Users upgrading from 0.3.6 with the old block must see a clear error.
 
-    Strict-mode validator behavior: any rule id not in _VALID_RULE_IDS raises
-    ConfigError at load time. Locks in the hard-break upgrade contract from
+    Strict-mode validator behavior: any rule id not registered in the audit
+    rule registry raises ConfigError at load time. Locks in the hard-break
+    upgrade contract from
     0.4.0 — operators removing the deprecated rule from config.yaml will see
     this exact error string in their first 0.4.0 run.
     """
@@ -744,3 +745,123 @@ def test_ensure_default_on_returns_same_dict_when_no_changes():
     checks = {"configuration_audit": True, "user_permission_audit": False}
     result = _ensure_default_on(checks, "configuration_audit", "user_permission_audit")
     assert result is checks
+
+
+# --- _validate_rules_block: the single helper all four audit builders share ---
+#
+# Previously each of _build_audit_config / _build_user_audit_config /
+# _build_cloud_drift_config / _build_template_audit_config carried a private,
+# ~95%-identical copy of the rule-validation loop. These exercise the one
+# extracted helper directly so the per-builder tests can stay thin.
+
+def test_validate_rules_block_builds_rule_configs():
+    from rapid7_healthcheck.config import _validate_rules_block, RuleConfig
+    out = _validate_rules_block(
+        {"r1": {"enabled": True, "severity": "warn", "foo": 1, "bar": "x"}},
+        valid_rule_ids={"r1", "r2"},
+        path="audit.rules",
+    )
+    assert out == {"r1": RuleConfig(enabled=True, severity="warn", knobs={"foo": 1, "bar": "x"})}
+
+
+def test_validate_rules_block_strips_enabled_and_severity_from_knobs():
+    from rapid7_healthcheck.config import _validate_rules_block
+    out = _validate_rules_block(
+        {"r1": {"enabled": False, "severity": "fail", "threshold": 7}},
+        valid_rule_ids={"r1"},
+        path="audit.rules",
+    )
+    assert out["r1"].knobs == {"threshold": 7}
+    assert out["r1"].enabled is False
+    assert out["r1"].severity == "fail"
+
+
+def test_validate_rules_block_rejects_unknown_rule_id_with_path_prefix():
+    """The path argument prefixes the error so each builder keeps its own
+    `audit.rules: ...` / `user_audit.rules: ...` wording verbatim."""
+    from rapid7_healthcheck.config import _validate_rules_block
+    with pytest.raises(ConfigError, match=r"user_audit\.rules: unknown rule id 'nope'"):
+        _validate_rules_block(
+            {"nope": {"enabled": True, "severity": "warn"}},
+            valid_rule_ids={"r1"},
+            path="user_audit.rules",
+        )
+
+
+def test_validate_rules_block_rejects_non_dict_body():
+    from rapid7_healthcheck.config import _validate_rules_block
+    with pytest.raises(ConfigError, match=r"audit\.rules\.r1: expected mapping"):
+        _validate_rules_block(
+            {"r1": "not-a-dict"},
+            valid_rule_ids={"r1"},
+            path="audit.rules",
+        )
+
+
+def test_validate_rules_block_rejects_non_bool_enabled():
+    from rapid7_healthcheck.config import _validate_rules_block
+    with pytest.raises(ConfigError, match=r"audit\.rules\.r1\.enabled: expected bool"):
+        _validate_rules_block(
+            {"r1": {"enabled": "yes", "severity": "warn"}},
+            valid_rule_ids={"r1"},
+            path="audit.rules",
+        )
+
+
+def test_validate_rules_block_rejects_bad_severity():
+    from rapid7_healthcheck.config import _validate_rules_block
+    with pytest.raises(ConfigError, match=r"audit\.rules\.r1\.severity: must be one of"):
+        _validate_rules_block(
+            {"r1": {"enabled": True, "severity": "critical"}},
+            valid_rule_ids={"r1"},
+            path="audit.rules",
+        )
+
+
+def test_validate_rules_block_empty_returns_empty():
+    from rapid7_healthcheck.config import _validate_rules_block
+    assert _validate_rules_block({}, valid_rule_ids={"r1"}, path="audit.rules") == {}
+
+
+# --- _registry_rule_ids: valid ids sourced from the live rule registries ---
+#
+# The four valid-id sets are no longer hand-kept in config.py; they come from
+# the @register* decorators via the rule registries. This is the regression
+# guard: every registry's keys must be exactly what the validator accepts.
+
+def test_registry_rule_ids_matches_all_four_registries():
+    from rapid7_healthcheck.config import _registry_rule_ids
+    from rapid7_healthcheck.audit import _RULE_REGISTRY
+    from rapid7_healthcheck.audit.user_permission import _USER_RULE_REGISTRY
+    from rapid7_healthcheck.audit.cloud_drift import _CLOUD_RULE_REGISTRY
+    from rapid7_healthcheck.audit.template import _TEMPLATE_RULE_REGISTRY
+
+    audit_ids, user_ids, cloud_ids, template_ids = _registry_rule_ids()
+    assert audit_ids == frozenset(_RULE_REGISTRY)
+    assert user_ids == frozenset(_USER_RULE_REGISTRY)
+    assert cloud_ids == frozenset(_CLOUD_RULE_REGISTRY)
+    assert template_ids == frozenset(_TEMPLATE_RULE_REGISTRY)
+
+
+def test_registry_rule_ids_populates_when_config_imported_first():
+    """Import-order safety: even if config is the only thing imported, the
+    helper's lazy import of the audit packages must populate the registries
+    (rather than returning empty sets, which would reject every real rule id).
+
+    Runs in a clean subprocess so it actually exercises a config-first import
+    graph instead of relying on other tests having imported the audit tree.
+    """
+    import subprocess
+    import sys
+    code = (
+        "import rapid7_healthcheck.config as c;"
+        "a,u,cl,t=c._registry_rule_ids();"
+        "assert 'agent_unauth_collision' in a, a;"
+        "assert 'privileged_user_without_mfa' in u, u;"
+        "assert 'cd.console_asset_count_drift' in cl, cl;"
+        "assert any(x.startswith('template.') for x in t), t;"
+        "print('ok')"
+    )
+    r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    assert r.stdout.strip() == "ok"
