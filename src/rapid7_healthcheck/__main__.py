@@ -248,16 +248,16 @@ def _run_checks(
         start = time.monotonic()
         try:
             try:
-                if name in ("configuration_audit", "user_permission_audit", "template_audit"):
-                    # These checks build their own snapshot internally today.
-                    # Threading the shared one is a future cleanup (see backlog).
-                    results.append(instance.run(client, cfg, progress=progress))
-                elif name == "cloud_drift_audit":
-                    results.append(instance.run(client, cfg, progress=progress, cloud_client=cloud_client))
-                else:
-                    # Op-checks accept an optional snapshot; only asset_coverage
-                    # uses it currently. Others tolerate it via **_kwargs.
-                    results.append(instance.run(client, cfg, snapshot=snapshot))
+                # Every check accepts the same optional-kwarg superset and uses
+                # only what it needs (op-checks read snapshot, cloud-drift reads
+                # cloud_client, audits read progress). Dispatch is uniform — no
+                # branching on check identity. See CONTEXT.md "Check dispatch".
+                results.append(instance.run(
+                    client, cfg,
+                    snapshot=snapshot,
+                    cloud_client=cloud_client,
+                    progress=progress,
+                ))
             except Exception as e:  # per-check isolation
                 logger.exception("check %s failed", instance.name)
                 results.append(CheckResult(

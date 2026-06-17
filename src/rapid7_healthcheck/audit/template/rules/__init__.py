@@ -1,23 +1,8 @@
-"""Side-effect imports — adding a rule module here registers it with the
-Template Configuration Audit registry via @register_template_rule.
+"""Template Configuration Audit rule modules.
 
-When adding a new rule module, append its import here in alphabetical
-order to keep the registration deterministic.
+Each module self-registers via ``@register_template_rule`` at import time. The
+modules are imported by ``load_rules`` (called from
+``audit/template/__init__.py``) — the directory is the single source of truth,
+so adding a rule is just a new decorated file here, no import line to maintain.
+See CONTEXT.md "Rule registration".
 """
-from . import correlate_disabled  # noqa: F401
-from . import database_targets_no_db_credentials  # noqa: F401
-from . import disabled_checks_in_individual_overrides  # noqa: F401
-from . import enhanced_logging_in_prod  # noqa: F401
-from . import near_duplicate_templates  # noqa: F401
-from . import parallel_assets_extreme  # noqa: F401
-from . import policy_enabled_but_no_policies_selected  # noqa: F401
-from . import policy_only_template_attached_to_vuln_site  # noqa: F401
-from . import potential_checks_disabled  # noqa: F401
-from . import service_discovery_disabled  # noqa: F401
-from . import telnet_regex_invalid  # noqa: F401
-from . import telnet_regex_unset  # noqa: F401
-from . import template_inventory_summary  # noqa: F401
-from . import unsafe_checks_disabled  # noqa: F401
-from . import vuln_enabled_but_no_checks  # noqa: F401
-from . import web_spider_credentials_missing  # noqa: F401
-from . import web_spider_enabled_no_targets  # noqa: F401

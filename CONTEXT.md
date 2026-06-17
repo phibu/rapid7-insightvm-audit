@@ -65,3 +65,27 @@ _Avoid_: "op orchestrator" for these — the orchestrator is the `OpCheckRunner`
 **findings_of**:
 The single iterator over a `CheckResult`'s findings — `findings_of(check) -> Iterator[(rule_id, Finding)]`. It owns the one fragile invariant the render and delta paths kept hand-copying: walk `rule_results`' findings **xor** the top-level `findings` mirror, never both (indexing both double-counts a finding in the delta-blob signature index). When a check has `rule_results`, it yields each rule's findings tagged with that rule's `rule_id`; for a legacy (pre-0.2.6) check with only top-level findings, it yields them tagged with the check `name`. The lone place that decision lives.
 _Avoid_: "finding walker", "iterate findings" (the noun is `findings_of`); do not re-inline the xor branch at a call site.
+
+**Section rail**:
+The persistent left-column navigation listing the report's checks — one entry per `section.check`, each carrying a status dot, the check name, and a count of fail/warn findings, so the rail reads as an at-a-glance triage map. It scroll-spies the currently-viewed section (active entry highlighted) and reflects the active severity filter (entries with no visible cards dim; count badges show *visible* matches, not totals). It does **not** hide content-area sections — the filter's card-hiding CSS is untouched.
+_Avoid_: "sidebar", "TOC", "table of contents", "nav menu" (the noun is "section rail"; "sidebar" is the layout slot, "section rail" is what lives in it).
+
+**Content column**:
+The right grid column that holds everything the report already rendered — hero, inventory, delta, metric grid, summary table, and the check sections — capped at its historical reading width. The `max-width` that used to live on `<body>` lives here now; the page is a grid shell of `[section rail | content column]` that collapses to a single column (rail → a native `<details>` "Jump to section" disclosure) below the narrow breakpoint and in print.
+_Avoid_: "main", "content area", "right pane" (the noun is "content column"; it is one half of the grid shell).
+
+## Check dispatch
+
+**Check** (the protocol):
+The uniform interface every check (operational and audit) presents to `__main__`: `run(client, config, *, snapshot=None, cloud_client=None, progress=None) -> CheckResult`. All eight checks accept the same optional-kwarg superset and use only what they need — op-checks read `snapshot`, cloud-drift reads `cloud_client`, audits read `progress`. The signature is honest: it matches how `__main__` actually calls every check, so dispatch is a single uniform loop with no per-check special-casing. A check that ignores a kwarg simply doesn't reference it.
+_Avoid_: a per-check `run` signature that omits kwargs other checks need — `__main__` must never branch on check identity to decide which kwargs to pass. The thing that varies between checks is *what they read*, never *what they're handed*.
+
+**_REGISTRY**:
+The ordered `dict[str, type[Check]]` in `__main__` mapping each check's config-toggle name (`scan_engines`, `configuration_audit`, …) to its `Check` class. Dispatch order and the `checks:` enable toggles key off it. Adding a check is one `_REGISTRY` entry plus the check class — no dispatch-branch edit, because every check is called identically.
+_Avoid_: "check map", "check table".
+
+## Rule registration
+
+**load_rules**:
+The side-effect importer that turns a `rules/` package into a populated registry — `load_rules(package)` walks the package with `pkgutil.iter_modules` (sorted, for deterministic order) and imports each module so its `@register*` decorator fires. It replaces the hand-maintained "import every rule module" lists each audit category's `__init__` used to carry (a third, silent-on-omission place to register a rule). The directory is now the single source of truth: drop a decorated rule file in `rules/`, it registers. Module order is alphabetical and stable; only the cosmetic footer run-hash depends on it (the cross-run delta is signature-keyed in `state_engine.compute`, so ordering never affects delta correctness — see [findings_of]).
+_Avoid_: "discover_rules" (implies a return value; this registers via side effect and returns None), "register_all", "rule scanner". The registration act is still `@register*` on each rule; `load_rules` only ensures the modules get imported.
