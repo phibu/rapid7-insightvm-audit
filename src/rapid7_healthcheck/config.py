@@ -266,14 +266,16 @@ class AppConfig:
     template_audit: TemplateAuditConfig = field(default_factory=_default_template_audit)
 
 
-def _check_scalar(field_name: str, value: Any, expected: type, path: str) -> None:
+def _check_scalar(
+    field_name: str, value: Any, expected: type, path: str, *, positive_int: bool = True
+) -> None:
     # bool is a subclass of int, so handle it carefully.
     if expected is int:
         if isinstance(value, bool) or not isinstance(value, int):
             raise ConfigError(
                 f"{path}.{field_name}: expected int, got {type(value).__name__}"
             )
-        if value <= 0:
+        if positive_int and value <= 0:
             raise ConfigError(
                 f"{path}.{field_name}: must be a positive integer, got {value}"
             )
@@ -326,7 +328,7 @@ def _validate_dict_schema(
     return data
 
 
-def _from_dict(cls: type, data: Any, path: str) -> Any:
+def _from_dict(cls: type, data: Any, path: str, *, post_validate=None) -> Any:
     if not isinstance(data, dict):
         raise ConfigError(f"{path}: expected mapping, got {type(data).__name__}")
     expected = {f.name for f in fields(cls)}
@@ -346,9 +348,10 @@ def _from_dict(cls: type, data: Any, path: str) -> Any:
     kwargs: dict[str, Any] = {}
     for f in fields(cls):
         if f.name in data:
-            _check_scalar(f.name, data[f.name], hints[f.name], path)
+            _check_scalar(f.name, data[f.name], hints[f.name], path, positive_int=False)
             kwargs[f.name] = data[f.name]
-    return cls(**kwargs)
+    obj = cls(**kwargs)
+    return post_validate(obj) if post_validate is not None else obj
 
 
 _THRESHOLD_NESTED = {

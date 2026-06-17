@@ -1056,3 +1056,65 @@ class TestConfigCharacterization:
         ) + audit_block
         with pytest.raises(ConfigError, match="sample_size"):
             load_config(write(tmp_path, body))
+
+
+# ---------------------------------------------------------------------------
+# Task 2: unit tests for _check_scalar positive_int=False and _from_dict
+# post_validate + type-only behaviour
+# ---------------------------------------------------------------------------
+
+from dataclasses import dataclass, replace  # noqa: E402
+from rapid7_healthcheck.config import _check_scalar, _from_dict  # noqa: E402
+
+
+@dataclass(frozen=True)
+class _Sample:
+    n: int
+    name: str = "x"
+
+
+class TestCheckScalarPositiveIntFalse:
+    def test_allows_zero_and_negative(self):
+        # type-only: 0 and negative ints must NOT raise
+        _check_scalar("x", 0, int, "p", positive_int=False)
+        _check_scalar("x", -5, int, "p", positive_int=False)
+
+    def test_still_rejects_bool(self):
+        with pytest.raises(ConfigError, match="expected int, got bool"):
+            _check_scalar("x", True, int, "p", positive_int=False)
+
+    def test_still_rejects_non_int(self):
+        with pytest.raises(ConfigError, match="expected int, got str"):
+            _check_scalar("x", "5", int, "p", positive_int=False)
+
+    def test_default_positive_int_true_still_rejects_zero(self):
+        # default positive_int=True preserves current behavior
+        with pytest.raises(ConfigError, match="must be a positive integer"):
+            _check_scalar("x", 0, int, "p")
+
+
+class TestFromDictTypeOnlyAndPostValidate:
+    def test_is_type_only_allows_zero(self):
+        # _from_dict must NOT enforce positive-int; that is post_validate's job
+        obj = _from_dict(_Sample, {"n": 0}, "s")
+        assert obj.n == 0
+
+    def test_still_rejects_wrong_type(self):
+        with pytest.raises(ConfigError, match="expected int, got str"):
+            _from_dict(_Sample, {"n": "5"}, "s")
+
+    def test_runs_post_validate(self):
+        def pv(obj):
+            if obj.n < 0:
+                raise ConfigError("s.n: must be non-negative")
+            return obj
+
+        assert _from_dict(_Sample, {"n": 3}, "s", post_validate=pv).n == 3
+        with pytest.raises(ConfigError, match="must be non-negative"):
+            _from_dict(_Sample, {"n": -1}, "s", post_validate=pv)
+
+    def test_post_validate_can_replace(self):
+        def pv(obj):
+            return replace(obj, name=obj.name.strip())
+
+        assert _from_dict(_Sample, {"n": 1, "name": "  y  "}, "s", post_validate=pv).name == "y"
