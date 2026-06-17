@@ -322,6 +322,9 @@
     a[href^="#"]::after { content: ""; }
     .filter-bar { display: none; }
     .theme-toggle { display: none; }
+    .section-rail { display: none; }
+    .report-grid { display: block; }
+    .content-column { max-width: none; }
   }
   /* JS-disabled fallback: hide chrome that depends on JS to function. */
   .no-js .filter-bar,
@@ -422,7 +425,116 @@
   /* Reduced motion. */
   @media (prefers-reduced-motion: reduce) {
     .chip, .theme-toggle { transition: none; }
+    html { scroll-behavior: auto; }
   }
+
+  /* ── Report navigation: grid shell (section rail | content column) ──
+     The max-width that used to live on <body> now lives on .content-column;
+     <body> becomes the full-width grid host. Below the narrow breakpoint the
+     grid collapses to one column and the rail folds into a <details>. */
+  html { scroll-behavior: smooth; }
+  .report-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2rem;
+    align-items: start;
+  }
+  .content-column { max-width: 1100px; min-width: 0; }
+  @media (min-width: 64rem) {
+    body { max-width: none; }
+    .report-grid {
+      grid-template-columns: 15rem minmax(0, 1100px);
+      justify-content: center;
+    }
+  }
+
+  /* Status dot — reusable token, mapped to existing severity colors.
+     Used in the section rail and the summary table. */
+  .status-dot {
+    display: inline-block; width: 0.6rem; height: 0.6rem;
+    border-radius: 50%; flex: 0 0 auto;
+    background: var(--neutral-muted);
+    vertical-align: baseline;
+  }
+  .status-dot.pass    { background: var(--pass-fg); }
+  .status-dot.warn    { background: var(--warn-fg); }
+  .status-dot.fail,
+  .status-dot.error   { background: var(--fail-fg); }
+  .status-dot.skipped { background: var(--info-fg); }
+
+  /* Section rail — persistent left-column wayfinding. */
+  .section-rail { font-size: 13px; }
+  .section-rail .rail-inner {
+    position: sticky; top: 0.5rem;
+    max-height: calc(100vh - 1rem);
+    overflow-y: auto;
+  }
+  .section-rail .rail-heading {
+    font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--neutral-muted); font-weight: 600;
+    margin: 0 0 0.5rem 0.6rem;
+  }
+  .section-rail ul { list-style: none; margin: 0; padding: 0; }
+  .section-rail li { margin: 0; }
+  .section-rail a {
+    display: flex; align-items: center; gap: 0.5rem;
+    padding: 0.35rem 0.6rem; border-radius: 6px;
+    color: var(--neutral-fg); text-decoration: none;
+    border-left: 2px solid transparent;
+    transition: background 150ms, border-color 150ms;
+  }
+  .section-rail a:hover { background: var(--surface); }
+  .section-rail a.rail-active {
+    background: var(--surface);
+    border-left-color: var(--info-fg);
+    font-weight: 600;
+  }
+  .section-rail .rail-name {
+    flex: 1; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .section-rail .rail-count {
+    flex: 0 0 auto; font-size: 11px; font-weight: 600;
+    padding: 0.05rem 0.4rem; border-radius: 999px;
+    font-variant-numeric: tabular-nums;
+  }
+  .section-rail .rail-count.has-fail { background: var(--fail-bg); color: var(--fail-fg); }
+  .section-rail .rail-count.has-warn { background: var(--warn-bg); color: var(--warn-fg); }
+  /* Filter-sync: rail entries whose check has no visible cards under the
+     active filter are dimmed (JS sets data-rail-dim). */
+  .section-rail li[data-rail-dim] a { opacity: 0.4; }
+  @media (prefers-reduced-motion: reduce) {
+    .section-rail a { transition: none; }
+  }
+  /* Narrow-screen disclosure form: shown only below the breakpoint. The same
+     <nav> is styled as a <details> wrapper there. */
+  .section-rail > summary {
+    cursor: pointer; font-weight: 600; padding: 0.4rem 0.6rem;
+    list-style: none;
+  }
+  .section-rail > summary::-webkit-details-marker { display: none; }
+  .section-rail > summary::before {
+    content: "▸ "; color: var(--neutral-muted); font-size: 11px;
+  }
+  .section-rail[open] > summary::before { content: "▾ "; }
+  @media (min-width: 64rem) {
+    /* On wide screens the rail is always shown; neutralize <details> toggling. */
+    .section-rail > summary { display: none; }
+    .section-rail .rail-inner { display: block !important; }
+  }
+
+  /* Card-state left accent — scan severity down the page without reading badges. */
+  section.check > details[data-severity="fail"]  { border-left: 3px solid var(--fail-fg); padding-left: 0.6rem; }
+  section.check > details[data-severity="warn"]  { border-left: 3px solid var(--warn-fg); padding-left: 0.6rem; }
+  section.check > details[data-severity="error"] { border-left: 3px solid var(--fail-fg); padding-left: 0.6rem; }
+
+  /* Hierarchy tune: inventory reads as muted context, metric grid as the
+     primary scannable numbers. */
+  .inventory-totals .total-value { font-size: 18px; color: var(--neutral-muted); font-weight: 600; }
+
+  /* No-JS: the rail's anchor links still work (plain <a href="#check-N">) and
+     the narrow-screen <details> is native — only the scroll-spy highlight and
+     filter-sync dimming are JS-enhanced, so the rail stays visible. */
 </style>
 </head>
 <body>
@@ -432,6 +544,29 @@
   <symbol id="icon-dark"   viewBox="0 0 16 16"><path fill="currentColor" d="M14 9.5A6 6 0 0 1 6.5 2a6 6 0 1 0 7.5 7.5Z"/></symbol>
 </svg>
 
+<div class="report-grid">
+<details class="section-rail" open>
+  <summary>Jump to section</summary>
+  <nav class="rail-inner" aria-label="Report sections">
+    <p class="rail-heading">Checks</p>
+    <ul>
+    {% for r in results %}
+      {% set rail_fail = r.findings|selectattr('severity','equalto','fail')|list|length %}
+      {% set rail_warn = r.findings|selectattr('severity','equalto','warn')|list|length %}
+      <li data-rail-for="check-{{ loop.index }}">
+        <a href="#check-{{ loop.index }}">
+          <span class="status-dot {{ r.status }}" aria-hidden="true"></span>
+          <span class="rail-name">{{ r.name }}</span>
+          {% if rail_fail %}<span class="rail-count has-fail" title="{{ rail_fail }} fail">{{ rail_fail }}</span>
+          {% elif rail_warn %}<span class="rail-count has-warn" title="{{ rail_warn }} warn">{{ rail_warn }}</span>{% endif %}
+        </a>
+      </li>
+    {% endfor %}
+    </ul>
+  </nav>
+</details>
+
+<div class="content-column">
 <h1>{{ title }}</h1>
 <div class="meta">
   <span><b>Generated:</b> {{ generated_at_local }} ({{ generated_at_utc }} UTC)</span>
@@ -520,7 +655,7 @@
   {% for r in results %}
     <tr>
       <td><a href="#check-{{ loop.index }}">{{ r.name }}</a></td>
-      <td><span class="badge {{ r.status }}">{{ r.status|upper }}</span></td>
+      <td><span class="status-dot {{ r.status }}" aria-hidden="true"></span> <span class="badge {{ r.status }}">{{ r.status|upper }}</span></td>
       <td>{{ r.findings|length }} ({{ r.findings|selectattr('severity','equalto','fail')|list|length }} fail / {{ r.findings|selectattr('severity','equalto','warn')|list|length }} warn)</td>
       <td style="text-align:right">{{ r.duration_ms | duration }}</td>
     </tr>
@@ -681,6 +816,8 @@
   </table>
   {% endif %}
 </footer>
+</div><!-- /.content-column -->
+</div><!-- /.report-grid -->
 
 {% if state_blob_json %}
 <script id="report-state" type="application/json">{{ state_blob_json | safe }}</script>
@@ -742,6 +879,7 @@
       document.body.setAttribute('data-filter-severity', sev);
     }
     syncHash();
+    if (window.__refreshRail) window.__refreshRail();
   }
   function syncHash() {
     var parts = [];
@@ -797,6 +935,7 @@
       });
     }
     if (window.__phase2_syncHash) window.__phase2_syncHash();
+    if (window.__refreshRail) window.__refreshRail();
   }
   input.addEventListener('input', function(){
     clearTimeout(debounceTimer);
@@ -850,6 +989,7 @@
     if (active) document.body.setAttribute('data-filter-changed', '');
     else        document.body.removeAttribute('data-filter-changed');
     if (window.__phase2_syncHash) window.__phase2_syncHash();
+    if (window.__refreshRail) window.__refreshRail();
   }
   chip.addEventListener('click', function(){
     setChanged(chip.getAttribute('aria-pressed') !== 'true');
@@ -872,6 +1012,54 @@
   }
   window.addEventListener('hashchange', expandFromHash);
   expandFromHash();
+})();
+(function(){
+  // Section rail: scroll-spy (active highlight) + filter-sync (dim entries whose
+  // check has no visible cards under the active filter).
+  var rail = document.querySelector('.section-rail');
+  if (!rail) return;
+  var links = Array.prototype.slice.call(rail.querySelectorAll('a[href^="#check-"]'));
+  if (!links.length) return;
+  var sections = Array.prototype.slice.call(document.querySelectorAll('section.check'));
+
+  // Filter-sync: an entry dims when its section has details but none are visible.
+  function refreshRail() {
+    sections.forEach(function(sec){
+      var li = rail.querySelector('li[data-rail-for="' + sec.id + '"]');
+      if (!li) return;
+      var cards = sec.querySelectorAll(':scope > details');
+      if (!cards.length) { li.removeAttribute('data-rail-dim'); return; }
+      var anyVisible = Array.prototype.some.call(cards, function(c){
+        return c.offsetParent !== null; // not display:none (filtered out)
+      });
+      if (anyVisible) li.removeAttribute('data-rail-dim');
+      else li.setAttribute('data-rail-dim', '');
+    });
+  }
+  window.__refreshRail = refreshRail;
+
+  // Scroll-spy via IntersectionObserver.
+  if ('IntersectionObserver' in window) {
+    var visible = {};
+    function setActive(id) {
+      links.forEach(function(a){
+        a.classList.toggle('rail-active', a.getAttribute('href') === '#' + id);
+      });
+    }
+    var obs = new IntersectionObserver(function(entries){
+      entries.forEach(function(e){
+        if (e.isIntersecting) visible[e.target.id] = true;
+        else delete visible[e.target.id];
+      });
+      // Highlight the topmost section currently in view.
+      for (var i = 0; i < sections.length; i++) {
+        if (visible[sections[i].id]) { setActive(sections[i].id); break; }
+      }
+    }, { rootMargin: '-20% 0px -70% 0px', threshold: 0 });
+    sections.forEach(function(sec){ if (sec.id) obs.observe(sec); });
+  }
+
+  refreshRail();
 })();
 </script>
 

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.5] - 2026-06-17
+
+### Added
+
+- **Report navigation: persistent section rail.** The HTML report now renders a sticky left-column **section rail** — one entry per check, each carrying a status dot, the check name, and a fail/warn count badge, so the rail reads as an at-a-glance triage map. It **scroll-spies** the section currently in view (active entry highlighted via `IntersectionObserver`) and **reflects the active severity/search/changed filter** (entries whose check has no visible cards dim). The page is now a CSS **grid shell** of `[section rail | content column]`; the `max-width` that used to live on `<body>` lives on the content column. Below a 64rem breakpoint the grid collapses to one column and the rail folds into a native `<details>` "Jump to section" disclosure. The rail's anchor links work without JS; only the scroll-spy highlight and filter-dimming are JS-enhanced. The rail is hidden in print (content uses full page width).
+
+### Changed
+
+- **Surgical report polish, riding along with the navigation work.** Smooth anchor/section scrolling (`scroll-behavior: smooth`, disabled under `prefers-reduced-motion`); a reusable `.status-dot` token shared by the section rail and the summary-table rows; rule cards gain a thin left accent border in their status color so severity scans down the page without reading badges; and the inventory strip now reads as muted context to distinguish it from the metric grid (the primary scannable numbers).
+- The grid restructure wraps the **page**, never section internals — the load-bearing `section.check > details` child-combinator the CSS filter depends on is preserved (guarded by `test_report_filtering.py` and the new `test_report_nav.py`). All existing report tests stay green. No HTTP added; the read-only contract is unchanged. New `tests/test_report_nav.py` covers the rail markup, anchors, `<nav>` aria-label, child-combinator preservation, narrow-screen disclosure, and scroll-spy. CONTEXT.md gains "Section rail" and "Content column" report-navigation terms.
+
 ## [0.8.4] - 2026-06-17
 
 ### Internal
