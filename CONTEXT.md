@@ -25,3 +25,21 @@ _Avoid_: "config", "options", "profile" (those imply tuning knobs; a dialect is 
 **Rapid7Client / CloudClient**:
 The two thin adapters callers construct. Each is an `HttpTransport` wired with its `ApiDialect` (v3 and v4 respectively) and the auth its API accepts. They add no behaviour beyond construction; all transport logic is inherited from `HttpTransport`.
 _Avoid_: "the v3 client / v4 client object" when you mean the class — use the class names.
+
+## Audit orchestration
+
+**Audit category**:
+One of the four parallel audit verticals — Configuration Audit, Template Configuration Audit, User & Permission Audit, Cloud Drift Audit. Each owns a rule registry, a config block, and a `Check` class, but all four run their rules through the same loop.
+_Avoid_: "audit type", "audit module", "audit subsystem" (use "category").
+
+**AuditRunner**:
+The single deep module that owns everything identical across the four audit categories — the enabled-skip envelope, the per-rule enable/skip cards, the progress step/done choreography, per-rule timing, the exception trap (`_extract_diagnostics` → error `RuleResult`), the status rollup, and the `rules_*` summary counts. It learns the per-category differences from an injected `AuditCategory`. Analogous to `HttpTransport`: one loop, many categories.
+_Avoid_: "audit engine", "audit loop", "base orchestrator".
+
+**AuditCategory**:
+The descriptor value object injected into the `AuditRunner` that carries the only things differing between the four categories: identity (`name`/`description`/`progress_prefix`), the rule `registry`, the `rules_config` accessor, the sampling args (`full_scan`/`sample_size`) forwarded to each rule, and three callables — `gate` (enabled? plus the rich skip Finding), `build_snapshot` (pure snapshot construction), and an optional `prime` (an I/O early-exit, e.g. User & Permission's `/api/3/users` 404 self-skip). It is the adapter at the runner's seam — mostly data, with the irreducible per-category behaviour held in the three callables.
+_Avoid_: "audit descriptor", "audit spec", "audit profile", "audit config" (it is not the YAML config block).
+
+**The four check classes** (`ConfigurationAuditCheck`, `TemplateAuditCheck`, `UserPermissionAuditCheck`, `CloudDriftAuditCheck`):
+The thin `Check` adapters `__main__` registers. Each supplies an `AuditCategory` and delegates to the `AuditRunner`; they add no loop logic. Analogous to `Rapid7Client`/`CloudClient` wiring an `ApiDialect` into an `HttpTransport`.
+_Avoid_: "audit orchestrator" for these — the orchestrator is the `AuditRunner`; these are suppliers.
