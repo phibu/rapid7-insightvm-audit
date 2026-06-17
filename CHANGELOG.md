@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-06-17
+
 ### Changed
 
 - **v3 `Rapid7Client` now rejects `max_retries < 0` at construction** (raising `ValueError`), matching `CloudClient`. Previously the negative value was silently degenerate (the retry loop never executed). No caller passes a negative value.
