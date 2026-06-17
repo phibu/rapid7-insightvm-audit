@@ -10,13 +10,11 @@ from rapid7_healthcheck.audit.snapshot import EnvSnapshot
 from rapid7_healthcheck.checks import CheckResult, Finding
 from rapid7_healthcheck.checks._op_rule import (
     error_rule,
-    flatten_findings,
     make_rule_result,
-    rollup_check_status,
-    rule_summary,
     safe_run_rule,
     skipped_rule,
 )
+from rapid7_healthcheck.checks._op_runner import OpCheckDescriptor, OpCheckRunner
 from rapid7_healthcheck.config import AppConfig
 
 logger = logging.getLogger(__name__)
@@ -436,7 +434,14 @@ class DataQualityCheck:
     ) -> CheckResult:
         if snapshot is None:
             snapshot = EnvSnapshot(client, full_scan=False, sample_size=500)
-        start = time.monotonic()
+        descriptor = OpCheckDescriptor(
+            name=self.name,
+            description=self.description,
+            produce_rule_results=self._produce,
+        )
+        return OpCheckRunner().run(descriptor, client=client, config=config, snapshot=snapshot)
+
+    def _produce(self, client: Any, config: AppConfig, snapshot: Any) -> list[RuleResult]:
         t = config.thresholds.data_quality
         rule_results: list[RuleResult] = []
 
@@ -466,13 +471,5 @@ class DataQualityCheck:
         else:
             rule_results.extend(_run_duplicate_detection(client, t, host_rule, ip_rule, snapshot))
 
-        return CheckResult(
-            name=self.name,
-            description=self.description,
-            status=rollup_check_status(rule_results),
-            findings=flatten_findings(rule_results),
-            summary=rule_summary(rule_results),
-            duration_ms=int((time.monotonic() - start) * 1000),
-            rule_results=rule_results,
-        )
+        return rule_results
 

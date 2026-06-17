@@ -9,7 +9,7 @@ from pathlib import Path
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from rapid7_healthcheck import state_engine
-from rapid7_healthcheck.checks import CheckResult, Finding
+from rapid7_healthcheck.checks import CheckResult, Finding, findings_of
 
 # The cross-run delta engine lives in state_engine (extracted so deltas are
 # testable without rendering HTML). These aliases keep the historical private
@@ -82,6 +82,9 @@ def _metrics(results: list[CheckResult]) -> dict:
     findings_total = findings_fail = findings_warn = 0
     total_duration_ms = 0
 
+    # This keeps its own rule_results loop because it rolls up rule-level
+    # fields (rr.status, rr.sampled), not just findings. The finding xor-walk
+    # invariant lives canonically in `checks.findings_of`.
     for r in results:
         if r.duration_ms:
             total_duration_ms += r.duration_ms
@@ -181,12 +184,8 @@ def _annotate_findings(results: list[CheckResult]) -> None:
             object.__setattr__(f, "details_json", "")
 
     for r in results:
-        for f in r.findings:
+        for _rule_id, f in findings_of(r):
             annotate_one(f)
-        if r.rule_results:
-            for rr in r.rule_results:
-                for f in rr.findings:
-                    annotate_one(f)
 
 
 def render_report(ctx: ReportContext, *, prior_state: dict | None = None) -> str:

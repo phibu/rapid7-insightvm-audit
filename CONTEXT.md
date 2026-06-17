@@ -43,3 +43,25 @@ _Avoid_: "audit descriptor", "audit spec", "audit profile", "audit config" (it i
 **The four check classes** (`ConfigurationAuditCheck`, `TemplateAuditCheck`, `UserPermissionAuditCheck`, `CloudDriftAuditCheck`):
 The thin `Check` adapters `__main__` registers. Each supplies an `AuditCategory` and delegates to the `AuditRunner`; they add no loop logic. Analogous to `Rapid7Client`/`CloudClient` wiring an `ApiDialect` into an `HttpTransport`.
 _Avoid_: "audit orchestrator" for these — the orchestrator is the `AuditRunner`; these are suppliers.
+
+## Operational-check orchestration
+
+The operational checks (Scan Engines, Scan Activity, Asset Coverage, Data Quality) emit `RuleResult`s just like the audit categories, but their rules do **not** share a uniform contract: each rule takes its own positional args, checks share an upstream fetch through a closure (e.g. the single `/api/3/scan_engines` GET behind four rule cards), and gating is by *threshold* (`flag_missing_os`) not by a `rules:` registry. So they cannot reuse `AuditRunner` verbatim — the shared spine is narrower.
+
+**OpCheckRunner**:
+The single deep module that owns everything identical across the four operational checks — the envelope each `Check.run` repeats verbatim: the start-timer, the status rollup (`rollup_check_status`), the flattened-findings mirror (`flatten_findings`), the `rules_*` summary (`rule_summary`), and assembling the final `CheckResult`. It learns the per-check differences from an injected `OpCheckDescriptor`. The operational-vertical mirror of `AuditRunner`: one envelope, many checks — the difference being its descriptor carries a single behavioural callable, not the audit registry/gate/snapshot trio.
+_Avoid_: "op runner", "check engine", "op loop", "base check".
+
+**OpCheckDescriptor**:
+The descriptor value object injected into the `OpCheckRunner` that carries the only things differing between the four checks: identity (`name`/`description`) and one callable — `produce_rule_results(client, config, snapshot) -> list[RuleResult]`. All the per-check irreducible behaviour (the shared-fetch closures, the peek→oversize→paginate dance in Data Quality, the heterogeneous per-rule `run(...)` calls, the `safe_run_rule` per-rule trap) lives inside `produce_rule_results`; the runner owns only the envelope around it. It is the adapter at the runner's seam. The mirror of `AuditCategory`, but thinner — one callable where the audit descriptor needs three plus a registry.
+_Avoid_: "op category", "op spec", "op profile", "op config", "audit category" (it is **not** a category — categories are the four audit verticals; an operational check is not a vertical).
+
+**The four operational check classes** (`ScanEnginesCheck`, `ScanActivityCheck`, `AssetCoverageCheck`, `DataQualityCheck`):
+The thin `Check` adapters `__main__` registers. Each supplies an `OpCheckDescriptor` (its identity plus a `produce_rule_results`) and delegates to the `OpCheckRunner`; they hold no envelope logic. Mirror of the four audit check classes.
+_Avoid_: "op orchestrator" for these — the orchestrator is the `OpCheckRunner`; these are suppliers.
+
+## Report rendering
+
+**findings_of**:
+The single iterator over a `CheckResult`'s findings — `findings_of(check) -> Iterator[(rule_id, Finding)]`. It owns the one fragile invariant the render and delta paths kept hand-copying: walk `rule_results`' findings **xor** the top-level `findings` mirror, never both (indexing both double-counts a finding in the delta-blob signature index). When a check has `rule_results`, it yields each rule's findings tagged with that rule's `rule_id`; for a legacy (pre-0.2.6) check with only top-level findings, it yields them tagged with the check `name`. The lone place that decision lives.
+_Avoid_: "finding walker", "iterate findings" (the noun is `findings_of`); do not re-inline the xor branch at a call site.
