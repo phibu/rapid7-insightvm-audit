@@ -174,8 +174,8 @@ class AuditConfig:
     enabled: bool
     full_scan: bool
     sample_size: int
-    agents_timeout_seconds: int
-    rules: dict  # str -> RuleConfig
+    agents_timeout_seconds: int = 180
+    rules: dict = field(default_factory=dict)  # str -> RuleConfig
 
 
 @dataclass(frozen=True)
@@ -184,7 +184,7 @@ class UserAuditConfig:
     enabled: bool
     full_scan: bool
     sample_size: int
-    rules: dict  # str -> RuleConfig
+    rules: dict = field(default_factory=dict)  # str -> RuleConfig
 
 
 def _default_audit() -> AuditConfig:
@@ -232,7 +232,7 @@ class CloudDriftConfig:
     self-skips when `cloud_integration` is disabled regardless of what
     this block contains.
     """
-    rules: dict  # str -> RuleConfig
+    rules: dict = field(default_factory=dict)  # str -> RuleConfig
 
 
 def _default_cloud_drift() -> CloudDriftConfig:
@@ -496,45 +496,20 @@ def _build_thresholds(data: Any) -> Thresholds:
 def _build_audit_config(data: dict | None) -> AuditConfig:
     if data is None:
         return AuditConfig(enabled=False, full_scan=False, sample_size=500, agents_timeout_seconds=180, rules={})
-    _validate_dict_schema(
-        data,
-        expected={"enabled", "full_scan", "sample_size", "agents_timeout_seconds", "rules"},
-        required=set(),  # legacy: only `unknown` was checked here, missing
-                         # keys fall through to the field checks below
-        name="audit",
-    )
-    if not isinstance(data.get("enabled"), bool):
-        raise ConfigError("audit.enabled: expected bool")
-    if not isinstance(data.get("full_scan"), bool):
-        raise ConfigError("audit.full_scan: expected bool")
-    if (
-        not isinstance(data.get("sample_size"), int)
-        or isinstance(data.get("sample_size"), bool)
-        or data["sample_size"] <= 0
-    ):
-        raise ConfigError("audit.sample_size: expected positive int")
-
-    agents_timeout_seconds = data.get("agents_timeout_seconds", 180)
-    if (
-        not isinstance(agents_timeout_seconds, int)
-        or isinstance(agents_timeout_seconds, bool)
-        or agents_timeout_seconds <= 0
-    ):
-        raise ConfigError("audit.agents_timeout_seconds: expected positive int")
-
-    raw_rules = data.get("rules") or {}
+    if not isinstance(data, dict):
+        raise ConfigError("audit: expected mapping")
+    raw = dict(data)
+    raw_rules = raw.pop("rules", None) or {}
     if not isinstance(raw_rules, dict):
         raise ConfigError("audit.rules: expected mapping")
+
+    def pv(obj):
+        return _positive_int_fields(obj, "audit", ("sample_size", "agents_timeout_seconds"))
+
+    obj = _from_dict(AuditConfig, raw, "audit", post_validate=pv)
     valid_audit_ids, _, _, _ = _registry_rule_ids()
     rules = _validate_rules_block(raw_rules, valid_rule_ids=valid_audit_ids, path="audit.rules")
-
-    return AuditConfig(
-        enabled=data["enabled"],
-        full_scan=data["full_scan"],
-        sample_size=data["sample_size"],
-        agents_timeout_seconds=agents_timeout_seconds,
-        rules=rules,
-    )
+    return replace(obj, rules=rules)
 
 
 def _build_user_audit_config(data: dict | None) -> UserAuditConfig:
@@ -543,35 +518,20 @@ def _build_user_audit_config(data: dict | None) -> UserAuditConfig:
     `UserAuditConfig` shape."""
     if data is None:
         return UserAuditConfig(enabled=False, full_scan=False, sample_size=500, rules={})
-    _validate_dict_schema(
-        data,
-        expected={"enabled", "full_scan", "sample_size", "rules"},
-        required=set(),
-        name="user_audit",
-    )
-    if not isinstance(data.get("enabled"), bool):
-        raise ConfigError("user_audit.enabled: expected bool")
-    if not isinstance(data.get("full_scan"), bool):
-        raise ConfigError("user_audit.full_scan: expected bool")
-    if (
-        not isinstance(data.get("sample_size"), int)
-        or isinstance(data.get("sample_size"), bool)
-        or data["sample_size"] <= 0
-    ):
-        raise ConfigError("user_audit.sample_size: expected positive int")
-
-    raw_rules = data.get("rules") or {}
+    if not isinstance(data, dict):
+        raise ConfigError("user_audit: expected mapping")
+    raw = dict(data)
+    raw_rules = raw.pop("rules", None) or {}
     if not isinstance(raw_rules, dict):
         raise ConfigError("user_audit.rules: expected mapping")
+
+    def pv(obj):
+        return _positive_int_fields(obj, "user_audit", ("sample_size",))
+
+    obj = _from_dict(UserAuditConfig, raw, "user_audit", post_validate=pv)
     _, valid_user_ids, _, _ = _registry_rule_ids()
     rules = _validate_rules_block(raw_rules, valid_rule_ids=valid_user_ids, path="user_audit.rules")
-
-    return UserAuditConfig(
-        enabled=data["enabled"],
-        full_scan=data["full_scan"],
-        sample_size=data["sample_size"],
-        rules=rules,
-    )
+    return replace(obj, rules=rules)
 
 
 def _build_cloud_integration_config(data: dict | None) -> CloudIntegrationConfig:
@@ -664,35 +624,20 @@ def _build_template_audit_config(data: dict | None) -> TemplateAuditConfig:
     registry and builds the `TemplateAuditConfig` shape."""
     if data is None:
         return _default_template_audit()
-    _validate_dict_schema(
-        data,
-        expected={"enabled", "full_scan", "sample_size", "rules"},
-        required=set(),
-        name="template_audit",
-    )
-    if not isinstance(data.get("enabled"), bool):
-        raise ConfigError("template_audit.enabled: expected bool")
-    if not isinstance(data.get("full_scan"), bool):
-        raise ConfigError("template_audit.full_scan: expected bool")
-    if (
-        not isinstance(data.get("sample_size"), int)
-        or isinstance(data.get("sample_size"), bool)
-        or data["sample_size"] <= 0
-    ):
-        raise ConfigError("template_audit.sample_size: expected positive int")
-
-    raw_rules = data.get("rules") or {}
+    if not isinstance(data, dict):
+        raise ConfigError("template_audit: expected mapping")
+    raw = dict(data)
+    raw_rules = raw.pop("rules", None) or {}
     if not isinstance(raw_rules, dict):
         raise ConfigError("template_audit.rules: expected mapping")
+
+    def pv(obj):
+        return _positive_int_fields(obj, "template_audit", ("sample_size",))
+
+    obj = _from_dict(TemplateAuditConfig, raw, "template_audit", post_validate=pv)
     _, _, _, valid_template_ids = _registry_rule_ids()
     rules = _validate_rules_block(raw_rules, valid_rule_ids=valid_template_ids, path="template_audit.rules")
-
-    return TemplateAuditConfig(
-        enabled=data["enabled"],
-        full_scan=data["full_scan"],
-        sample_size=data["sample_size"],
-        rules=rules,
-    )
+    return replace(obj, rules=rules)
 
 
 def _build_report_config(data: Any) -> ReportConfig:

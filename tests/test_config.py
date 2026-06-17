@@ -1153,3 +1153,144 @@ class TestFromDictTypeOnlyAndPostValidate:
             return replace(obj, name=obj.name.strip())
 
         assert _from_dict(_Sample, {"n": 1, "name": "  y  "}, "s", post_validate=pv).name == "y"
+
+
+# ---------------------------------------------------------------------------
+# Task 4: parity tests for audit/user_audit/template_audit builders
+# via _from_dict — pin behaviors to preserve through the migration.
+# ---------------------------------------------------------------------------
+
+class TestBuildAuditConfigViaParity:
+    """Parity: _build_audit_config must behave the same before & after migration."""
+
+    def _make(self, **kw):
+        from rapid7_healthcheck.config import _build_audit_config
+        base = {
+            "enabled": True,
+            "full_scan": False,
+            "sample_size": 500,
+            "agents_timeout_seconds": 180,
+            "rules": {},
+        }
+        base.update(kw)
+        return _build_audit_config(base)
+
+    def test_audit_parity_roundtrip(self):
+        cfg = self._make()
+        assert cfg.enabled is True
+        assert cfg.full_scan is False
+        assert cfg.sample_size == 500
+        assert cfg.agents_timeout_seconds == 180
+        assert cfg.rules == {}
+
+    def test_audit_unknown_key_rejected(self):
+        from rapid7_healthcheck.config import _build_audit_config, ConfigError
+        with pytest.raises(ConfigError, match="unknown"):
+            _build_audit_config({
+                "enabled": True, "full_scan": False,
+                "sample_size": 500, "agents_timeout_seconds": 180,
+                "rules": {}, "bogus": 99,
+            })
+
+    def test_audit_sample_size_zero_rejected(self):
+        from rapid7_healthcheck.config import ConfigError
+        with pytest.raises(ConfigError, match="sample_size"):
+            self._make(sample_size=0)
+
+    def test_audit_sample_size_negative_rejected(self):
+        from rapid7_healthcheck.config import ConfigError
+        with pytest.raises(ConfigError, match="sample_size"):
+            self._make(sample_size=-1)
+
+    def test_audit_agents_timeout_zero_rejected(self):
+        from rapid7_healthcheck.config import ConfigError
+        with pytest.raises(ConfigError, match="agents_timeout_seconds"):
+            self._make(agents_timeout_seconds=0)
+
+    def test_audit_enabled_non_bool_rejected(self):
+        from rapid7_healthcheck.config import ConfigError
+        with pytest.raises(ConfigError, match="enabled"):
+            self._make(enabled="yes")
+
+    def test_audit_full_scan_non_bool_rejected(self):
+        from rapid7_healthcheck.config import ConfigError
+        with pytest.raises(ConfigError, match="full_scan"):
+            self._make(full_scan=1)
+
+
+class TestBuildUserAuditConfigViaParity:
+    """Parity: _build_user_audit_config must behave the same before & after migration."""
+
+    def _make(self, **kw):
+        from rapid7_healthcheck.config import _build_user_audit_config
+        base = {
+            "enabled": True,
+            "full_scan": False,
+            "sample_size": 500,
+            "rules": {},
+        }
+        base.update(kw)
+        return _build_user_audit_config(base)
+
+    def test_user_audit_parity_roundtrip(self):
+        cfg = self._make()
+        assert cfg.enabled is True
+        assert cfg.sample_size == 500
+        assert cfg.rules == {}
+
+    def test_user_audit_unknown_key_rejected(self):
+        from rapid7_healthcheck.config import _build_user_audit_config, ConfigError
+        with pytest.raises(ConfigError, match="unknown"):
+            _build_user_audit_config({
+                "enabled": True, "full_scan": False,
+                "sample_size": 500, "rules": {}, "bogus": 99,
+            })
+
+    def test_user_audit_sample_size_zero_rejected(self):
+        from rapid7_healthcheck.config import ConfigError
+        with pytest.raises(ConfigError, match="sample_size"):
+            self._make(sample_size=0)
+
+    def test_user_audit_enabled_non_bool_rejected(self):
+        from rapid7_healthcheck.config import ConfigError
+        with pytest.raises(ConfigError, match="enabled"):
+            self._make(enabled="yes")
+
+
+class TestBuildTemplateAuditConfigViaParity:
+    """Parity: _build_template_audit_config must behave the same before & after migration."""
+
+    def _make(self, **kw):
+        from rapid7_healthcheck.config import _build_template_audit_config
+        base = {
+            "enabled": True,
+            "full_scan": False,
+            "sample_size": 500,
+            "rules": {},
+        }
+        base.update(kw)
+        return _build_template_audit_config(base)
+
+    def test_template_audit_parity_roundtrip(self):
+        cfg = self._make()
+        assert cfg.enabled is True
+        assert cfg.sample_size == 500
+        assert cfg.rules == {}
+
+    def test_template_audit_unknown_key_rejected(self):
+        from rapid7_healthcheck.config import _build_template_audit_config, ConfigError
+        with pytest.raises(ConfigError, match="unknown"):
+            _build_template_audit_config({
+                "enabled": True, "full_scan": False,
+                "sample_size": 500, "rules": {}, "bogus": 99,
+            })
+
+    def test_template_audit_sample_size_zero_rejected(self):
+        from rapid7_healthcheck.config import ConfigError
+        with pytest.raises(ConfigError, match="sample_size"):
+            self._make(sample_size=0)
+
+    def test_template_audit_enabled_non_bool_rejected(self):
+        from rapid7_healthcheck.config import ConfigError
+        with pytest.raises(ConfigError, match="enabled"):
+            self._make(enabled="yes")
