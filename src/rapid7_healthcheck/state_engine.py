@@ -80,6 +80,10 @@ def project(
             "message_short": (f.message or "")[:200],
         }
 
+    # This keeps its own rule_results loop because it needs the per-rule
+    # enumeration index for each finding's `id` (`{rule_id}#{idx}`), which the
+    # flat `checks.findings_of` iterator does not carry. The finding xor-walk
+    # invariant it encodes lives canonically in `checks.findings_of`.
     projected_results = []
     for r in results:
         rr_list = []
@@ -151,6 +155,11 @@ def compute(*, prior: dict | None, current: dict) -> dict | None:
 
     def index(state: dict) -> dict[str, dict]:
         """Map signature -> finding-projection (with rule_id attached).
+
+        Walks the *deserialized* prior/current blob (plain dicts), so it cannot
+        use `checks.findings_of` (which takes a live CheckResult). It re-encodes
+        the same xor-walk invariant — see `checks.findings_of` for the canonical
+        statement of why the top-level mirror must not be indexed too.
 
         Every check now produces rule_results, so we index findings out of
         rule_results only. The top-level `r.findings` is a flattened mirror —

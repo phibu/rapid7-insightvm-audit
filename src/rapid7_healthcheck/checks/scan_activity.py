@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, NamedTuple
@@ -9,12 +8,10 @@ from rapid7_healthcheck.audit import RuleResult
 from rapid7_healthcheck.audit.snapshot import EnvSnapshot
 from rapid7_healthcheck.checks import CheckResult, Finding
 from rapid7_healthcheck.checks._op_rule import (
-    flatten_findings,
     make_rule_result,
-    rollup_check_status,
-    rule_summary,
     safe_run_rule,
 )
+from rapid7_healthcheck.checks._op_runner import OpCheckDescriptor, OpCheckRunner
 from rapid7_healthcheck.config import AppConfig
 
 _FAILED_STATUSES = {"aborted", "stopped", "error"}
@@ -427,7 +424,14 @@ class ScanActivityCheck:
     ) -> CheckResult:
         if snapshot is None:
             snapshot = EnvSnapshot(client, full_scan=False, sample_size=500)
-        start = time.monotonic()
+        descriptor = OpCheckDescriptor(
+            name=self.name,
+            description=self.description,
+            produce_rule_results=self._produce,
+        )
+        return OpCheckRunner().run(descriptor, client=client, config=config, snapshot=snapshot)
+
+    def _produce(self, client: Any, config: AppConfig, snapshot: Any) -> list[RuleResult]:
         t = config.thresholds.scan_activity
         now = datetime.now(timezone.utc)
 
@@ -465,12 +469,4 @@ class ScanActivityCheck:
             safe_run_rule(overdue, lambda: overdue.run(parsed_sites(), t, now)),
         ]
 
-        return CheckResult(
-            name=self.name,
-            description=self.description,
-            status=rollup_check_status(rule_results),
-            findings=flatten_findings(rule_results),
-            summary=rule_summary(rule_results),
-            duration_ms=int((time.monotonic() - start) * 1000),
-            rule_results=rule_results,
-        )
+        return rule_results

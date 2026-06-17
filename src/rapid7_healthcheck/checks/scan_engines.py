@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import time
 from datetime import datetime, timezone
 from typing import Any, NamedTuple
 
@@ -9,12 +8,10 @@ from rapid7_healthcheck._local_engine import is_local_engine
 from rapid7_healthcheck.audit import RuleResult
 from rapid7_healthcheck.checks import CheckResult, Finding
 from rapid7_healthcheck.checks._op_rule import (
-    flatten_findings,
     make_rule_result,
-    rollup_check_status,
-    rule_summary,
     safe_run_rule,
 )
+from rapid7_healthcheck.checks._op_runner import OpCheckDescriptor, OpCheckRunner
 from rapid7_healthcheck.config import AppConfig
 
 logger = logging.getLogger(__name__)
@@ -320,13 +317,14 @@ class ScanEnginesCheck:
         if snapshot is None:
             from rapid7_healthcheck.audit.snapshot import EnvSnapshot
             snapshot = EnvSnapshot(client, full_scan=False, sample_size=500)
-        start = time.monotonic()
-        thresholds = config.thresholds.scan_engines
 
         # The /api/3/scan_engines fetch is shared by all four rules. Memoize
         # it behind a closure so it is attempted once but resolved *inside*
         # each rule's safe_run_rule wrapper — a single failed GET surfaces as
-        # four isolated error rule cards instead of collapsing the check.
+        # four isolated error rule cards instead of collapsing the check. The
+        # closure is created once per run() and captured by both produce and
+        # summary_extra, so the engine count summary sees exactly what the
+        # rules saw (without re-fetching).
         _fetch_cache: dict[str, object] = {}
 
         def engines() -> list:
@@ -341,45 +339,48 @@ class ScanEnginesCheck:
                     raise
             return _fetch_cache["value"]  # type: ignore[return-value]
 
-        # Pool-mediated pairing index for the unpaired rule. If pools cannot
-        # be fetched (e.g. 404 swallowed inside the snapshot, or a transient
-        # error here), fall back to an empty index — the rule then reverts
-        # to its pre-pool-aware behavior (direct ScanEngine.sites only),
-        # which is the 0.6.5 baseline and the desired fallback when no pool
-        # signal is available.
-        pools: list[dict] = []
-        try:
-            pools = snapshot.scan_engine_pools()
-        except Exception:
-            logger.warning(
-                "scan_engine_pools fetch failed; falling back to direct-only pairing",
-                exc_info=True,
+        def produce(client: Any, config: AppConfig, snapshot: Any) -> list[RuleResult]:
+            thresholds = config.thresholds.scan_engines
+
+            # Pool-mediated pairing index for the unpaired rule. If pools
+            # cannot be fetched (e.g. 404 swallowed inside the snapshot, or a
+            # transient error here), fall back to an empty index — the rule
+            # then reverts to its pre-pool-aware behavior (direct
+            # ScanEngine.sites only), which is the 0.6.5 baseline and the
+            # desired fallback when no pool signal is available.
+            pools: list[dict] = []
+            try:
+                pools = snapshot.scan_engine_pools()
+            except Exception:
+                logger.warning(
+                    "scan_engine_pools fetch failed; falling back to direct-only pairing",
+                    exc_info=True,
+                )
+            pooled_idx = _build_pooled_sites_index(pools)
+
+            bad_status = EngineBadStatusRule()
+            last_contact = EngineLastContactRule()
+            missing_refresh = EngineMissingLastRefreshRule()
+            unpaired = EngineUnpairedRule()
+            return [
+                safe_run_rule(bad_status, lambda: bad_status.run(engines())),
+                safe_run_rule(last_contact, lambda: last_contact.run(engines(), thresholds)),
+                safe_run_rule(missing_refresh, lambda: missing_refresh.run(engines())),
+                safe_run_rule(unpaired, lambda: unpaired.run(engines(), pooled_idx)),
+            ]
+
+        def summary_extra(rule_results: list[RuleResult]) -> dict:
+            # If the shared fetch failed, engines are unknown — fall back to an
+            # empty list for the count summary rather than re-raising.
+            engines_for_summary = (
+                _fetch_cache.get("value", []) if "exc" not in _fetch_cache else []
             )
-        pooled_idx = _build_pooled_sites_index(pools)
+            return _compute_engine_count_summary(engines_for_summary, rule_results)
 
-        bad_status = EngineBadStatusRule()
-        last_contact = EngineLastContactRule()
-        missing_refresh = EngineMissingLastRefreshRule()
-        unpaired = EngineUnpairedRule()
-        rule_results: list[RuleResult] = [
-            safe_run_rule(bad_status, lambda: bad_status.run(engines())),
-            safe_run_rule(last_contact, lambda: last_contact.run(engines(), thresholds)),
-            safe_run_rule(missing_refresh, lambda: missing_refresh.run(engines())),
-            safe_run_rule(unpaired, lambda: unpaired.run(engines(), pooled_idx)),
-        ]
-
-        summary = rule_summary(rule_results)
-        # If the shared fetch failed, engines are unknown — fall back to an
-        # empty list for the count summary rather than re-raising.
-        engines_for_summary = _fetch_cache.get("value", []) if "exc" not in _fetch_cache else []
-        summary.update(_compute_engine_count_summary(engines_for_summary, rule_results))
-
-        return CheckResult(
+        descriptor = OpCheckDescriptor(
             name=self.name,
             description=self.description,
-            status=rollup_check_status(rule_results),
-            findings=flatten_findings(rule_results),
-            summary=summary,
-            duration_ms=int((time.monotonic() - start) * 1000),
-            rule_results=rule_results,
+            produce_rule_results=produce,
+            summary_extra=summary_extra,
         )
+        return OpCheckRunner().run(descriptor, client=client, config=config, snapshot=snapshot)

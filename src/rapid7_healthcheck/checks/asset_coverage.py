@@ -13,13 +13,11 @@ if TYPE_CHECKING:
     from rapid7_healthcheck.audit.snapshot import EnvSnapshot
 from rapid7_healthcheck.checks import CheckResult, Finding
 from rapid7_healthcheck.checks._op_rule import (
-    flatten_findings,
     make_rule_result,
-    rollup_check_status,
-    rule_summary,
     safe_run_rule,
     skipped_rule,
 )
+from rapid7_healthcheck.checks._op_runner import OpCheckDescriptor, OpCheckRunner
 from rapid7_healthcheck.config import AppConfig
 
 _EXAMPLES_LIMIT = 10
@@ -737,27 +735,24 @@ class AssetCoverageCheck:
     description = "Stale and never-scanned assets relative to configured thresholds."
 
     def run(self, client: Any, config: AppConfig, *, snapshot: "EnvSnapshot | None" = None) -> CheckResult:
-        start = time.monotonic()
+        descriptor = OpCheckDescriptor(
+            name=self.name,
+            description=self.description,
+            produce_rule_results=self._produce,
+        )
+        return OpCheckRunner().run(descriptor, client=client, config=config, snapshot=snapshot)
+
+    def _produce(self, client: Any, config: AppConfig, snapshot: Any) -> list[RuleResult]:
         t = config.thresholds.asset_coverage
         stale = StaleAssetsRule()
         never = NeverScannedAssetsRule()
         dead = DeadAssetGroupsRule()
         agent_only = AgentOnlyAssetsRule()
         ghost = GhostAssetsRule()
-        rule_results: list[RuleResult] = [
+        return [
             safe_run_rule(stale, lambda: stale.run(client, t)),
             safe_run_rule(never, lambda: never.run(client, t)),
             safe_run_rule(dead, lambda: dead.run(snapshot, t)),
             safe_run_rule(agent_only, lambda: agent_only.run(snapshot, client, t, config.audit)),
             safe_run_rule(ghost, lambda: ghost.run(client, t)),
         ]
-
-        return CheckResult(
-            name=self.name,
-            description=self.description,
-            status=rollup_check_status(rule_results),
-            findings=flatten_findings(rule_results),
-            summary=rule_summary(rule_results),
-            duration_ms=int((time.monotonic() - start) * 1000),
-            rule_results=rule_results,
-        )
