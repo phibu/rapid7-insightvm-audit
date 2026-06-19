@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.9] - 2026-06-19
+
+### Internal
+
+- **Unified `EnvSnapshot` construction behind one builder.** The four config-driven snapshot-construction sites — `__main__` (for the operational checks) and the three audit categories that build an `EnvSnapshot` from a sampling-config block (`ConfigurationAuditCheck`, `UserPermissionAuditCheck`, `TemplateAuditCheck`) — each hand-rolled `EnvSnapshot(client, full_scan=…, sample_size=…, agents_timeout_seconds=…)`, unpacking their own config block. Two of them hardcoded `agents_timeout_seconds=180` because `UserAuditConfig` / `TemplateAuditConfig` carry no such field — a literal that could silently drift from the `AuditConfig` default. New `build_env_snapshot(client, *, sampling, agents_timeout_seconds=DEFAULT_AGENTS_TIMEOUT)` is now the single construction seam: it maps any audit sampling-config block (`full_scan` / `sample_size`, duck-typed via a structural `_SamplingConfig` Protocol that all three config dataclasses satisfy) onto an `EnvSnapshot`, defaulting the timeout from the one named `DEFAULT_AGENTS_TIMEOUT` constant. All four sites route through it and collapse to one line each; the two hardcoded `180` literals are gone — the construction-kwarg list and the timeout default now live in exactly one place.
+- **The remaining gap is documented, not closed:** `UserAuditConfig` / `TemplateAuditConfig` still have no tunable `agents_timeout_seconds` field, so those categories inherit the builder default. Benign today (no user-audit or template rule reads an agent accessor); the field is added to those blocks only when a rule needs a tuned timeout. The three op-check **standalone fallbacks** (`scan_engines` / `scan_activity` / `data_quality`, when invoked without a `__main__`-supplied snapshot) are a different shape — no sampling-config block, standalone `full_scan=False` / `sample_size=500` defaults, no timeout literal — and are deliberately left out of this seam; a source-level route-through guard test allow-lists them and fails if a config-driven site reintroduces a direct `EnvSnapshot(…)` construction.
+- New builder unit tests (field mapping, timeout default + override, three-way duck-typing across the config blocks) and the route-through guard. `CONTEXT.md` gains the `build_env_snapshot` term. Behavior-preserving. No HTTP added; the read-only contract is unchanged.
+
 ## [0.8.8] - 2026-06-19
 
 ### Fixed
