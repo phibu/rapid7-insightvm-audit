@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.8] - 2026-06-19
+
+### Fixed
+
+- **Ghost Assets rule: honest detection and an honest denominator.** Two related defects in `op.asset_coverage.ghost_assets` (assets with neither an OS fingerprint nor a hostname) are resolved.
+  - **Silently partial detection.** The rule fetched a single server-side page (`size = 1000`) of OS-empty assets and narrowed to ghosts client-side. On a console with more than that many OS-empty assets the rest were dropped with no signal — the summary showed `candidates_examined: 1000` as if that were the whole population. The rule now fetches via the shared `_bounded_asset_search` helper (the same bounded-head-plus-exact-`page.totalResources` pattern the stale / never-scanned rules use), so it learns the **exact** OS-empty population even though it only inspects the first `_PER_ITEM_FINDING_CAP` (500) rows for a missing hostname. When the population exceeds the inspected window, the rule flags `ghost_detection_partial: true`, reports `ghost_count` explicitly as a **lower bound**, and emits an `info` disclosure finding ("Examined the first N of M OS-empty assets … ghost count is a lower bound") instead of pretending completeness.
+  - **Misleading examined denominator.** The rule-card "N examined · N passed · N failed" line previously used the OS-empty candidate pool as `examined` — so a 50-asset OS-empty pool on a 50,000-asset console read as "50 examined", implying the other 49,950 were never looked at. `examined` is now the deployment-wide `snapshot.total_asset_count()` (the honest population), `failed` is the ghost count, and `passed` is the remainder. The standardized card line is **suppressed** (falls back to the raw summary block) precisely when it can't be trusted: when detection is partial (a definitive `passed` count would over-count un-inspected OS-empty assets) or when no snapshot is available to read the denominator. In the no-snapshot case the ghost findings are still reported — only the card line is withheld.
+  - `GhostAssetsRule.run` gains a `snapshot` parameter (threaded through `_produce`, like the sibling `DeadAssetGroupsRule` / `AgentOnlyAssetsRule`); when the snapshot is absent the rule degrades gracefully rather than erroring. Summary keys change from `candidates_examined` to `os_empty_total` / `os_empty_examined` / `ghost_detection_partial`. New branch tests cover the complete, partial, no-snapshot, and no-ghost paths; `_FakeSnapshot` gains `total_asset_count()`. No new HTTP verbs or paths — the rule still issues only allowlisted `POST /api/3/assets/search` plus a snapshot-cached `GET /api/3/assets?size=1`. The read-only contract is unchanged.
+
 ## [0.8.7] - 2026-06-17
 
 ### Fixed

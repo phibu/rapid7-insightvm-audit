@@ -654,7 +654,7 @@ class GhostAssetsRule:
     SOURCES = (_SRC_FILTERED_SEARCH,)
     DEFAULT_SEVERITY = "fail"
 
-    def run(self, client: Any, t) -> RuleResult:
+    def run(self, client: Any, snapshot: "EnvSnapshot | None", t) -> RuleResult:
         if not t.flag_ghost_assets:
             return skipped_rule(
                 rule_id=self.RULE_ID,
@@ -664,24 +664,32 @@ class GhostAssetsRule:
             )
 
         rule_start = time.monotonic()
-        # Server-side: assets with no OS fingerprint (small candidate set).
-        # The v3 spec does not verify a server-side `host-name is-empty`
-        # filter, so we narrow on hostName client-side instead.
-        body = client.post_one(
-            "/api/3/assets/search",
-            json_body={
+        # Server-side: assets with no OS fingerprint. The v3 spec does not
+        # verify a server-side `host-name is-empty` filter, so we narrow on
+        # hostName client-side over the fetched head. _bounded_asset_search
+        # fetches only the first _PER_ITEM_FINDING_CAP OS-empty rows (enough
+        # to render findings) plus the EXACT OS-empty population from
+        # page.totalResources — so we can detect and disclose when the
+        # client-side ghost narrowing only saw a bounded window.
+        head, os_empty_total = _bounded_asset_search(
+            client,
+            {
                 "filters": [{"field": "operating-system", "operator": "is-empty"}],
                 "match": "all",
             },
-            params={"size": _PER_ITEM_FINDING_CAP * 2},
         )
-        candidates = body.get("resources", []) or []
 
         # Client-side narrow: also missing hostName (whitespace-only counts as empty).
         ghosts = [
-            a for a in candidates
+            a for a in head
             if not (a.get("hostName") or "").strip()
         ]
+
+        # Detection is partial when there are more OS-empty assets than the
+        # bounded fetch returned: the hostName narrowing only saw `head`, so
+        # `len(ghosts)` is a lower bound, not the true ghost population.
+        os_empty_examined = len(head)
+        partial = os_empty_total > os_empty_examined
 
         findings: list[Finding] = []
         emitted = 0
@@ -713,6 +721,37 @@ class GhostAssetsRule:
                 },
             ))
 
+        if partial:
+            # Honest disclosure: ghost detection only inspected the first
+            # `os_empty_examined` of `os_empty_total` OS-empty assets for a
+            # missing hostname, so the ghost count is a lower bound.
+            findings.append(Finding(
+                severity="info",
+                message=(
+                    f"Examined the first {os_empty_examined} of "
+                    f"{os_empty_total} OS-empty assets for missing hostnames; "
+                    f"ghost count is a lower bound (detection is partial)."
+                ),
+                details={
+                    "os_empty_total": os_empty_total,
+                    "os_empty_examined": os_empty_examined,
+                    "ghost_count_lower_bound": len(ghosts),
+                },
+            ))
+
+        # The standardized examined/passed/failed card line is only honest when
+        # the count is complete AND we know the true deployment-wide denominator.
+        # When detection is partial, `passed = total - ghosts` would over-count
+        # (un-fetched OS-empty assets may also be ghosts). When the snapshot is
+        # absent (test fakes / edge cases), we cannot read total_asset_count().
+        # In either case suppress card_summary and fall back to the raw summary
+        # block rather than show a definitive-looking line we can't stand behind.
+        examined: int | None = None
+        failed: int | None = None
+        if not partial and snapshot is not None:
+            examined = snapshot.total_asset_count()
+            failed = len(ghosts)
+
         return make_rule_result(
             rule_id=self.RULE_ID,
             rule_name=self.RULE_NAME,
@@ -721,10 +760,12 @@ class GhostAssetsRule:
             sources=self.SOURCES,
             summary={
                 "ghost_count": len(ghosts),
-                "candidates_examined": len(candidates),
+                "os_empty_total": os_empty_total,
+                "os_empty_examined": os_empty_examined,
+                "ghost_detection_partial": partial,
             },
-            examined=len(candidates),
-            failed=len(ghosts),
+            examined=examined,
+            failed=failed,
             default_severity=self.DEFAULT_SEVERITY,
             duration_ms=int((time.monotonic() - rule_start) * 1000),
         )
@@ -761,5 +802,5 @@ class AssetCoverageCheck:
             safe_run_rule(never, lambda: never.run(client, t)),
             safe_run_rule(dead, lambda: dead.run(snapshot, t)),
             safe_run_rule(agent_only, lambda: agent_only.run(snapshot, client, t, config.audit)),
-            safe_run_rule(ghost, lambda: ghost.run(client, t)),
+            safe_run_rule(ghost, lambda: ghost.run(client, snapshot, t)),
         ]

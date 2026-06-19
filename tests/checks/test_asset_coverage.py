@@ -69,6 +69,7 @@ class _FakeSnapshot:
         sample_ids: list[int] | None = None,
         total_agents: int | None = None,
         member_counts: dict[int, int | None] | None = None,
+        total_asset_count: int = 0,
     ):
         self._sites = sites or []
         self._asset_groups = asset_groups or []
@@ -81,12 +82,14 @@ class _FakeSnapshot:
         self._sample_ids = sample_ids or []
         self._total_agents = total_agents if total_agents is not None else len(self._sample_ids)
         self._member_counts = member_counts or {}
+        self._total_asset_count = total_asset_count
 
     def sites(self): return self._sites
     def asset_groups(self): return self._asset_groups
     def agent_asset_ids(self): return self._agent_asset_ids
     def is_agents_unavailable(self): return self._agents_unavailable
     def all_included_targets(self): return self._included_targets
+    def total_asset_count(self): return self._total_asset_count
 
     def agent_asset_ids_sampled(self) -> tuple[list[int], int]:
         if self._flip_unavailable_on_sample_call and not self._agents_unavailable:
@@ -961,10 +964,20 @@ def test_rule_identity_matches_method_constants(fake_client, app_config):
 # ----- F1: ghost_assets -----
 
 
-def _ghost_responder(resources: list[dict]):
-    """Build a post_one responder that returns `resources` for the
-    `operating-system is-empty` filter (the ghost_assets server-side query)
-    and an empty envelope otherwise."""
+def _ghost_responder(resources: list[dict], *, total: int | None = None):
+    """Build a post_one responder for the `operating-system is-empty` filter
+    (the ghost_assets server-side query); empty envelope otherwise.
+
+    Paginates by ``params["page"]`` / ``params["size"]`` the way the real
+    endpoint does, because ``GhostAssetsRule`` now fetches via
+    ``_bounded_asset_search`` (which reads ``page.totalResources`` /
+    ``page.totalPages`` and loops). ``total`` overrides the reported
+    ``totalResources`` so a test can simulate "more OS-empty assets exist
+    than were returned in this page" (partial detection) without
+    materializing the full list — pass ``total > len(resources)``.
+    """
+    reported_total = len(resources) if total is None else total
+
     def _responder(json_body: dict, params: dict | None) -> dict:
         filters = json_body.get("filters", [])
         if (
@@ -972,9 +985,15 @@ def _ghost_responder(resources: list[dict]):
             and filters[0].get("field") == "operating-system"
             and filters[0].get("operator") == "is-empty"
         ):
+            page = int((params or {}).get("page", 0))
+            size = int((params or {}).get("size", 500))
+            start = page * size
+            chunk = resources[start:start + size]
+            total_pages = (reported_total + size - 1) // size if reported_total else 0
             return {
-                "resources": resources,
-                "page": {"totalResources": len(resources)},
+                "resources": chunk,
+                "page": {"totalResources": reported_total, "totalPages": total_pages,
+                         "number": page, "size": size},
             }
         # last-scan-date filters (stale / never-scanned) → empty.
         return {"resources": [], "page": {"totalResources": 0, "totalPages": 0}}
@@ -992,11 +1011,13 @@ def test_ghost_assets_emits_finding_when_asset_lacks_both_os_and_hostname(fake_c
             {"id": 2, "hostName": "foo", "ip": "10.0.0.2"},  # not ghost (has hostname)
         ]),
     )
-    result = AssetCoverageCheck().run(fc, app_config)
+    result = AssetCoverageCheck().run(fc, app_config, snapshot=_FakeSnapshot(total_asset_count=1000))
     rule = _rule(result, "op.asset_coverage.ghost_assets")
     assert rule.status == "fail"
     assert rule.summary["ghost_count"] == 1
-    assert rule.summary["candidates_examined"] == 2
+    assert rule.summary["os_empty_total"] == 2
+    assert rule.summary["os_empty_examined"] == 2
+    assert rule.summary["ghost_detection_partial"] is False
     assert len(rule.findings) == 1
     f = rule.findings[0]
     assert f.severity == "fail"
@@ -1037,53 +1058,69 @@ def test_ghost_assets_skipped_when_flag_disabled(fake_client, app_config):
     assert os_calls == []
 
 
-def test_ghost_assets_caps_findings_at_per_item_cap_with_overflow_rollup(fake_client, app_config):
-    """When ghost count exceeds the per-item cap, emit cap fail-findings + 1 warn rollup."""
+def test_ghost_assets_bounded_fetch_caps_at_per_item_cap_and_discloses_partial(fake_client, app_config):
+    """When more OS-empty assets exist than the bounded fetch returns, the rule
+    inspects only the first cap rows for missing hostnames, reports ghost_count
+    as a lower bound, flags ghost_detection_partial, and emits an info
+    disclosure. card_summary is suppressed because passed would over-count."""
     from rapid7_healthcheck.checks.asset_coverage import _PER_ITEM_FINDING_CAP
     from tests.conftest import FakeRapid7Client
 
     fc = FakeRapid7Client()
-    overflow = _PER_ITEM_FINDING_CAP + 10
-    # All have empty hostName → all are ghosts.
+    overflow = _PER_ITEM_FINDING_CAP + 10  # 510 OS-empty assets exist
+    # All have empty hostName → every fetched row is a ghost.
     ghost_candidates = [
         {"id": i, "hostName": None, "ip": f"10.0.0.{i % 254 + 1}"}
         for i in range(overflow)
     ]
     fc.set_post_one_responder(
         "/api/3/assets/search",
-        _ghost_responder(ghost_candidates),
+        _ghost_responder(ghost_candidates, total=overflow),
     )
-    result = AssetCoverageCheck().run(fc, app_config)
+    result = AssetCoverageCheck().run(
+        fc, app_config, snapshot=_FakeSnapshot(total_asset_count=50_000)
+    )
     rule = _rule(result, "op.asset_coverage.ghost_assets")
     assert rule.status == "fail"
-    # Exactly _PER_ITEM_FINDING_CAP fail-findings + 1 warn-finding rollup.
-    assert len(rule.findings) == _PER_ITEM_FINDING_CAP + 1
+    # Only the bounded head was inspected → ghost_count is the cap, not 510.
+    assert rule.summary["ghost_count"] == _PER_ITEM_FINDING_CAP
+    assert rule.summary["os_empty_total"] == overflow
+    assert rule.summary["os_empty_examined"] == _PER_ITEM_FINDING_CAP
+    assert rule.summary["ghost_detection_partial"] is True
+    # cap fail-findings + 1 info partial-disclosure (no per-item rollup, since
+    # ghosts == fetched head == cap, so nothing was omitted from findings).
     fail_findings = [f for f in rule.findings if f.severity == "fail"]
-    warn_findings = [f for f in rule.findings if f.severity == "warn"]
+    info_findings = [f for f in rule.findings if f.severity == "info"]
     assert len(fail_findings) == _PER_ITEM_FINDING_CAP
-    assert len(warn_findings) == 1
-    rollup = warn_findings[0]
-    assert "additional ghost assets" in rollup.message
-    assert rollup.details["remainder"] == 10
-    assert rollup.details["total"] == overflow
-    assert rollup.details["cap"] == _PER_ITEM_FINDING_CAP
-    assert rule.summary["ghost_count"] == overflow
+    assert len(info_findings) == 1
+    disclosure = info_findings[0]
+    assert "lower bound" in disclosure.message
+    assert disclosure.details["os_empty_total"] == overflow
+    assert disclosure.details["os_empty_examined"] == _PER_ITEM_FINDING_CAP
+    # Standardized card line suppressed when partial — passed would over-count.
+    assert rule.card_summary is None
 
 
 def test_ghost_assets_handles_empty_candidates(fake_client, app_config):
-    """Empty candidate set → 0 findings, status=pass."""
+    """Empty candidate set → 0 findings, status=pass, complete card_summary."""
     from tests.conftest import FakeRapid7Client
     fc = FakeRapid7Client()
     fc.set_post_one_responder(
         "/api/3/assets/search",
         _ghost_responder([]),
     )
-    result = AssetCoverageCheck().run(fc, app_config)
+    result = AssetCoverageCheck().run(
+        fc, app_config, snapshot=_FakeSnapshot(total_asset_count=1000)
+    )
     rule = _rule(result, "op.asset_coverage.ghost_assets")
     assert rule.status == "pass"
     assert rule.findings == []
     assert rule.summary["ghost_count"] == 0
-    assert rule.summary["candidates_examined"] == 0
+    assert rule.summary["os_empty_total"] == 0
+    assert rule.summary["os_empty_examined"] == 0
+    assert rule.summary["ghost_detection_partial"] is False
+    # Complete + snapshot present → honest card line over the full population.
+    assert rule.card_summary == {"examined": 1000, "passed": 1000, "failed": 0}
 
 
 def test_ghost_assets_whitespace_only_hostname_counts_as_empty(fake_client, app_config):
@@ -1094,9 +1131,60 @@ def test_ghost_assets_whitespace_only_hostname_counts_as_empty(fake_client, app_
         "/api/3/assets/search",
         _ghost_responder([{"id": 1, "hostName": "   ", "ip": "10.0.0.5"}]),
     )
-    result = AssetCoverageCheck().run(fc, app_config)
+    result = AssetCoverageCheck().run(
+        fc, app_config, snapshot=_FakeSnapshot(total_asset_count=1000)
+    )
     rule = _rule(result, "op.asset_coverage.ghost_assets")
     assert rule.summary["ghost_count"] == 1
     assert len(rule.findings) == 1
+
+
+def test_ghost_assets_card_summary_uses_total_asset_count_as_denominator(fake_client, app_config):
+    """Complete detection + snapshot present: card_summary's 'examined' is the
+    deployment-wide total_asset_count() (the honest denominator), not the
+    OS-empty candidate pool. 'failed' is the ghost count; 'passed' is the
+    remainder of the full population."""
+    from tests.conftest import FakeRapid7Client
+    fc = FakeRapid7Client()
+    fc.set_post_one_responder(
+        "/api/3/assets/search",
+        _ghost_responder([
+            {"id": 1, "hostName": None, "ip": "10.0.0.1"},   # ghost
+            {"id": 2, "hostName": None, "ip": "10.0.0.2"},   # ghost
+            {"id": 3, "hostName": "named", "ip": "10.0.0.3"},  # OS-empty but named → not ghost
+        ]),
+    )
+    result = AssetCoverageCheck().run(
+        fc, app_config, snapshot=_FakeSnapshot(total_asset_count=50_000)
+    )
+    rule = _rule(result, "op.asset_coverage.ghost_assets")
+    assert rule.summary["ghost_count"] == 2
+    assert rule.summary["ghost_detection_partial"] is False
+    # examined is the full population (50k), NOT the 3-asset OS-empty pool.
+    assert rule.card_summary == {"examined": 50_000, "passed": 49_998, "failed": 2}
+
+
+def test_ghost_assets_without_snapshot_reports_ghosts_but_no_card_summary(fake_client, app_config):
+    """Snapshot absent (test fakes / edge cases): the rule cannot read the
+    honest denominator, so card_summary is suppressed — but ghost findings are
+    still reported and the rule does NOT error out."""
+    from tests.conftest import FakeRapid7Client
+    fc = FakeRapid7Client()
+    fc.set_post_one_responder(
+        "/api/3/assets/search",
+        _ghost_responder([
+            {"id": 1, "hostName": None, "ip": "10.0.0.1"},   # ghost
+            {"id": 2, "hostName": "foo", "ip": "10.0.0.2"},  # not ghost
+        ]),
+    )
+    # No snapshot= kwarg → GhostAssetsRule.run receives snapshot=None.
+    result = AssetCoverageCheck().run(fc, app_config)
+    rule = _rule(result, "op.asset_coverage.ghost_assets")
+    assert rule.status == "fail"          # ghost still detected and flagged
+    assert rule.status != "error"
+    assert rule.summary["ghost_count"] == 1
+    assert rule.summary["ghost_detection_partial"] is False
+    assert rule.card_summary is None      # suppressed — no honest denominator
+    assert len([f for f in rule.findings if f.severity == "fail"]) == 1
     assert rule.findings[0].severity == "fail"
     assert rule.findings[0].details["id"] == 1
