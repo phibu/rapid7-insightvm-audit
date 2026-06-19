@@ -4,11 +4,19 @@ import itertools
 import logging
 from dataclasses import dataclass, field
 from ipaddress import IPv4Address, IPv4Network, IPv6Address, IPv6Network, ip_address, ip_network
-from typing import Any
+from typing import Any, Protocol
 
 from rapid7_healthcheck.client import Rapid7ClientError
 
 logger = logging.getLogger(__name__)
+
+# The agents-endpoint read timeout an EnvSnapshot uses when a caller doesn't
+# tune one. Lives once, here — the lone home of the literal so the four
+# snapshot-construction sites can't drift to a stray hardcoded value (see
+# `build_env_snapshot`). `AuditConfig` exposes this as a tunable field; the
+# other two sampling configs (`UserAuditConfig` / `TemplateAuditConfig`) do
+# not yet, so they inherit this default through the builder.
+DEFAULT_AGENTS_TIMEOUT = 180
 
 
 @dataclass
@@ -120,7 +128,7 @@ class EnvSnapshot:
         *,
         full_scan: bool,
         sample_size: int,
-        agents_timeout_seconds: int = 180,
+        agents_timeout_seconds: int = DEFAULT_AGENTS_TIMEOUT,
     ) -> None:
         self._client = client
         self._full_scan = full_scan
@@ -936,3 +944,47 @@ class EnvSnapshot:
                 else:
                     raise
         return self._user_asset_groups[user_id]
+
+
+class _SamplingConfig(Protocol):
+    """The slice of an audit category's config block the snapshot builder reads.
+
+    Structurally satisfied by `AuditConfig`, `UserAuditConfig`, and
+    `TemplateAuditConfig` — every audit sampling-config dataclass carries
+    these two fields. The builder duck-types on this shape rather than on
+    one concrete config class so all three categories share one construction
+    path. (`AuditConfig` additionally has `agents_timeout_seconds`; the
+    builder takes that as a separate argument so the two blocks that lack
+    the field still construct cleanly.)
+    """
+
+    full_scan: bool
+    sample_size: int
+
+
+def build_env_snapshot(
+    client: Any,
+    *,
+    sampling: _SamplingConfig,
+    agents_timeout_seconds: int = DEFAULT_AGENTS_TIMEOUT,
+) -> EnvSnapshot:
+    """Construct an `EnvSnapshot` from an audit category's sampling config.
+
+    The single home of the snapshot's construction kwargs. Maps any audit
+    category's sampling config (`full_scan` / `sample_size`, duck-typed
+    across `AuditConfig` / `UserAuditConfig` / `TemplateAuditConfig`) onto
+    `EnvSnapshot`, defaulting the agents timeout to `DEFAULT_AGENTS_TIMEOUT`.
+
+    Every site that needs an `EnvSnapshot` — `__main__` (for the operational
+    checks) and the three audit categories whose rules read v3 console data —
+    goes through here, so the construction-kwarg list and the timeout default
+    live in exactly one place. Categories whose config block carries a tuned
+    `agents_timeout_seconds` (today only `AuditConfig`) pass it explicitly;
+    the rest inherit the default. See CONTEXT.md "build_env_snapshot".
+    """
+    return EnvSnapshot(
+        client,
+        full_scan=sampling.full_scan,
+        sample_size=sampling.sample_size,
+        agents_timeout_seconds=agents_timeout_seconds,
+    )

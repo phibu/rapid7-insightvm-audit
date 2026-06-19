@@ -44,6 +44,10 @@ _Avoid_: "audit descriptor", "audit spec", "audit profile", "audit config" (it i
 The thin `Check` adapters `__main__` registers. Each supplies an `AuditCategory` and delegates to the `AuditRunner`; they add no loop logic. Analogous to `Rapid7Client`/`CloudClient` wiring an `ApiDialect` into an `HttpTransport`.
 _Avoid_: "audit orchestrator" for these — the orchestrator is the `AuditRunner`; these are suppliers.
 
+**build_env_snapshot**:
+The single builder that maps any audit category's sampling config (`full_scan` / `sample_size`, duck-typed across `AuditConfig` / `UserAuditConfig` / `TemplateAuditConfig`) plus an agents timeout onto a constructed `EnvSnapshot`. The one place that knows the snapshot's construction kwargs and the `DEFAULT_AGENTS_TIMEOUT` default — replacing the four hand-rolled `EnvSnapshot(client, full_scan=…, sample_size=…, agents_timeout_seconds=…)` call sites (`__main__` plus the three `EnvSnapshot`-building audit categories). Because the timeout default lives once in the builder, the two categories whose config blocks lack an `agents_timeout_seconds` field (`UserAuditConfig` / `TemplateAuditConfig`) can no longer drift to a stray hardcoded literal; the field is added to those blocks only if a rule in those categories ever needs a tuned timeout.
+_Avoid_: "snapshot factory", "make_snapshot".
+
 ## Operational-check orchestration
 
 The operational checks (Scan Engines, Scan Activity, Asset Coverage, Data Quality) emit `RuleResult`s just like the audit categories, but their rules do **not** share a uniform contract: each rule takes its own positional args, checks share an upstream fetch through a closure (e.g. the single `/api/3/scan_engines` GET behind four rule cards), and gating is by *threshold* (`flag_missing_os`) not by a `rules:` registry. So they cannot reuse `AuditRunner` verbatim — the shared spine is narrower.

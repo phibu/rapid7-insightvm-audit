@@ -353,11 +353,10 @@ def run(argv: list[str] | None = None) -> int:
         )
     )
 
-    from rapid7_healthcheck.audit.snapshot import EnvSnapshot
-    snapshot = EnvSnapshot(
+    from rapid7_healthcheck.audit.snapshot import build_env_snapshot
+    snapshot = build_env_snapshot(
         client,
-        full_scan=cfg.audit.full_scan,
-        sample_size=cfg.audit.sample_size,
+        sampling=cfg.audit,
         agents_timeout_seconds=cfg.audit.agents_timeout_seconds,
     )
 

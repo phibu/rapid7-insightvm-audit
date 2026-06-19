@@ -18,7 +18,7 @@ import logging
 from typing import Any
 
 from rapid7_healthcheck.audit import Rule
-from rapid7_healthcheck.audit.snapshot import EnvSnapshot
+from rapid7_healthcheck.audit.snapshot import EnvSnapshot, build_env_snapshot
 from rapid7_healthcheck.checks import CheckResult
 from rapid7_healthcheck.config import AppConfig
 
@@ -67,13 +67,14 @@ class TemplateAuditCheck:
             # Accept an outer-owned snapshot when the caller provides one (future
             # cleanup path — see __main__._run_checks). Otherwise build our own,
             # which keeps sampling settings scoped to this audit's config block.
+            # TemplateAuditConfig has no agents_timeout_seconds field yet; the
+            # builder supplies DEFAULT_AGENTS_TIMEOUT. See CONTEXT.md
+            # "build_env_snapshot".
             if snapshot is not None:
                 return snapshot
-            return EnvSnapshot(
+            return build_env_snapshot(
                 client,
-                full_scan=config.template_audit.full_scan,
-                sample_size=config.template_audit.sample_size,
-                agents_timeout_seconds=180,
+                sampling=config.template_audit,
             )
 
         category = AuditCategory(

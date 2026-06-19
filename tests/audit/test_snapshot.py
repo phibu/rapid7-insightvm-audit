@@ -848,3 +848,107 @@ def test_scans_total_is_cached():
     assert s.scans_total() == 7
     # Exactly one GET hit /api/3/scans.
     assert sum(1 for p, _ in c.get_calls if p == "/api/3/scans") == 1
+
+
+# --- build_env_snapshot (the single snapshot construction seam) ---------------
+
+
+def test_build_env_snapshot_maps_sampling_fields_onto_snapshot():
+    """The builder copies full_scan / sample_size off the sampling config onto
+    the constructed EnvSnapshot (read back via the private slots the snapshot
+    stores them in)."""
+    from rapid7_healthcheck.audit.snapshot import build_env_snapshot
+    from rapid7_healthcheck.config import AuditConfig
+
+    c = _FakeClient()
+    cfg = AuditConfig(enabled=True, full_scan=True, sample_size=42, rules={})
+    s = build_env_snapshot(c, sampling=cfg, agents_timeout_seconds=cfg.agents_timeout_seconds)
+    assert s._client is c
+    assert s._full_scan is True
+    assert s._sample_size == 42
+    assert s._agents_timeout == cfg.agents_timeout_seconds
+
+
+def test_build_env_snapshot_defaults_agents_timeout_when_not_passed():
+    """When a caller omits agents_timeout_seconds (the config block lacks the
+    field), the builder supplies DEFAULT_AGENTS_TIMEOUT — no stray literal."""
+    from rapid7_healthcheck.audit.snapshot import DEFAULT_AGENTS_TIMEOUT, build_env_snapshot
+    from rapid7_healthcheck.config import UserAuditConfig
+
+    c = _FakeClient()
+    cfg = UserAuditConfig(enabled=True, full_scan=False, sample_size=10, rules={})
+    s = build_env_snapshot(c, sampling=cfg)
+    assert s._agents_timeout == DEFAULT_AGENTS_TIMEOUT
+
+
+def test_build_env_snapshot_honors_explicit_agents_timeout():
+    """An explicit timeout overrides the default."""
+    from rapid7_healthcheck.audit.snapshot import build_env_snapshot
+    from rapid7_healthcheck.config import AuditConfig
+
+    c = _FakeClient()
+    cfg = AuditConfig(enabled=True, full_scan=False, sample_size=10,
+                      agents_timeout_seconds=300, rules={})
+    s = build_env_snapshot(c, sampling=cfg, agents_timeout_seconds=cfg.agents_timeout_seconds)
+    assert s._agents_timeout == 300
+
+
+@pytest.mark.parametrize("make_cfg", [
+    lambda: __import__("rapid7_healthcheck.config", fromlist=["AuditConfig"]).AuditConfig(
+        enabled=True, full_scan=True, sample_size=7, rules={}),
+    lambda: __import__("rapid7_healthcheck.config", fromlist=["UserAuditConfig"]).UserAuditConfig(
+        enabled=True, full_scan=True, sample_size=7, rules={}),
+    lambda: __import__("rapid7_healthcheck.config", fromlist=["TemplateAuditConfig"]).TemplateAuditConfig(
+        enabled=True, full_scan=True, sample_size=7, rules={}),
+], ids=["AuditConfig", "UserAuditConfig", "TemplateAuditConfig"])
+def test_build_env_snapshot_duck_types_across_all_three_config_blocks(make_cfg):
+    """The duck-typing contract: every audit sampling-config dataclass
+    (AuditConfig / UserAuditConfig / TemplateAuditConfig) satisfies the
+    builder's _SamplingConfig shape via full_scan / sample_size."""
+    from rapid7_healthcheck.audit.snapshot import build_env_snapshot
+
+    c = _FakeClient()
+    s = build_env_snapshot(c, sampling=make_cfg())
+    assert s._full_scan is True
+    assert s._sample_size == 7
+
+
+def test_config_driven_snapshot_sites_route_through_the_builder():
+    """Regression guard for the build_env_snapshot seam.
+
+    The four config-driven snapshot-construction sites — __main__ (operational
+    checks) and the three audit categories that build an EnvSnapshot from a
+    sampling-config block — must construct via build_env_snapshot, NOT call
+    EnvSnapshot(...) directly. A direct construction at one of these sites is
+    exactly how the agents_timeout_seconds=180 literal drifted before; this
+    test fails the moment a fifth `EnvSnapshot(` literal appears in a routed
+    file.
+
+    The three op-check standalone *fallbacks* (scan_engines / scan_activity /
+    data_quality, when invoked without a __main__-supplied snapshot) are a
+    different shape — no sampling-config block, hardcoded full_scan=False /
+    sample_size=500 standalone defaults, no timeout literal — and are
+    deliberately OUT of scope for this seam. They are not asserted here.
+    """
+    import re
+    from pathlib import Path
+
+    import rapid7_healthcheck
+
+    pkg_root = Path(rapid7_healthcheck.__file__).parent
+    routed_files = [
+        pkg_root / "__main__.py",
+        pkg_root / "audit" / "__init__.py",
+        pkg_root / "audit" / "user_permission" / "__init__.py",
+        pkg_root / "audit" / "template" / "__init__.py",
+    ]
+    direct_construction = re.compile(r"\bEnvSnapshot\s*\(")
+    offenders = [
+        f.relative_to(pkg_root).as_posix()
+        for f in routed_files
+        if direct_construction.search(f.read_text(encoding="utf-8"))
+    ]
+    assert offenders == [], (
+        "these config-driven sites construct EnvSnapshot directly instead of "
+        f"routing through build_env_snapshot: {offenders}"
+    )

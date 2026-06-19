@@ -5,7 +5,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
-from rapid7_healthcheck.audit.snapshot import EnvSnapshot
+from rapid7_healthcheck.audit.snapshot import EnvSnapshot, build_env_snapshot
 from rapid7_healthcheck.checks import CheckResult, Finding, Severity, Status
 from rapid7_healthcheck.client import Rapid7ClientError
 from rapid7_healthcheck.config import AppConfig
@@ -121,10 +121,9 @@ class ConfigurationAuditCheck:
             )
 
         def build_snapshot(client, config, _cloud) -> EnvSnapshot:
-            return EnvSnapshot(
+            return build_env_snapshot(
                 client,
-                full_scan=config.audit.full_scan,
-                sample_size=config.audit.sample_size,
+                sampling=config.audit,
                 agents_timeout_seconds=config.audit.agents_timeout_seconds,
             )
 
