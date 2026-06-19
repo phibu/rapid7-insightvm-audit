@@ -12,3 +12,4 @@ dist/
 backlog.md
 .superpowers/
 .worktrees/
+.gstack/
