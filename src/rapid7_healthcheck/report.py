@@ -11,16 +11,6 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from rapid7_healthcheck import state_engine
 from rapid7_healthcheck.checks import CheckResult, Finding, findings_of
 
-# The cross-run delta engine lives in state_engine (extracted so deltas are
-# testable without rendering HTML). These aliases keep the historical private
-# names report.py and its tests reach for; report.py owns only rendering now.
-_finding_signature = state_engine.finding_signature
-_state_blob_projection = state_engine.project
-_compute_delta = state_engine.compute
-_load_prior_state = state_engine.load_prior
-_STATE_BLOB_RE = state_engine.STATE_BLOB_RE
-
-
 _TEMPLATE_DIR = Path(__file__).parent / "templates"
 
 
@@ -207,7 +197,7 @@ def render_report(ctx: ReportContext, *, prior_state: dict | None = None) -> str
     generated_at_utc_str = ctx.generated_at.strftime("%Y-%m-%d %H:%M:%S")
 
     # Build the trimmed state blob (may be None if oversized).
-    blob = _state_blob_projection(
+    blob = state_engine.project(
         results=ctx.results,
         tool_version=ctx.tool_version,
         generated_at=ctx.generated_at,
@@ -222,7 +212,7 @@ def render_report(ctx: ReportContext, *, prior_state: dict | None = None) -> str
 
     # Compute delta (None if no prior, host mismatch, or blob is None).
     if blob is not None and prior_state is not None:
-        ctx.delta = _compute_delta(prior=prior_state, current=blob)
+        ctx.delta = state_engine.compute(prior=prior_state, current=blob)
     else:
         ctx.delta = None
 
@@ -272,7 +262,7 @@ def write_report(
     out = output_dir / filename
 
     # Load prior state (if any) before rendering so the delta strip can render.
-    prior = _load_prior_state(
+    prior = state_engine.load_prior(
         output_dir=output_dir,
         filename_pattern=filename_pattern,
         exclude=out,
