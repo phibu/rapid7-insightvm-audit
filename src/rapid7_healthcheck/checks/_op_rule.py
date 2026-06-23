@@ -206,7 +206,7 @@ def safe_run_rule(rule, fn: Callable[[], RuleResult]) -> RuleResult:
 # implementation in `audit.rule_rollup`, imported here under the op-side names
 # the op-check runner and tests already use. `rollup_check_status` is the
 # op-side spelling of `rollup_status`.
-from rapid7_healthcheck.audit.rule_rollup import (  # noqa: E402
+from rapid7_healthcheck.audit.rule_rollup import (  # noqa: E402,F401
     flatten_findings,
     rule_summary,
 )

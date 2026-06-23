@@ -6,10 +6,9 @@ from rapid7_healthcheck import __version__
 from rapid7_healthcheck.client import (
     ApiDialect,
     HttpTransport,
-    Rapid7AuthError,
     Rapid7ClientError,
-    ReadOnlyViolationError,
-    _ALLOWED_VERBS,
+    ReadOnlyViolationError,  # noqa: F401  re-exported; tests import it from cloud_client
+    _ALLOWED_VERBS,  # noqa: F401  re-exported; read-only tests import it from cloud_client
 )
 
 

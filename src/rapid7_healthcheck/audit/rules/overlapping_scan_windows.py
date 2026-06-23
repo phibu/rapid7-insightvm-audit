@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import ipaddress
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from itertools import combinations
 
 from rapid7_healthcheck.audit import RuleResult, register
