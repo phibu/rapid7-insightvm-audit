@@ -30,11 +30,11 @@ def _make_record(
 
 # ---------- PlainFormatter ----------
 
-def test_plain_formatter_matches_legacy_format_string():
+def test_plain_formatter_format_string():
     from rapid7_healthcheck._log import PlainFormatter
     record = _make_record(level=logging.INFO, name="rapid7_healthcheck", msg="hello")
     line = PlainFormatter().format(record)
-    # Legacy format: "%(asctime)s %(levelname)s %(name)s: %(message)s"
+    # Format string: "%(asctime)s %(levelname)s %(name)s: %(message)s"
     assert " INFO rapid7_healthcheck: hello" in line
     # asctime is at the start; default format is "YYYY-MM-DD HH:MM:SS,mmm".
     assert re.match(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3} ", line)
