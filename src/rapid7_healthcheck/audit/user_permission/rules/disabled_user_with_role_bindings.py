@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from rapid7_healthcheck.audit import RuleResult
+from rapid7_healthcheck.audit import AuditRule, RuleResult
 from rapid7_healthcheck.audit.user_permission import register_user_rule
 from rapid7_healthcheck.checks import Finding
 
@@ -19,7 +19,7 @@ def _has_bindings(user: dict) -> bool:
 
 
 @register_user_rule
-class DisabledUserWithRoleBindingsRule:
+class DisabledUserWithRoleBindingsRule(AuditRule):
     rule_id = "disabled_user_with_role_bindings"
     rule_name = "Disabled User With Active Role Bindings"
     description = (
@@ -59,25 +59,10 @@ class DisabledUserWithRoleBindingsRule:
                 },
             ))
 
-        if any(f.severity == "fail" for f in findings):
-            status = "fail"
-        elif any(f.severity == "warn" for f in findings):
-            status = "warn"
-        else:
-            status = "pass"
-
-        return RuleResult(
-            rule_id=self.rule_id,
-            rule_name=self.rule_name,
-            description=self.description,
+        return self.result(
+            findings,
             severity=severity,
-            status=status,
-            findings=findings,
             summary={"users_examined": len(users), "users_flagged": flagged},
-            card_summary={
-                "examined": len(users),
-                "passed": max(0, len(users) - flagged),
-                "failed": flagged,
-            },
-            sources=list(self.sources),
+            examined=len(users),
+            failed=flagged,
         )

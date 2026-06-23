@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from rapid7_healthcheck.audit import RuleResult
+from rapid7_healthcheck.audit import AuditRule, RuleResult
 from rapid7_healthcheck.audit.template import register_template_rule
 from rapid7_healthcheck.audit.snapshot import EnvSnapshot
 from rapid7_healthcheck.checks import Finding
@@ -10,7 +10,7 @@ _HIGH_IMPORTANCE = {"high", "very_high"}
 
 
 @register_template_rule
-class PolicyOnlyTemplateAttachedToVulnSiteRule:
+class PolicyOnlyTemplateAttachedToVulnSiteRule(AuditRule):
     rule_id = "template.policy_only_template_attached_to_vuln_site"
     rule_name = "Policy-Only Template Attached To High-Importance Site"
     description = (
@@ -80,28 +80,13 @@ class PolicyOnlyTemplateAttachedToVulnSiteRule:
         failed = len(findings)
         examined = len(policy_only)
 
-        if any(f.severity == "fail" for f in findings):
-            status = "fail"
-        elif any(f.severity == "warn" for f in findings):
-            status = "warn"
-        else:
-            status = "pass"
-
-        return RuleResult(
-            rule_id=self.rule_id,
-            rule_name=self.rule_name,
-            description=self.description,
+        return self.result(
+            findings,
             severity=severity,
-            status=status,
-            findings=findings,
             summary={
                 "policy_only_templates_examined": examined,
                 "templates_flagged": failed,
             },
-            card_summary={
-                "examined": examined,
-                "passed": max(0, examined - failed),
-                "failed": failed,
-            },
-            sources=list(self.sources),
+            examined=examined,
+            failed=failed,
         )

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from rapid7_healthcheck.audit import RuleResult
+from rapid7_healthcheck.audit import AuditRule, RuleResult
 from rapid7_healthcheck.audit.template import register_template_rule
 from rapid7_healthcheck.audit.template.rules._applicability import (
     parse_iso8601_seconds_to_ms,
@@ -16,7 +16,7 @@ def _timeout_block(template: dict) -> dict:
 
 
 @register_template_rule
-class DiscoveryTimeoutHighRule:
+class DiscoveryTimeoutHighRule(AuditRule):
     rule_id = "template.discovery_timeout_high"
     rule_name = "Discovery Timeout Higher Than Recommended"
     description = (
@@ -83,30 +83,15 @@ class DiscoveryTimeoutHighRule:
 
         failed = len(findings)
 
-        if any(f.severity == "fail" for f in findings):
-            status = "fail"
-        elif any(f.severity == "warn" for f in findings):
-            status = "warn"
-        else:
-            status = "pass"
-
-        return RuleResult(
-            rule_id=self.rule_id,
-            rule_name=self.rule_name,
-            description=self.description,
+        return self.result(
+            findings,
             severity=severity,
-            status=status,
-            findings=findings,
             summary={
                 "templates_examined": examined,
                 "templates_flagged": failed,
                 "max_timeout_initial_ms": max_initial,
                 "max_timeout_ceiling_ms": max_ceiling,
             },
-            card_summary={
-                "examined": examined,
-                "passed": max(0, examined - failed),
-                "failed": failed,
-            },
-            sources=list(self.sources),
+            examined=examined,
+            failed=failed,
         )

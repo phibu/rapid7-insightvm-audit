@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from rapid7_healthcheck.audit import RuleResult
+from rapid7_healthcheck.audit import AuditRule, RuleResult
 from rapid7_healthcheck.audit.user_permission import register_user_rule
 from rapid7_healthcheck.checks import Finding
 
@@ -9,7 +9,7 @@ _DEFAULT_MAX_GA = 2
 
 
 @register_user_rule
-class MultipleGlobalAdministratorsRule:
+class MultipleGlobalAdministratorsRule(AuditRule):
     rule_id = "multiple_global_administrators"
     rule_name = "Multiple Global Administrators"
     description = (
@@ -65,20 +65,8 @@ class MultipleGlobalAdministratorsRule:
                 },
             ))
 
-        if any(f.severity == "fail" for f in findings):
-            status = "fail"
-        elif any(f.severity == "warn" for f in findings):
-            status = "warn"
-        else:
-            status = "pass"
-
-        return RuleResult(
-            rule_id=self.rule_id,
-            rule_name=self.rule_name,
-            description=self.description,
+        return self.result(
+            findings,
             severity=severity,
-            status=status,
-            findings=findings,
             summary={"ga_count": len(gas), "threshold": max_ga},
-            sources=list(self.sources),
         )

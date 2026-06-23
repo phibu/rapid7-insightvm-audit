@@ -4,7 +4,7 @@ import re
 from datetime import datetime, timedelta
 from itertools import combinations
 
-from rapid7_healthcheck.audit import RuleResult, register
+from rapid7_healthcheck.audit import AuditRule, RuleResult, register
 from rapid7_healthcheck.checks import Finding
 
 
@@ -102,7 +102,7 @@ def _resolve_report_scope(report: dict, snapshot) -> tuple[set[int], bool]:
 
 
 @register
-class ScanReportScheduleOverlapRule:
+class ScanReportScheduleOverlapRule(AuditRule):
     rule_id = "scan_report_schedule_overlap"
     rule_name = "Scan and Report Schedules Overlap on Shared Scope"
     description = (
@@ -231,20 +231,9 @@ class ScanReportScheduleOverlapRule:
                 },
             ))
 
-        if any(f.severity == "fail" for f in findings):
-            status = "fail"
-        elif any(f.severity == "warn" for f in findings):
-            status = "warn"
-        else:
-            status = "pass"
-
-        return RuleResult(
-            rule_id=self.rule_id,
-            rule_name=self.rule_name,
-            description=self.description,
+        return self.result(
+            findings,
             severity=severity,
-            status=status,
-            findings=findings,
             summary={
                 "scan_windows_examined": len(scan_windows),
                 "report_windows_examined": len(report_windows),
@@ -253,5 +242,4 @@ class ScanReportScheduleOverlapRule:
             },
             sampled=sampled,
             sample_info=sample_info,
-            sources=list(self.sources),
         )

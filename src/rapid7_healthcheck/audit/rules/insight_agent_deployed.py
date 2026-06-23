@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from rapid7_healthcheck.audit import RuleResult, register
+from rapid7_healthcheck.audit import AuditRule, RuleResult, register
 from rapid7_healthcheck.checks import Finding
 
 _DEFAULT_WARN_BELOW_PERCENT = 70
 
 
 @register
-class InsightAgentDeployedRule:
+class InsightAgentDeployedRule(AuditRule):
     rule_id = "insight_agent_deployed"
     rule_name = "Insight Agent Fleet Coverage"
     description = (
@@ -83,13 +83,6 @@ class InsightAgentDeployedRule:
                 },
             ))
 
-        if any(f.severity == "fail" for f in findings):
-            status = "fail"
-        elif any(f.severity == "warn" for f in findings):
-            status = "warn"
-        else:
-            status = "pass"
-
         summary: dict = {
             "agents_total": agents_total,
             "assets_total": assets_total,
@@ -98,13 +91,8 @@ class InsightAgentDeployedRule:
         if coverage_pct is not None:
             summary["coverage_percent"] = coverage_pct
 
-        return RuleResult(
-            rule_id=self.rule_id,
-            rule_name=self.rule_name,
-            description=self.description,
+        return self.result(
+            findings,
             severity=severity,
-            status=status,
-            findings=findings,
             summary=summary,
-            sources=list(self.sources),
         )

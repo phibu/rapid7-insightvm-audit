@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from rapid7_healthcheck.audit import RuleResult
+from rapid7_healthcheck.audit import AuditRule, RuleResult
 from rapid7_healthcheck.audit.template import register_template_rule
 from rapid7_healthcheck.checks import Finding
 
@@ -19,7 +19,7 @@ def _telnet_block(template: dict) -> dict | None:
 
 
 @register_template_rule
-class TelnetRegexUnsetRule:
+class TelnetRegexUnsetRule(AuditRule):
     rule_id = "template.telnet_regex_unset"
     rule_name = "Telnet Regex Fields All Unset"
     description = (
@@ -63,28 +63,13 @@ class TelnetRegexUnsetRule:
 
         failed = len(findings)
 
-        if any(f.severity == "fail" for f in findings):
-            status = "fail"
-        elif any(f.severity == "warn" for f in findings):
-            status = "warn"
-        else:
-            status = "pass"
-
-        return RuleResult(
-            rule_id=self.rule_id,
-            rule_name=self.rule_name,
-            description=self.description,
+        return self.result(
+            findings,
             severity=severity,
-            status=status,
-            findings=findings,
             summary={
                 "templates_examined": examined,
                 "templates_flagged": failed,
             },
-            card_summary={
-                "examined": examined,
-                "passed": max(0, examined - failed),
-                "failed": failed,
-            },
-            sources=list(self.sources),
+            examined=examined,
+            failed=failed,
         )

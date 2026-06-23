@@ -84,6 +84,73 @@ class Rule(Protocol):
     ) -> RuleResult: ...
 
 
+class AuditRule:
+    """Base for the four audit categories' concrete rules — the single owner of
+    the findings -> ``RuleResult`` build (see CONTEXT.md "AuditRule").
+
+    Subclasses declare their identity as class attributes (``rule_id``,
+    ``rule_name``, ``description``, ``default_severity``, ``expensive``,
+    ``sources``) and call ``self.result(...)`` at each return point instead of
+    hand-rolling the ``fail > warn > pass`` status derivation, the
+    ``card_summary`` shape, and the ``RuleResult(...)`` metadata wrap. The build
+    delegates to ``rule_rollup.make_rule_result`` — the same builder the
+    operational checks use — so both verticals share one result-build.
+
+    ``AuditRule`` *structurally* satisfies the ``Rule`` protocol; inheritance
+    leaves the registry and ``AuditRunner`` dispatch untouched (``@register``
+    still keys on ``rule_id``).
+    """
+
+    rule_id: str
+    rule_name: str
+    description: str
+    default_severity: Severity
+    expensive: bool
+    sources: list[str]
+
+    def result(
+        self,
+        findings: list[Finding],
+        *,
+        severity: Severity,
+        summary: dict | None = None,
+        examined: int | None = None,
+        failed: int | None = None,
+        sampled: bool = False,
+        sample_info: str | None = None,
+        card_summary: dict[str, int] | None = None,
+    ) -> RuleResult:
+        """Build this rule's ``RuleResult`` from its findings.
+
+        ``severity`` is the config-overridden run-time severity (passed
+        explicitly, not read from ``self.default_severity`` — the two diverge
+        under an operator override and ``RuleResult.severity`` feeds the state
+        blob). Status is derived from the findings; ``card_summary`` is built
+        from ``examined``/``failed`` when both are given, or passed through when
+        the rule already shaped one. ``duration_ms`` is stamped by
+        ``AuditRunner`` after ``run`` returns, so rules never set it here.
+        """
+        # Deferred import: ``rule_rollup`` imports ``RuleResult`` from this
+        # package, so importing it at module top level would be a cycle during
+        # package init (same idiom as ``_op_rule._extract_diagnostics``).
+        from rapid7_healthcheck.audit.rule_rollup import make_rule_result
+
+        return make_rule_result(
+            rule_id=self.rule_id,
+            rule_name=self.rule_name,
+            description=self.description,
+            findings=findings,
+            sources=self.sources,
+            summary=summary,
+            default_severity=severity,
+            sampled=sampled,
+            sample_info=sample_info,
+            examined=examined,
+            failed=failed,
+            card_summary=card_summary,
+        )
+
+
 _RULE_REGISTRY: dict[str, type[Rule]] = {}
 
 

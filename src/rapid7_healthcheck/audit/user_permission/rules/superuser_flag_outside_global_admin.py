@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from rapid7_healthcheck.audit import RuleResult
+from rapid7_healthcheck.audit import AuditRule, RuleResult
 from rapid7_healthcheck.audit.user_permission import register_user_rule
 from rapid7_healthcheck.checks import Finding
 
 
 @register_user_rule
-class SuperuserFlagOutsideGlobalAdminRule:
+class SuperuserFlagOutsideGlobalAdminRule(AuditRule):
     rule_id = "superuser_flag_outside_global_admin"
     rule_name = "Superuser Flag Outside Global Administrator"
     description = (
@@ -47,25 +47,10 @@ class SuperuserFlagOutsideGlobalAdminRule:
                 },
             ))
 
-        if any(f.severity == "fail" for f in findings):
-            status = "fail"
-        elif any(f.severity == "warn" for f in findings):
-            status = "warn"
-        else:
-            status = "pass"
-
-        return RuleResult(
-            rule_id=self.rule_id,
-            rule_name=self.rule_name,
-            description=self.description,
+        return self.result(
+            findings,
             severity=severity,
-            status=status,
-            findings=findings,
             summary={"users_examined": len(users), "users_flagged": len(findings)},
-            card_summary={
-                "examined": len(users),
-                "passed": max(0, len(users) - len(findings)),
-                "failed": len(findings),
-            },
-            sources=list(self.sources),
+            examined=len(users),
+            failed=len(findings),
         )

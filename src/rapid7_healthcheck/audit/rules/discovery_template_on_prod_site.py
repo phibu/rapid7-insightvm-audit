@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from rapid7_healthcheck.audit import RuleResult, register
+from rapid7_healthcheck.audit import AuditRule, RuleResult, register
 from rapid7_healthcheck.checks import Finding
 
 
@@ -9,7 +9,7 @@ _MIN_ASSETS = 10
 
 
 @register
-class DiscoveryTemplateOnProdSiteRule:
+class DiscoveryTemplateOnProdSiteRule(AuditRule):
     rule_id = "discovery_template_on_prod_site"
     rule_name = "Discovery Template on Production Site"
     description = (
@@ -49,25 +49,10 @@ class DiscoveryTemplateOnProdSiteRule:
                          "asset_count": snapshot.site_asset_count(site_id)},
             ))
 
-        if any(f.severity == "fail" for f in findings):
-            status = "fail"
-        elif any(f.severity == "warn" for f in findings):
-            status = "warn"
-        else:
-            status = "pass"
-
-        return RuleResult(
-            rule_id=self.rule_id,
-            rule_name=self.rule_name,
-            description=self.description,
+        return self.result(
+            findings,
             severity=severity,
-            status=status,
-            findings=findings,
             summary={"sites_flagged": len(findings)},
-            card_summary={
-                "examined": sites_examined,
-                "passed": max(0, sites_examined - len(findings)),
-                "failed": len(findings),
-            },
-            sources=list(self.sources),
+            examined=sites_examined,
+            failed=len(findings),
         )

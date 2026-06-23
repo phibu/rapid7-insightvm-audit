@@ -21,65 +21,6 @@ from rapid7_healthcheck.checks import Finding, Severity, Status
 logger = logging.getLogger(__name__)
 
 
-def make_rule_result(
-    *,
-    rule_id: str,
-    rule_name: str,
-    description: str,
-    findings: list[Finding],
-    sources: Iterable[str] = (),
-    summary: dict | None = None,
-    duration_ms: int | None = None,
-    default_severity: Severity = "warn",
-    sampled: bool = False,
-    sample_info: str | None = None,
-    examined: int | None = None,
-    failed: int | None = None,
-) -> RuleResult:
-    """Build a RuleResult for an operational check concept.
-
-    Status is derived from the highest-severity finding (fail > warn > pass).
-    `default_severity` is the rule's own severity tag — it's used by the
-    state-blob/delta logic; individual finding severities still control rollup.
-
-    `examined` / `failed`: when BOTH are provided, build a standardized
-    `card_summary` of ``{"examined": N, "passed": N - failed, "failed": failed}``
-    for uniform rule-card rendering. `passed` is clamped to >= 0 defensively
-    (failed > examined is a programming bug, but render 0 not negative).
-    Pass None for rules where "examined" is genuinely ambiguous.
-    """
-    status: Status
-    if any(f.severity == "fail" for f in findings):
-        status = "fail"
-    elif any(f.severity == "warn" for f in findings):
-        status = "warn"
-    else:
-        status = "pass"
-
-    card_summary: dict[str, int] | None = None
-    if examined is not None and failed is not None:
-        card_summary = {
-            "examined": examined,
-            "passed": max(0, examined - failed),
-            "failed": failed,
-        }
-
-    return RuleResult(
-        rule_id=rule_id,
-        rule_name=rule_name,
-        description=description,
-        severity=default_severity,
-        status=status,
-        findings=list(findings),
-        summary=summary or {},
-        card_summary=card_summary,
-        sources=list(sources),
-        duration_ms=duration_ms,
-        sampled=sampled,
-        sample_info=sample_info,
-    )
-
-
 def skipped_rule(
     *,
     rule_id: str,
@@ -202,12 +143,15 @@ def safe_run_rule(rule, fn: Callable[[], RuleResult]) -> RuleResult:
     )
 
 
-# The three terminal rollups are shared with the audit runner — one
-# implementation in `audit.rule_rollup`, imported here under the op-side names
-# the op-check runner and tests already use. `rollup_check_status` is the
-# op-side spelling of `rollup_status`.
+# The result-build and the three terminal rollups are shared with the audit
+# runner — one implementation each in `audit.rule_rollup`, imported here under
+# the op-side names the op-check runner and tests already use.
+# `make_rule_result` lives in `rule_rollup` (both verticals share it) and is
+# re-exported here so the operational checks' existing imports are unchanged;
+# `rollup_check_status` is the op-side spelling of `rollup_status`.
 from rapid7_healthcheck.audit.rule_rollup import (  # noqa: E402,F401
     flatten_findings,
+    make_rule_result,
     rule_summary,
 )
 from rapid7_healthcheck.audit.rule_rollup import rollup_status as rollup_check_status  # noqa: E402,F401

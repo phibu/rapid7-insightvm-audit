@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from rapid7_healthcheck.audit import RuleResult
+from rapid7_healthcheck.audit import AuditRule, RuleResult
 from rapid7_healthcheck.audit.cloud_drift import register_cloud_rule
 from rapid7_healthcheck.audit.cloud_drift._utils import (
     _coerce_optional_positive_int,
@@ -16,7 +16,7 @@ _DEFAULT_MAX_STALE_PERCENT = 10.0
 
 
 @register_cloud_rule
-class StaleAssessmentCohortRule:
+class StaleAssessmentCohortRule(AuditRule):
     rule_id = "cd.stale_assessment_cohort"
     rule_name = "Stale Assessment Cohort"
     description = (
@@ -93,20 +93,9 @@ class StaleAssessmentCohortRule:
                     },
                 ))
 
-        if any(f.severity == "fail" for f in findings):
-            status = "fail"
-        elif any(f.severity == "warn" for f in findings):
-            status = "warn"
-        else:
-            status = "pass"
-
-        return RuleResult(
-            rule_id=self.rule_id,
-            rule_name=self.rule_name,
-            description=self.description,
+        return self.result(
+            findings,
             severity=severity,
-            status=status,
-            findings=findings,
             summary={
                 "stale_count": stale_count,
                 "total_count": total_count,
@@ -115,5 +104,4 @@ class StaleAssessmentCohortRule:
                 "max_stale_percent": max_stale_percent,
                 "max_stale_count": max_stale_count,
             },
-            sources=list(self.sources),
         )

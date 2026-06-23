@@ -5,7 +5,7 @@ import re
 from datetime import datetime, timedelta
 from itertools import combinations
 
-from rapid7_healthcheck.audit import RuleResult, register
+from rapid7_healthcheck.audit import AuditRule, RuleResult, register
 from rapid7_healthcheck.checks import Finding
 
 # ISO 8601 duration parser, minimal: PT[nH][nM][nS]
@@ -73,7 +73,7 @@ def _scopes_intersect(a: tuple[list, set[str]], b: tuple[list, set[str]]) -> boo
 
 
 @register
-class OverlappingScanWindowsRule:
+class OverlappingScanWindowsRule(AuditRule):
     rule_id = "overlapping_scan_windows"
     rule_name = "Overlapping Scan Windows"
     description = (
@@ -156,20 +156,9 @@ class OverlappingScanWindowsRule:
                 },
             ))
 
-        if any(f.severity == "fail" for f in findings):
-            status = "fail"
-        elif any(f.severity == "warn" for f in findings):
-            status = "warn"
-        else:
-            status = "pass"
-
-        return RuleResult(
-            rule_id=self.rule_id,
-            rule_name=self.rule_name,
-            description=self.description,
+        return self.result(
+            findings,
             severity=severity,
-            status=status,
-            findings=findings,
             summary={
                 "windows_examined": len(windows),
                 "findings_count": len(findings),
@@ -181,5 +170,4 @@ class OverlappingScanWindowsRule:
             # nonsensical. Card falls back to per-summary-key rendering.
             sampled=sampled,
             sample_info=sample_info,
-            sources=list(self.sources),
         )
