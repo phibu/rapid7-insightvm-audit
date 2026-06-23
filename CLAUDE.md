@@ -73,16 +73,17 @@ After merging a release commit (`release: X.Y.Z` on `main`) and pushing:
 git tag -a vX.Y.Z -m "Release X.Y.Z - <one-line summary>"
 git push origin vX.Y.Z
 
-# 2. Build the runtime zip (excludes tests/ and docs/superpowers/)
+# 2. Build the runtime zip (excludes tests/, docs/superpowers/, and .agents/)
 #    The excludes use the directory-form pathspec (`:(exclude)tests`, no
 #    trailing glob) anchored against an explicit `'.'` include. git excludes
 #    the whole directory, and this form is verified against the v0.8.5/v0.8.6
-#    runtime zips.
+#    runtime zips. `.agents/` holds repo-only dev skills — never runtime — so
+#    it must be excluded too, or the skills leak into the customer-facing zip.
 git archive --format=zip \
   --prefix=rapid7-insightvm-audit-X.Y.Z/ \
   -o /tmp/rapid7-insightvm-audit-X.Y.Z.zip \
   vX.Y.Z \
-  -- '.' ':(exclude)tests' ':(exclude)docs/superpowers'
+  -- '.' ':(exclude)tests' ':(exclude)docs/superpowers' ':(exclude).agents'
 
 # 3. Create the GitHub release with the zip attached
 gh release create vX.Y.Z /tmp/rapid7-insightvm-audit-X.Y.Z.zip \
@@ -92,7 +93,7 @@ gh release create vX.Y.Z /tmp/rapid7-insightvm-audit-X.Y.Z.zip \
 
 Asset naming convention: `rapid7-insightvm-audit-X.Y.Z.zip` (no `v` prefix in the filename, matches every release back to v0.1.7). Title format: `vX.Y.Z — <short summary>` (em dash, lowercase summary). Release body should mirror the CHANGELOG entry plus a "## Asset" section noting `rapid7-insightvm-audit-X.Y.Z.zip — runtime files only.` and a "Full changelog" link to `CHANGELOG.md` at the version tag.
 
-The zip contains only what's needed to run the tool (source under `src/`, `pyproject.toml`, `README.md`, `LICENSE`, `SECURITY.md`, `CHANGELOG.md`, `CLAUDE.md`, `docs/examples/`, `docs/research/`, `.github/`, `.env.example`, `.gitignore`). It excludes `tests/`, `docs/superpowers/` (specs/plans), and any other non-runtime artifacts.
+The zip contains only what's needed to run the tool (source under `src/`, `pyproject.toml`, `README.md`, `LICENSE`, `SECURITY.md`, `CHANGELOG.md`, `CLAUDE.md`, `docs/examples/`, `docs/research/`, `.github/`, `.env.example`, `.gitignore`). It excludes `tests/`, `docs/superpowers/` (specs/plans), `.agents/` (repo-only dev skills), and any other non-runtime artifacts.
 
 ## Backlog
 
