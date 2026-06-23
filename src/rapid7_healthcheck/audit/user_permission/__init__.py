@@ -17,7 +17,7 @@ import time
 from typing import Any
 
 from rapid7_healthcheck.audit import Rule
-from rapid7_healthcheck.audit.snapshot import EnvSnapshot, build_env_snapshot
+from rapid7_healthcheck.audit.user_permission.snapshot import UserSnapshot
 from rapid7_healthcheck.checks import CheckResult, Finding
 from rapid7_healthcheck.config import AppConfig
 
@@ -53,15 +53,12 @@ class UserPermissionAuditCheck:
                 skip_reason="user_audit.enabled is false",
             )
 
-        def build_snapshot(client, config, _cloud) -> EnvSnapshot:
-            # UserAuditConfig has no agents_timeout_seconds field yet; the
-            # builder supplies DEFAULT_AGENTS_TIMEOUT. Add the field to the
-            # config block (and pass it here) only when a user-audit rule
-            # needs a tuned timeout. See CONTEXT.md "build_env_snapshot".
-            return build_env_snapshot(
-                client,
-                sampling=config.user_audit,
-            )
+        def build_snapshot(client, config, _cloud) -> UserSnapshot:
+            # The user-audit accessors honour no sampling (they paginate the
+            # full user population by design), so this category bypasses
+            # build_env_snapshot and constructs a UserSnapshot directly — it
+            # needs only the client. See CONTEXT.md "UserSnapshot".
+            return UserSnapshot(client)
 
         def prime(snapshot, category, start) -> CheckResult | None:
             # Prime the users endpoint once; if it 404s the entire category

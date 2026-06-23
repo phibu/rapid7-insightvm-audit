@@ -14,51 +14,51 @@ def _user(uid: int, login: str, role_id: str = "user", *, enabled: bool = True, 
     }
 
 
-def test_pass_when_all_privileged_users_have_mfa(fake_snapshot):
-    fake_snapshot.set_users([
+def test_pass_when_all_privileged_users_have_mfa(fake_user_snapshot):
+    fake_user_snapshot.set_users([
         _user(1, "alice", "global-admin"),
         _user(2, "bob", "user"),  # not privileged, ignored
     ])
-    fake_snapshot.set_user_2fa_enabled(1, True)
-    r = PrivilegedUserWithoutMfaRule().run(fake_snapshot, "fail", False, 500, {})
+    fake_user_snapshot.set_user_2fa_enabled(1, True)
+    r = PrivilegedUserWithoutMfaRule().run(fake_user_snapshot, "fail", False, 500, {})
     assert r.status == "pass"
 
 
-def test_fails_when_global_admin_lacks_mfa(fake_snapshot):
-    fake_snapshot.set_users([_user(1, "alice", "global-admin")])
-    fake_snapshot.set_user_2fa_enabled(1, False)
-    r = PrivilegedUserWithoutMfaRule().run(fake_snapshot, "fail", False, 500, {})
+def test_fails_when_global_admin_lacks_mfa(fake_user_snapshot):
+    fake_user_snapshot.set_users([_user(1, "alice", "global-admin")])
+    fake_user_snapshot.set_user_2fa_enabled(1, False)
+    r = PrivilegedUserWithoutMfaRule().run(fake_user_snapshot, "fail", False, 500, {})
     assert r.status == "fail"
     assert r.summary["users_without_mfa"] == 1
     assert "alice" in r.findings[0].message
     assert r.card_summary == {"examined": 1, "passed": 0, "failed": 1}
 
 
-def test_superuser_flag_treated_as_privileged(fake_snapshot):
+def test_superuser_flag_treated_as_privileged(fake_user_snapshot):
     """A non-global-admin role with role.superuser=true is privileged."""
-    fake_snapshot.set_users([_user(1, "su", "custom-role", superuser=True)])
-    fake_snapshot.set_user_2fa_enabled(1, False)
-    r = PrivilegedUserWithoutMfaRule().run(fake_snapshot, "fail", False, 500, {})
+    fake_user_snapshot.set_users([_user(1, "su", "custom-role", superuser=True)])
+    fake_user_snapshot.set_user_2fa_enabled(1, False)
+    r = PrivilegedUserWithoutMfaRule().run(fake_user_snapshot, "fail", False, 500, {})
     assert r.status == "fail"
 
 
-def test_disabled_privileged_users_ignored(fake_snapshot):
-    fake_snapshot.set_users([_user(1, "alice", "global-admin", enabled=False)])
-    fake_snapshot.set_user_2fa_enabled(1, False)
-    r = PrivilegedUserWithoutMfaRule().run(fake_snapshot, "fail", False, 500, {})
+def test_disabled_privileged_users_ignored(fake_user_snapshot):
+    fake_user_snapshot.set_users([_user(1, "alice", "global-admin", enabled=False)])
+    fake_user_snapshot.set_user_2fa_enabled(1, False)
+    r = PrivilegedUserWithoutMfaRule().run(fake_user_snapshot, "fail", False, 500, {})
     assert r.status == "pass"
     assert r.summary["privileged_users"] == 0
 
 
-def test_mfa_exempt_logins_suppress_findings(fake_snapshot):
-    fake_snapshot.set_users([
+def test_mfa_exempt_logins_suppress_findings(fake_user_snapshot):
+    fake_user_snapshot.set_users([
         _user(1, "alice", "global-admin"),
         _user(2, "healthcheck-svc", "global-admin"),
     ])
-    fake_snapshot.set_user_2fa_enabled(1, True)
-    fake_snapshot.set_user_2fa_enabled(2, False)
+    fake_user_snapshot.set_user_2fa_enabled(1, True)
+    fake_user_snapshot.set_user_2fa_enabled(2, False)
     r = PrivilegedUserWithoutMfaRule().run(
-        fake_snapshot, "fail", False, 500,
+        fake_user_snapshot, "fail", False, 500,
         {"mfa_exempt_logins": ["healthcheck-svc"]},
     )
     assert r.status == "pass"
@@ -66,31 +66,31 @@ def test_mfa_exempt_logins_suppress_findings(fake_snapshot):
     assert r.summary["users_without_mfa"] == 0
 
 
-def test_skipped_when_2fa_endpoint_unavailable(fake_snapshot):
+def test_skipped_when_2fa_endpoint_unavailable(fake_user_snapshot):
     """If the 2FA endpoint returns None for any user, the rule self-skips."""
-    fake_snapshot.set_users([_user(1, "alice", "global-admin")])
-    fake_snapshot.set_user_2fa_enabled(1, None)  # endpoint unavailable
-    r = PrivilegedUserWithoutMfaRule().run(fake_snapshot, "fail", False, 500, {})
+    fake_user_snapshot.set_users([_user(1, "alice", "global-admin")])
+    fake_user_snapshot.set_user_2fa_enabled(1, None)  # endpoint unavailable
+    r = PrivilegedUserWithoutMfaRule().run(fake_user_snapshot, "fail", False, 500, {})
     assert r.status == "skipped"
     assert r.summary["endpoint_available"] is False
 
 
-def test_self_skip_when_all_users_return_401(fake_snapshot):
+def test_self_skip_when_all_users_return_401(fake_user_snapshot):
     """If every privileged user's 2FA endpoint returns 401, the calling key
     likely lacks Global Administrator — self-skip with an info finding."""
     from rapid7_healthcheck.client import Rapid7ClientError
 
-    fake_snapshot.set_users([
+    fake_user_snapshot.set_users([
         _user(1, "alice", "global-admin"),
         _user(2, "bob", "global-admin"),
         _user(3, "carol", "custom-role", superuser=True),
     ])
     err = Rapid7ClientError("401 at /api/3/users/X/2FA: auth", status_code=401)
-    fake_snapshot.set_user_2fa_raises(1, err)
-    fake_snapshot.set_user_2fa_raises(2, err)
-    fake_snapshot.set_user_2fa_raises(3, err)
+    fake_user_snapshot.set_user_2fa_raises(1, err)
+    fake_user_snapshot.set_user_2fa_raises(2, err)
+    fake_user_snapshot.set_user_2fa_raises(3, err)
 
-    r = PrivilegedUserWithoutMfaRule().run(fake_snapshot, "fail", False, 500, {})
+    r = PrivilegedUserWithoutMfaRule().run(fake_user_snapshot, "fail", False, 500, {})
 
     assert r.status == "skipped"
     assert len(r.findings) == 1
@@ -99,38 +99,38 @@ def test_self_skip_when_all_users_return_401(fake_snapshot):
     assert "global administrator" in msg or "401" in msg
 
 
-def test_findings_when_some_users_succeed_others_401(fake_snapshot):
+def test_findings_when_some_users_succeed_others_401(fake_user_snapshot):
     """Mixed 200/401: 401 → treat as no-MFA-configured (a finding)."""
     from rapid7_healthcheck.client import Rapid7ClientError
 
-    fake_snapshot.set_users([
+    fake_user_snapshot.set_users([
         _user(1, "alice", "global-admin"),   # False  → finding
         _user(2, "bob", "global-admin"),     # True   → no finding
         _user(3, "carol", "global-admin"),   # 401    → finding (disambiguation)
     ])
-    fake_snapshot.set_user_2fa_enabled(1, False)
-    fake_snapshot.set_user_2fa_enabled(2, True)
-    fake_snapshot.set_user_2fa_raises(3, Rapid7ClientError("401", status_code=401))
+    fake_user_snapshot.set_user_2fa_enabled(1, False)
+    fake_user_snapshot.set_user_2fa_enabled(2, True)
+    fake_user_snapshot.set_user_2fa_raises(3, Rapid7ClientError("401", status_code=401))
 
-    r = PrivilegedUserWithoutMfaRule().run(fake_snapshot, "fail", False, 500, {})
+    r = PrivilegedUserWithoutMfaRule().run(fake_user_snapshot, "fail", False, 500, {})
 
     assert len(r.findings) == 2
     logins = {f.details["login"] for f in r.findings}
     assert logins == {"alice", "carol"}
 
 
-def test_findings_when_all_users_return_explicit_status(fake_snapshot):
+def test_findings_when_all_users_return_explicit_status(fake_user_snapshot):
     """All users returned a 2FA status (no 401s); no disambiguation needed."""
-    fake_snapshot.set_users([
+    fake_user_snapshot.set_users([
         _user(1, "alice", "global-admin"),
         _user(2, "bob", "global-admin"),
         _user(3, "carol", "global-admin"),
     ])
-    fake_snapshot.set_user_2fa_enabled(1, False)
-    fake_snapshot.set_user_2fa_enabled(2, False)
-    fake_snapshot.set_user_2fa_enabled(3, True)
+    fake_user_snapshot.set_user_2fa_enabled(1, False)
+    fake_user_snapshot.set_user_2fa_enabled(2, False)
+    fake_user_snapshot.set_user_2fa_enabled(3, True)
 
-    r = PrivilegedUserWithoutMfaRule().run(fake_snapshot, "fail", False, 500, {})
+    r = PrivilegedUserWithoutMfaRule().run(fake_user_snapshot, "fail", False, 500, {})
 
     assert len(r.findings) == 2
     logins = {f.details["login"] for f in r.findings}
@@ -150,13 +150,13 @@ def _user_with_auth(uid: int, login: str, auth_type: str | None, role_id: str = 
     return u
 
 
-def test_external_saml_user_skipped_no_2fa_call(fake_snapshot):
+def test_external_saml_user_skipped_no_2fa_call(fake_user_snapshot):
     """SAML-authenticated privileged user must NOT trigger a 2FA endpoint call;
     they appear in a single aggregate info finding instead."""
-    fake_snapshot.set_users([_user_with_auth(1, "saml-admin", "saml")])
+    fake_user_snapshot.set_users([_user_with_auth(1, "saml-admin", "saml")])
     # Deliberately do NOT set_user_2fa_enabled — if the rule calls it, the fake
     # returns False (default) and we'd see a fail finding. We assert there is none.
-    r = PrivilegedUserWithoutMfaRule().run(fake_snapshot, "fail", False, 500, {})
+    r = PrivilegedUserWithoutMfaRule().run(fake_user_snapshot, "fail", False, 500, {})
     assert r.status == "pass"
     assert r.summary["users_external_auth"] == 1
     assert r.summary["users_without_mfa"] == 0
@@ -169,16 +169,16 @@ def test_external_saml_user_skipped_no_2fa_call(fake_snapshot):
     ]
 
 
-def test_mixed_local_and_external(fake_snapshot):
+def test_mixed_local_and_external(fake_user_snapshot):
     """One local-without-MFA + 1 SAML + 1 LDAP. The local user gets a fail
     finding; both external users get aggregated into one info finding."""
-    fake_snapshot.set_users([
+    fake_user_snapshot.set_users([
         _user_with_auth(1, "alice", "normal"),
         _user_with_auth(2, "saml-admin", "saml"),
         _user_with_auth(3, "ldap-admin", "ldap"),
     ])
-    fake_snapshot.set_user_2fa_enabled(1, False)
-    r = PrivilegedUserWithoutMfaRule().run(fake_snapshot, "fail", False, 500, {})
+    fake_user_snapshot.set_user_2fa_enabled(1, False)
+    r = PrivilegedUserWithoutMfaRule().run(fake_user_snapshot, "fail", False, 500, {})
     assert r.status == "fail"
     assert r.summary["users_without_mfa"] == 1
     assert r.summary["users_external_auth"] == 2
@@ -191,12 +191,12 @@ def test_mixed_local_and_external(fake_snapshot):
     assert logins_in_info == {"saml-admin", "ldap-admin"}
 
 
-def test_exempt_wins_over_external(fake_snapshot):
+def test_exempt_wins_over_external(fake_user_snapshot):
     """A user in mfa_exempt_logins is counted as exempt, not external,
     even when their authentication.type is non-normal."""
-    fake_snapshot.set_users([_user_with_auth(1, "saml-svc", "saml")])
+    fake_user_snapshot.set_users([_user_with_auth(1, "saml-svc", "saml")])
     r = PrivilegedUserWithoutMfaRule().run(
-        fake_snapshot, "fail", False, 500,
+        fake_user_snapshot, "fail", False, 500,
         {"mfa_exempt_logins": ["saml-svc"]},
     )
     assert r.status == "pass"
@@ -207,18 +207,18 @@ def test_exempt_wins_over_external(fake_snapshot):
     assert info_findings == []
 
 
-def test_all_privileged_external_no_2fa_calls(fake_snapshot):
+def test_all_privileged_external_no_2fa_calls(fake_user_snapshot):
     """When every privileged user is external, zero 2FA calls happen and
     only the aggregate info finding is emitted; status is pass."""
-    fake_snapshot.set_users([
+    fake_user_snapshot.set_users([
         _user_with_auth(1, "krb-admin-1", "kerberos"),
         _user_with_auth(2, "krb-admin-2", "kerberos"),
     ])
     # Configure user_2fa_enabled to RAISE if called — proves no call happened.
     from rapid7_healthcheck.client import Rapid7ClientError
-    fake_snapshot.set_user_2fa_raises(1, Rapid7ClientError("must not be called", status_code=500))
-    fake_snapshot.set_user_2fa_raises(2, Rapid7ClientError("must not be called", status_code=500))
-    r = PrivilegedUserWithoutMfaRule().run(fake_snapshot, "fail", False, 500, {})
+    fake_user_snapshot.set_user_2fa_raises(1, Rapid7ClientError("must not be called", status_code=500))
+    fake_user_snapshot.set_user_2fa_raises(2, Rapid7ClientError("must not be called", status_code=500))
+    r = PrivilegedUserWithoutMfaRule().run(fake_user_snapshot, "fail", False, 500, {})
     assert r.status == "pass"
     assert r.summary["users_external_auth"] == 2
     assert r.summary["users_without_mfa"] == 0
@@ -226,7 +226,7 @@ def test_all_privileged_external_no_2fa_calls(fake_snapshot):
     assert len(info_findings) == 1
 
 
-def test_self_skip_when_all_local_users_401_even_with_external_users(fake_snapshot):
+def test_self_skip_when_all_local_users_401_even_with_external_users(fake_user_snapshot):
     """All local privileged users return 401 AND an external user exists.
 
     The presence of external-auth users proves nothing about whether the
@@ -237,16 +237,16 @@ def test_self_skip_when_all_local_users_401_even_with_external_users(fake_snapsh
     """
     from rapid7_healthcheck.client import Rapid7ClientError
 
-    fake_snapshot.set_users([
+    fake_user_snapshot.set_users([
         _user_with_auth(1, "alice", "normal"),     # local → 401
         _user_with_auth(2, "bob", "normal"),       # local → 401
         _user_with_auth(3, "saml-admin", "saml"),  # external → no 2FA call
     ])
     err = Rapid7ClientError("401 at /api/3/users/X/2FA", status_code=401)
-    fake_snapshot.set_user_2fa_raises(1, err)
-    fake_snapshot.set_user_2fa_raises(2, err)
+    fake_user_snapshot.set_user_2fa_raises(1, err)
+    fake_user_snapshot.set_user_2fa_raises(2, err)
 
-    r = PrivilegedUserWithoutMfaRule().run(fake_snapshot, "fail", False, 500, {})
+    r = PrivilegedUserWithoutMfaRule().run(fake_user_snapshot, "fail", False, 500, {})
 
     assert r.status == "skipped"
     # No false fail findings for the 401'd local users.
@@ -258,12 +258,12 @@ def test_self_skip_when_all_local_users_401_even_with_external_users(fake_snapsh
     assert r.summary["users_external_auth"] == 1
 
 
-def test_missing_authentication_field_treated_as_local(fake_snapshot):
+def test_missing_authentication_field_treated_as_local(fake_user_snapshot):
     """If the user has no authentication field, fall back to local-account
     handling (existing 2FA-call path runs)."""
-    fake_snapshot.set_users([_user_with_auth(1, "alice", None)])  # no auth field
-    fake_snapshot.set_user_2fa_enabled(1, True)
-    r = PrivilegedUserWithoutMfaRule().run(fake_snapshot, "fail", False, 500, {})
+    fake_user_snapshot.set_users([_user_with_auth(1, "alice", None)])  # no auth field
+    fake_user_snapshot.set_user_2fa_enabled(1, True)
+    r = PrivilegedUserWithoutMfaRule().run(fake_user_snapshot, "fail", False, 500, {})
     assert r.status == "pass"
     assert r.summary["users_external_auth"] == 0
     # users_without_mfa is 0 because mfa was True
