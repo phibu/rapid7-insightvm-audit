@@ -11,11 +11,12 @@ from rapid7_healthcheck.client import Rapid7ClientError
 logger = logging.getLogger(__name__)
 
 # The agents-endpoint read timeout an EnvSnapshot uses when a caller doesn't
-# tune one. Lives once, here — the lone home of the literal so the four
-# snapshot-construction sites can't drift to a stray hardcoded value (see
-# `build_env_snapshot`). `AuditConfig` exposes this as a tunable field; the
-# other two sampling configs (`UserAuditConfig` / `TemplateAuditConfig`) do
-# not yet, so they inherit this default through the builder.
+# tune one. Lives once, here — the lone home of the literal so the
+# EnvSnapshot-construction sites can't drift to a stray hardcoded value (see
+# `build_env_snapshot`). `AuditConfig` exposes this as a tunable field;
+# `TemplateAuditConfig` does not yet, so it inherits this default through the
+# builder. (User & Permission builds a `UserSnapshot`, which reads no agents
+# data and so never touches this timeout.)
 DEFAULT_AGENTS_TIMEOUT = 180
 
 
@@ -157,12 +158,6 @@ class EnvSnapshot:
         self._agent_count_cache: int | None = None
         self._agent_asset_ids_cache: set[int] | None = None
         self._agent_asset_ids_sampled_cache: tuple[list[int], int] | None = None
-        self._users: list[dict] | None = None
-        self._users_endpoints_unavailable: bool = False
-        self._authentication_sources: list[dict] | None = None
-        self._user_2fa: dict[int, bool | None] = {}
-        self._user_sites: dict[int, list[dict]] = {}
-        self._user_asset_groups: dict[int, list[dict]] = {}
         self._asset_group_member_counts: dict[int, int | None] = {}
         self._all_included_targets_cache: IncludedTargets | None = None
 
@@ -847,103 +842,6 @@ class EnvSnapshot:
         self._agent_asset_ids_sampled_cache = (sample_ids, total)
         return self._agent_asset_ids_sampled_cache
 
-    # --- User & Permission audit accessors -------------------------------
-
-    def users(self) -> list[dict]:
-        """All users from /api/3/users (Global Administrator only).
-
-        Traps 404 — some heavily restricted custom roles do not expose the
-        users endpoint. On 404 we set `users_endpoints_unavailable` so the
-        whole user-audit category can self-skip honestly rather than fail.
-        Other errors propagate.
-        """
-        if self._users is None:
-            try:
-                self._users = list(self._client.paginate("/api/3/users"))
-            except Rapid7ClientError as e:
-                if e.status_code == 404:
-                    logger.info("users endpoint not available — user audit will skip")
-                    self._users = []
-                    self._users_endpoints_unavailable = True
-                else:
-                    raise
-        return self._users
-
-    def is_users_endpoints_unavailable(self) -> bool:
-        """True if /api/3/users returned 404 — pure read of the cached flag.
-        Callers should invoke `users()` first to prime the flag.
-        """
-        return self._users_endpoints_unavailable
-
-    def authentication_sources(self) -> list[dict]:
-        """Configured authentication sources (LDAP, SAML, Kerberos, normal).
-
-        Used to detect SSO configuration. Each entry has an `external` flag
-        — `external: true` indicates a configured SSO source. Traps 404
-        identically to `users()`: missing endpoint means we can't reason
-        about SSO at all.
-        """
-        if self._authentication_sources is None:
-            try:
-                body = self._client.get("/api/3/authentication_sources")
-                self._authentication_sources = list(body.get("resources", []))
-            except Rapid7ClientError as e:
-                if e.status_code == 404:
-                    logger.info("authentication_sources endpoint not available")
-                    self._authentication_sources = []
-                else:
-                    raise
-        return self._authentication_sources
-
-    def user_2fa_enabled(self, user_id: int) -> bool | None:
-        """Tri-state 2FA status for a user.
-
-        Returns:
-            True  — 2FA is configured (the endpoint returned a non-empty key).
-            False — 2FA is NOT configured (the endpoint returned, but no key).
-            None  — endpoint unavailable on this console (404). Caller should
-                    treat None as "cannot audit MFA on this console" and skip
-                    the rule, not as a finding.
-        """
-        if user_id not in self._user_2fa:
-            try:
-                body = self._client.get(f"/api/3/users/{user_id}/2FA")
-                key = body.get("key") if isinstance(body, dict) else None
-                self._user_2fa[user_id] = bool(key)
-            except Rapid7ClientError as e:
-                if e.status_code == 404:
-                    self._user_2fa[user_id] = None
-                else:
-                    raise
-        return self._user_2fa[user_id]
-
-    def user_sites(self, user_id: int) -> list[dict]:
-        """Sites a user has explicit access to (excluding `role.allSites`)."""
-        if user_id not in self._user_sites:
-            try:
-                self._user_sites[user_id] = list(
-                    self._client.paginate(f"/api/3/users/{user_id}/sites")
-                )
-            except Rapid7ClientError as e:
-                if e.status_code == 404:
-                    self._user_sites[user_id] = []
-                else:
-                    raise
-        return self._user_sites[user_id]
-
-    def user_asset_groups(self, user_id: int) -> list[dict]:
-        """Asset groups a user has explicit access to (excluding `role.allAssetGroups`)."""
-        if user_id not in self._user_asset_groups:
-            try:
-                self._user_asset_groups[user_id] = list(
-                    self._client.paginate(f"/api/3/users/{user_id}/asset_groups")
-                )
-            except Rapid7ClientError as e:
-                if e.status_code == 404:
-                    self._user_asset_groups[user_id] = []
-                else:
-                    raise
-        return self._user_asset_groups[user_id]
 
 
 class _SamplingConfig(Protocol):
@@ -968,19 +866,21 @@ def build_env_snapshot(
     sampling: _SamplingConfig,
     agents_timeout_seconds: int = DEFAULT_AGENTS_TIMEOUT,
 ) -> EnvSnapshot:
-    """Construct an `EnvSnapshot` from an audit category's sampling config.
+    """Construct an `EnvSnapshot` from a sampling config.
 
-    The single home of the snapshot's construction kwargs. Maps any audit
-    category's sampling config (`full_scan` / `sample_size`, duck-typed
-    across `AuditConfig` / `UserAuditConfig` / `TemplateAuditConfig`) onto
-    `EnvSnapshot`, defaulting the agents timeout to `DEFAULT_AGENTS_TIMEOUT`.
+    The single home of the snapshot's construction kwargs. Maps a sampling
+    config (`full_scan` / `sample_size`, duck-typed across `AuditConfig` /
+    `TemplateAuditConfig`) onto `EnvSnapshot`, defaulting the agents timeout
+    to `DEFAULT_AGENTS_TIMEOUT`.
 
     Every site that needs an `EnvSnapshot` — `__main__` (for the operational
-    checks) and the three audit categories whose rules read v3 console data —
-    goes through here, so the construction-kwarg list and the timeout default
-    live in exactly one place. Categories whose config block carries a tuned
-    `agents_timeout_seconds` (today only `AuditConfig`) pass it explicitly;
-    the rest inherit the default. See CONTEXT.md "build_env_snapshot".
+    checks and the Configuration audit's shared snapshot) and the Template
+    audit category — goes through here, so the construction-kwarg list and the
+    timeout default live in exactly one place. Categories whose config block
+    carries a tuned `agents_timeout_seconds` (today only `AuditConfig`) pass it
+    explicitly; the rest inherit the default. The User & Permission category
+    does not use this builder — it constructs a `UserSnapshot`, which carries
+    no sampling and no agents timeout. See CONTEXT.md "build_env_snapshot".
     """
     return EnvSnapshot(
         client,

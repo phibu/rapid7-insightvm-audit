@@ -1,0 +1,171 @@
+{
+  "skill_name": "unslop-ai-code",
+  "evals": [
+    {
+      "id": 0,
+      "name": "audit-finds-hallucinated-api",
+      "mode": "audit",
+      "prompt": "Can you look at evals/fixtures/weather_cli/weather.py? A teammate generated it with an LLM and I want to clean it up before it goes in our repo. It honestly reads like AI wrote it. Can you de-slop it and tell me what's wrong?",
+      "expected_output": "An audit that does NOT stop at the surface scanner. It must catch the surface tells (emoji, narrating/step comments, process_data/handle_data names, bare except, chat artifact 'Here's the updated code', the 'Successfully' log) AND, critically, the hallucinated API call requests.parse_weather_payload(...) which the scanner is blind to. The report should lead with a verdict, separate bug-class findings (swallowed except, hallucinated call) from cosmetic ones, and flag that requests has no parse_weather_payload method. Bonus: not over-correcting when rewriting.",
+      "files": [
+        "evals/fixtures/weather_cli/weather.py"
+      ],
+      "assertions": [
+        {
+          "id": "a0_flags_hallucinated_api",
+          "text": "The audit report explicitly identifies requests.parse_weather_payload as a hallucinated/nonexistent API call (not just the surface tells)."
+        },
+        {
+          "id": "a0_classifies_as_bug",
+          "text": "The report distinguishes bug-class findings (swallowed except, hallucinated call) from cosmetic ones, rather than treating everything as equal style nits."
+        },
+        {
+          "id": "a0_rewrite_no_hallucinated_call",
+          "text": "The rewritten weather_fixed.py does NOT contain requests.parse_weather_payload (the hallucinated call is gone)."
+        },
+        {
+          "id": "a0_rewrite_no_surface_tells",
+          "text": "weather_fixed.py has no emoji, no 'process_data'/'handle_data' names, no bare 'except Exception: pass', and no chat-artifact comment."
+        },
+        {
+          "id": "a0_no_overcorrection",
+          "text": "The rewrite stays proportionate to a ~15-line script: it does not add custom exception classes, retry/backoff layers, or a class wrapper that the original did not warrant."
+        }
+      ]
+    },
+    {
+      "id": 1,
+      "name": "build-fits-the-codebase",
+      "mode": "build",
+      "prompt": "I'm adding a notes resource to this little API. There's already a users module at evals/fixtures/notes_api/notes_api/users.py. Write me a notes.py in the same folder with get_note, list_notes, and create_note handlers. A note has an id, a user_id, and a body. create_note should reject an empty body.",
+      "expected_output": "A notes.py that MATCHES the conventions established in users.py rather than emitting the average Flask/FastAPI tutorial. Must use: the same log.info(event, **kwargs) structured logging, the query_one/query_all/execute DB helpers (not raw sqlite/ORM), ApiError(status, msg) for the empty-body rejection (not a returned error dict or a swallowed exception), Response.ok/.created/return shape, parameterized SQL with ?. Should NOT introduce emoji, narrating comments, a new logging approach, Flask/FastAPI scaffolding, or over-engineered abstractions. The win condition is 'looks like it belongs in this repo'.",
+      "files": [
+        "evals/fixtures/notes_api/notes_api/users.py"
+      ],
+      "assertions": [
+        {
+          "id": "a1_uses_db_helpers",
+          "text": "notes.py uses the repo's query_one/query_all/execute DB helpers (imported from .db), not raw sqlite3, an ORM, or a new data layer."
+        },
+        {
+          "id": "a1_uses_apierror",
+          "text": "create_note rejects an empty body by raising ApiError(400, ...), matching users.py \u2014 not by returning an error dict or swallowing an exception."
+        },
+        {
+          "id": "a1_structured_logging",
+          "text": "notes.py uses the same log.info(event, **kwargs) structured-logging style as users.py, not print() or a new logger."
+        },
+        {
+          "id": "a1_response_shape",
+          "text": "Handlers return via Response.ok/Response.created and list_notes uses a plural-keyed dict ({'notes': rows}), matching the users.py shape."
+        },
+        {
+          "id": "a1_no_framework_or_emoji",
+          "text": "notes.py does not introduce Flask/FastAPI scaffolding, emoji, narrating comments, or type annotations the sibling lacks."
+        },
+        {
+          "id": "a1_404_on_missing",
+          "text": "get_note raises ApiError(404, ...) when the row is None, matching users.py's get_user 'if row is None: raise ApiError(404, ...)' convention (not returning 200/null)."
+        },
+        {
+          "id": "a1_parameterized_sql",
+          "text": "All SQL uses parameterized placeholders ('?') with values passed as separate args, never string interpolation/f-strings of user input into the query."
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "generic-make-not-look-ai",
+      "mode": "build",
+      "prompt": "write me a python script that reads a folder of .csv files, merges them into one dataframe, and writes a parquet file. make it not look ai-generated please, my lead keeps rejecting my PRs saying they look vibe-coded",
+      "expected_output": "A from-scratch generation where the model resists its own slop defaults: no emoji, no narrating/step comments, no process_data-style generic names, no bare except swallowing errors, no chat-artifact preamble, no left-in placeholder. Critically must NOT over-correct into performed-seniority (a type annotation on every local, defensive checks for impossible cases, an abstraction/class for a one-shot script, a docstring on every trivial function). With no repo to anchor to, it should make one deliberate simple choice and keep the script lean and idiomatic. Should ideally ask about / note the requirement (glob pattern, schema mismatch handling) rather than emit the demo.",
+      "files": [],
+      "assertions": [
+        {
+          "id": "a2_no_surface_tells",
+          "text": "merge_csvs.py has no emoji, no narrating/step comments, no generic process_data-style name, no chat-artifact preamble, and no left-in placeholder."
+        },
+        {
+          "id": "a2_no_bare_except",
+          "text": "The script does not swallow errors with a bare except / except Exception: pass; any try/except catches specific exception types."
+        },
+        {
+          "id": "a2_no_overcorrection",
+          "text": "The script does NOT over-correct into performed seniority: no class/abstraction for a one-shot script, no type annotation on every local, no docstring on every trivial function, no defensive checks for impossible cases."
+        },
+        {
+          "id": "a2_real_requirement",
+          "text": "The output engages the real requirement (takes a folder path argument, handles the glob, notes column-mismatch / empty-file handling) rather than emitting a hardcoded demo with dummy data."
+        },
+        {
+          "id": "a2_no_scope_padding",
+          "text": "The script builds ONLY the requested scope (read a folder of csvs -> merge -> write parquet). It does not add unrequested capability: no extra CLI flags like --recursive or --source-column, no second mandatory output argument, no extra output formats, no env-var fallbacks. If a fuller version might be wanted, it asks in one line rather than shipping it unbidden."
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "audit-respects-ignore-hatch",
+      "mode": "audit",
+      "prompt": "de-slop evals/fixtures/ignore_case/cli.py for me. heads up, some of the stuff in there is on purpose, I marked it.",
+      "expected_output": "An audit that RESPECTS the unslop-ignore markers. The file has two intentional, marked lines: the banner emoji (print rocket, marked unslop-ignore) and the broad top-level except Exception in run() (marked unslop-ignore -- it logs to stderr, rolls back, and exits non-zero, so it is a real boundary guard, not a swallow). The audit must NOT flag or rewrite those two. It SHOULD flag the genuine unmarked tells: process_data() generic name and the 'parse the args' / 'return the target' narrating comments. The win condition is trust: it leaves deliberate choices alone and only touches the real slop. A run that strips the marked emoji or rewrites the marked guard fails.",
+      "files": [
+        "evals/fixtures/ignore_case/cli.py"
+      ],
+      "assertions": [
+        {
+          "id": "a3_preserves_ignored_emoji",
+          "text": "cli_fixed.py still contains the banner emoji line marked unslop-ignore (the deliberate CLI banner was NOT stripped)."
+        },
+        {
+          "id": "a3_preserves_ignored_catch",
+          "text": "cli_fixed.py still contains the top-level broad 'except Exception' guard marked unslop-ignore (it logs/rolls back/exits, and was NOT rewritten away)."
+        },
+        {
+          "id": "a3_renames_generic",
+          "text": "The audit flags and the rewrite renames the unmarked generic 'process_data' to a domain-meaningful name."
+        },
+        {
+          "id": "a3_removes_narrating",
+          "text": "The unmarked narrating comments ('parse the args' / 'return the target') are removed in cli_fixed.py."
+        },
+        {
+          "id": "a3_trust_explained",
+          "text": "The audit report explicitly states which lines it left alone because they were marked unslop-ignore (demonstrating it respected the escape hatch on purpose)."
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "audit-go-multiline-swallow",
+      "mode": "audit",
+      "prompt": "this go file handler.go came out of an AI and my reviewer says it smells. can you audit evals/fixtures/go_handler/handler.go and clean it up?",
+      "expected_output": "An audit of Go code that goes BEYOND the scanner's language coverage. The scanner catches the surface tells (chat artifact 'Here's the updated handler', emoji, ProcessData generic name, '// Step 1' / '// Now we' / '// return the' narrating comments). But the two worst tells in this file are swallowed errors the regex is documented to MISS in Go: (1) the multi-line empty `if err != nil {}` block on the lookupUser call, and (2) the discarded error from json.NewDecoder(r.Body).Decode(&payload). A good audit must catch BOTH of these by reading the code, not just trusting the scan, and flag them as bug-class (a panic on the type assertion / a silently ignored decode failure). It should also note the unchecked payload['id'].(string) type assertion. The win condition is: the model did not stop at the scanner output for a Go file.",
+      "files": [
+        "evals/fixtures/go_handler/handler.go"
+      ],
+      "assertions": [
+        {
+          "id": "a4_finds_multiline_swallow",
+          "text": "The audit identifies the multi-line empty 'if err != nil {}' block as a swallowed error / bug, even though the scanner only catches the single-line form."
+        },
+        {
+          "id": "a4_finds_discarded_decode",
+          "text": "The audit identifies the discarded error from json.NewDecoder(r.Body).Decode(&payload) as a bug the scanner misses in Go."
+        },
+        {
+          "id": "a4_notes_panic_assertion",
+          "text": "The audit notes the unchecked type assertion payload['id'].(string) as a panic risk (a bug-class structural tell)."
+        },
+        {
+          "id": "a4_did_not_trust_scanner",
+          "text": "The report makes clear the model read the Go code by hand rather than stopping at the scanner output, consistent with the skill's documented Go coverage gap."
+        },
+        {
+          "id": "a4_rewrite_handles_errors",
+          "text": "handler_fixed.go handles the decode and lookup errors with proper status codes / early returns instead of swallowing them, and uses the comma-ok form for the type assertion."
+        }
+      ]
+    }
+  ]
+}

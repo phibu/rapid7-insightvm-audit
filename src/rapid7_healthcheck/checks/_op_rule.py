@@ -202,34 +202,12 @@ def safe_run_rule(rule, fn: Callable[[], RuleResult]) -> RuleResult:
     )
 
 
-def rollup_check_status(rule_results: list[RuleResult]) -> Status:
-    """Aggregate rule statuses into a check-level status.
-
-    Mirrors `audit._rollup_audit_status`. Pure pass when every rule passed
-    or was skipped; warn if any warned; fail if any failed or errored.
-    """
-    if any(r.status in ("fail", "error") for r in rule_results):
-        return "fail"
-    if any(r.status == "warn" for r in rule_results):
-        return "warn"
-    return "pass"
-
-
-def flatten_findings(rule_results: list[RuleResult]) -> list[Finding]:
-    return [f for r in rule_results for f in r.findings]
-
-
-def rule_summary(rule_results: list[RuleResult]) -> dict:
-    """Build the tile-strip summary dict expected by report.html.j2.
-
-    Mirrors the shape produced by `ConfigurationAuditCheck` so the template's
-    rule-tile branch renders for operational checks too.
-    """
-    return {
-        "rules_total": len(rule_results),
-        "rules_pass": sum(1 for r in rule_results if r.status == "pass"),
-        "rules_warn": sum(1 for r in rule_results if r.status == "warn"),
-        "rules_fail": sum(1 for r in rule_results if r.status == "fail"),
-        "rules_error": sum(1 for r in rule_results if r.status == "error"),
-        "rules_skipped": sum(1 for r in rule_results if r.status == "skipped"),
-    }
+# The three terminal rollups are shared with the audit runner — one
+# implementation in `audit.rule_rollup`, imported here under the op-side names
+# the op-check runner and tests already use. `rollup_check_status` is the
+# op-side spelling of `rollup_status`.
+from rapid7_healthcheck.audit.rule_rollup import (  # noqa: E402
+    flatten_findings,
+    rule_summary,
+)
+from rapid7_healthcheck.audit.rule_rollup import rollup_status as rollup_check_status  # noqa: E402,F401

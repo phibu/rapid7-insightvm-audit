@@ -23,8 +23,11 @@ from rapid7_healthcheck.audit import (
     Rule,
     RuleResult,
     _extract_diagnostics,
-    _flatten_findings,
-    _rollup_audit_status,
+)
+from rapid7_healthcheck.audit.rule_rollup import (
+    flatten_findings,
+    rollup_status,
+    rule_summary,
 )
 from rapid7_healthcheck.checks import CheckResult, Finding
 from rapid7_healthcheck.config import AppConfig, RuleConfig
@@ -76,17 +79,6 @@ class AuditCategory:
     gate: Callable[[Any, AppConfig, Any], GateDecision]
     build_snapshot: Callable[[Any, AppConfig, Any], Any]
     prime: Callable[[Any, "AuditCategory", float], CheckResult | None] | None = None
-
-
-def _summary_counts(rule_results: list[RuleResult]) -> dict:
-    return {
-        "rules_total": len(rule_results),
-        "rules_pass": sum(1 for r in rule_results if r.status == "pass"),
-        "rules_warn": sum(1 for r in rule_results if r.status == "warn"),
-        "rules_fail": sum(1 for r in rule_results if r.status == "fail"),
-        "rules_error": sum(1 for r in rule_results if r.status == "error"),
-        "rules_skipped": sum(1 for r in rule_results if r.status == "skipped"),
-    }
 
 
 class AuditRunner:
@@ -189,9 +181,9 @@ class AuditRunner:
         return CheckResult(
             name=category.name,
             description=category.description,
-            status=_rollup_audit_status(rule_results),
-            findings=_flatten_findings(rule_results),
-            summary=_summary_counts(rule_results),
+            status=rollup_status(rule_results),
+            findings=flatten_findings(rule_results),
+            summary=rule_summary(rule_results),
             duration_ms=int((time.monotonic() - start) * 1000),
             rule_results=rule_results,
         )

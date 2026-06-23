@@ -92,18 +92,6 @@ def register(rule_cls: type[Rule]) -> type[Rule]:
     return rule_cls
 
 
-def _rollup_audit_status(rule_results: list[RuleResult]) -> Status:
-    if any(r.status in ("fail", "error") for r in rule_results):
-        return "fail"
-    if any(r.status == "warn" for r in rule_results):
-        return "warn"
-    return "pass"
-
-
-def _flatten_findings(rule_results: list[RuleResult]) -> list[Finding]:
-    return [f for r in rule_results for f in r.findings]
-
-
 class ConfigurationAuditCheck:
     name = "Configuration Audit"
     description = "Best-practice configuration audits sourced from Rapid7 documentation."

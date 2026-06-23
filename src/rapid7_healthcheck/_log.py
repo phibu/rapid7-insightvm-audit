@@ -7,8 +7,8 @@ Public surface:
     ProgressAwareStreamHandler — stderr StreamHandler that clears the
         current TTY line before emitting, so log records don't collide with
         the in-place progress status line written by ProgressReporter.
-    PlainFormatter — current default file format; mirrors the legacy
-        basicConfig format string exactly.
+    PlainFormatter — the default human-readable file format:
+        "%(asctime)s %(levelname)s %(name)s: %(message)s".
     CMTraceFormatter — SCCM/MECM CMTrace viewer format. Lets Windows ops
         open run logs in cmtrace.exe with severity colorization and the
         component filter.
@@ -67,9 +67,9 @@ class FlushingFileHandler(logging.FileHandler):
 
 
 class PlainFormatter(logging.Formatter):
-    """Drop-in for the legacy format string used by basicConfig.
+    """Human-readable single-line file format used by default for --log-file.
 
-    Format: "%(asctime)s %(levelname)s %(name)s: %(message)s"
+    Format string: "%(asctime)s %(levelname)s %(name)s: %(message)s".
     Centralized here so the three file formatters live side-by-side and the
     string isn't duplicated between `_setup_logging` and tests.
     """

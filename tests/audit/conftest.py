@@ -26,14 +26,6 @@ class FakeSnapshot:
         self._agents_sampled: list[dict] = []
         self._agents_sampled_total: int = 0
         self._agents_sampled_unavailable: bool = False
-        # User & permission audit
-        self._users: list[dict] = []
-        self._users_endpoints_unavailable: bool = False
-        self._authentication_sources: list[dict] = []
-        self._user_2fa: dict[int, bool | None] = {}
-        self._user_2fa_raises: dict[int, Exception] = {}
-        self._user_sites: dict[int, list[dict]] = {}
-        self._user_asset_groups: dict[int, list[dict]] = {}
         self._site_credentials: dict[int, list[dict]] = {}
         self._site_schedules: dict[int, list[dict]] = {}
         self._site_included_targets: dict[int, list[dict]] = {}
@@ -86,15 +78,6 @@ class FakeSnapshot:
     def set_sites(self, sites: list[dict]) -> None: self._sites = sites
     def set_scan_engines(self, engines: list[dict]) -> None: self._scan_engines = engines
     def set_shared_credentials(self, creds: list[dict]) -> None: self._shared_credentials = creds
-    def set_users(self, users: list[dict]) -> None: self._users = users
-    def set_users_endpoints_unavailable(self, unavailable: bool) -> None: self._users_endpoints_unavailable = unavailable
-    def set_authentication_sources(self, sources: list[dict]) -> None: self._authentication_sources = sources
-    def set_user_2fa_enabled(self, user_id: int, enabled: bool | None) -> None: self._user_2fa[user_id] = enabled
-    def set_user_2fa_raises(self, user_id: int, exc: Exception) -> None:
-        """Configure user_2fa_enabled to raise `exc` for this user_id."""
-        self._user_2fa_raises[user_id] = exc
-    def set_user_sites(self, user_id: int, sites: list[dict]) -> None: self._user_sites[user_id] = sites
-    def set_user_asset_groups(self, user_id: int, groups: list[dict]) -> None: self._user_asset_groups[user_id] = groups
     def set_site_credentials(self, site_id: int, creds: list[dict]) -> None: self._site_credentials[site_id] = creds
     def set_site_schedules(self, site_id: int, schedules: list[dict]) -> None: self._site_schedules[site_id] = schedules
     def set_site_included_targets(self, site_id: int, targets: list[dict]) -> None: self._site_included_targets[site_id] = targets
@@ -162,21 +145,6 @@ class FakeSnapshot:
     def sites(self) -> list[dict]: return self._sites
     def scan_engines(self) -> list[dict]: return self._scan_engines
     def shared_credentials(self) -> list[dict]: return self._shared_credentials
-
-    def users(self) -> list[dict]: return self._users
-    def is_users_endpoints_unavailable(self) -> bool: return self._users_endpoints_unavailable
-    def authentication_sources(self) -> list[dict]: return self._authentication_sources
-
-    def user_2fa_enabled(self, user_id: int) -> bool | None:
-        if user_id in self._user_2fa_raises:
-            raise self._user_2fa_raises[user_id]
-        return self._user_2fa.get(user_id, False)
-
-    def user_sites(self, user_id: int) -> list[dict]:
-        return self._user_sites.get(user_id, [])
-
-    def user_asset_groups(self, user_id: int) -> list[dict]:
-        return self._user_asset_groups.get(user_id, [])
 
     def site_credentials(self, site_id: int) -> list[dict]:
         if site_id not in self._site_credentials:
