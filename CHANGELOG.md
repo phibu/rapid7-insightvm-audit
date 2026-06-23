@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.5] - 2026-06-23
+
+Internal refactor. No change to the frozen 1.0 contract (`config.yaml` schema,
+exit codes, CLI flags) and no user-visible behavior change — error wording is
+byte-identical, so the existing config and contract-lock tests pass unchanged.
+
+### Changed
+
+- Collapsed the four near-identical audit-config builders
+  (`_build_audit_config`, `_build_user_audit_config`, `_build_cloud_drift_config`,
+  `_build_template_audit_config`) into one descriptor-driven builder,
+  `_build_rule_audit_config(data, spec, *, default)`. Each category now supplies a
+  `ConfigBlockSpec` — its rules path, body path, lazy registry accessor, and an
+  optional `BodySpec` (`None` for the rules-only `cloud_drift` block). The four
+  `_build_*_audit_config` names survive as one-line shims holding their spec, so
+  the ~56 test call sites stay untouched and remain an independent regression net.
+  Mirrors the existing `AuditCategory` / `OpCheckDescriptor` pattern: one deep
+  module, a thin descriptor per category.
+- Replaced `_registry_rule_ids()` (which returned a 4-tuple every caller
+  unpacked-and-discarded-three-of) with four per-category lazy accessors
+  (`_audit_rule_ids`, `_user_rule_ids`, `_cloud_rule_ids`, `_template_rule_ids`),
+  each carrying the same config↔audit circular-import dodge. A `ConfigBlockSpec`
+  points at exactly its own accessor.
+
 ## [1.0.4] - 2026-06-23
 
 Internal refactor. No change to the frozen 1.0 contract (`config.yaml` schema,

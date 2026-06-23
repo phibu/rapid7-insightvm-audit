@@ -906,24 +906,28 @@ def test_validate_rules_block_empty_returns_empty():
 # the @register* decorators via the rule registries. This is the regression
 # guard: every registry's keys must be exactly what the validator accepts.
 
-def test_registry_rule_ids_matches_all_four_registries():
-    from rapid7_healthcheck.config import _registry_rule_ids
+def test_registry_rule_id_accessors_match_all_four_registries():
+    from rapid7_healthcheck.config import (
+        _audit_rule_ids,
+        _cloud_rule_ids,
+        _template_rule_ids,
+        _user_rule_ids,
+    )
     from rapid7_healthcheck.audit import _RULE_REGISTRY
     from rapid7_healthcheck.audit.user_permission import _USER_RULE_REGISTRY
     from rapid7_healthcheck.audit.cloud_drift import _CLOUD_RULE_REGISTRY
     from rapid7_healthcheck.audit.template import _TEMPLATE_RULE_REGISTRY
 
-    audit_ids, user_ids, cloud_ids, template_ids = _registry_rule_ids()
-    assert audit_ids == frozenset(_RULE_REGISTRY)
-    assert user_ids == frozenset(_USER_RULE_REGISTRY)
-    assert cloud_ids == frozenset(_CLOUD_RULE_REGISTRY)
-    assert template_ids == frozenset(_TEMPLATE_RULE_REGISTRY)
+    assert _audit_rule_ids() == frozenset(_RULE_REGISTRY)
+    assert _user_rule_ids() == frozenset(_USER_RULE_REGISTRY)
+    assert _cloud_rule_ids() == frozenset(_CLOUD_RULE_REGISTRY)
+    assert _template_rule_ids() == frozenset(_TEMPLATE_RULE_REGISTRY)
 
 
-def test_registry_rule_ids_populates_when_config_imported_first():
-    """Import-order safety: even if config is the only thing imported, the
-    helper's lazy import of the audit packages must populate the registries
-    (rather than returning empty sets, which would reject every real rule id).
+def test_registry_rule_id_accessors_populate_when_config_imported_first():
+    """Import-order safety: even if config is the only thing imported, each
+    accessor's lazy import of its audit package must populate the registry
+    (rather than returning an empty set, which would reject every real rule id).
 
     Runs in a clean subprocess so it actually exercises a config-first import
     graph instead of relying on other tests having imported the audit tree.
@@ -932,11 +936,10 @@ def test_registry_rule_ids_populates_when_config_imported_first():
     import sys
     code = (
         "import rapid7_healthcheck.config as c;"
-        "a,u,cl,t=c._registry_rule_ids();"
-        "assert 'agent_unauth_collision' in a, a;"
-        "assert 'privileged_user_without_mfa' in u, u;"
-        "assert 'cd.console_asset_count_drift' in cl, cl;"
-        "assert any(x.startswith('template.') for x in t), t;"
+        "assert 'agent_unauth_collision' in c._audit_rule_ids();"
+        "assert 'privileged_user_without_mfa' in c._user_rule_ids();"
+        "assert 'cd.console_asset_count_drift' in c._cloud_rule_ids();"
+        "assert any(x.startswith('template.') for x in c._template_rule_ids());"
         "print('ok')"
     )
     r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)

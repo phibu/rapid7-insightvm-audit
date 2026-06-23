@@ -84,12 +84,8 @@ class Thresholds:
 _VALID_SEVERITIES = {"info", "warn", "fail"}
 
 
-def _registry_rule_ids() -> tuple[frozenset[str], frozenset[str], frozenset[str], frozenset[str]]:
-    """Return the valid rule ids for the four audit categories, sourced from
-    the live rule registries instead of hand-kept frozensets.
-
-    Order: (configuration audit, user & permission audit, cloud drift,
-    template audit).
+def _audit_rule_ids() -> frozenset[str]:
+    """Valid rule ids for the Configuration Audit category.
 
     The import is lazy and deliberately so: ``config.py`` is a leaf module,
     and every ``audit/**/__init__.py`` imports ``config.AppConfig`` — importing
@@ -101,21 +97,38 @@ def _registry_rule_ids() -> tuple[frozenset[str], frozenset[str], frozenset[str]
     so the "unknown rule id" rejection stays correct regardless of import order
     (covered by ``test_registry_rule_ids_populates_when_config_imported_first``).
 
-    A new rule registered via ``@register`` / ``@register_user_rule`` /
-    ``@register_cloud_rule`` / ``@register_template_rule`` is accepted by config
-    automatically — there is no longer a third place to register a rule id.
+    Peer accessors (``_user_rule_ids``, ``_cloud_rule_ids``,
+    ``_template_rule_ids``) carry the same lazy-import rationale, one per
+    category. Each ``ConfigBlockSpec.registry`` points at its own accessor, so
+    a builder asks for exactly its category's ids — no build-all-four-and-
+    discard-three tuple. A new rule registered via ``@register`` /
+    ``@register_user_rule`` / ``@register_cloud_rule`` /
+    ``@register_template_rule`` is accepted by config automatically.
     """
     from rapid7_healthcheck.audit import _RULE_REGISTRY
-    from rapid7_healthcheck.audit.cloud_drift import _CLOUD_RULE_REGISTRY
-    from rapid7_healthcheck.audit.template import _TEMPLATE_RULE_REGISTRY
+
+    return frozenset(_RULE_REGISTRY)
+
+
+def _user_rule_ids() -> frozenset[str]:
+    """Valid rule ids for the User & Permission audit. See `_audit_rule_ids`."""
     from rapid7_healthcheck.audit.user_permission import _USER_RULE_REGISTRY
 
-    return (
-        frozenset(_RULE_REGISTRY),
-        frozenset(_USER_RULE_REGISTRY),
-        frozenset(_CLOUD_RULE_REGISTRY),
-        frozenset(_TEMPLATE_RULE_REGISTRY),
-    )
+    return frozenset(_USER_RULE_REGISTRY)
+
+
+def _cloud_rule_ids() -> frozenset[str]:
+    """Valid rule ids for the Cloud Drift audit. See `_audit_rule_ids`."""
+    from rapid7_healthcheck.audit.cloud_drift import _CLOUD_RULE_REGISTRY
+
+    return frozenset(_CLOUD_RULE_REGISTRY)
+
+
+def _template_rule_ids() -> frozenset[str]:
+    """Valid rule ids for the Template Configuration Audit. See `_audit_rule_ids`."""
+    from rapid7_healthcheck.audit.template import _TEMPLATE_RULE_REGISTRY
+
+    return frozenset(_TEMPLATE_RULE_REGISTRY)
 
 
 def _validate_rules_block(
@@ -461,45 +474,141 @@ def _build_thresholds(data: Any) -> Thresholds:
     )
 
 
-def _build_audit_config(data: dict | None) -> AuditConfig:
+@dataclass(frozen=True)
+class BodySpec:
+    """The scalar-body slice of a rule-bearing config block — everything
+    beyond its `rules:` mapping.
+
+    `cls` is the config dataclass to parse the body into; `pv` is the
+    post-validate hook (the `sample_size` / `+agents_timeout` positive-int
+    checks); `required` is the set of keys the block must carry explicitly.
+
+    `required` defaults to `frozenset()` because `AuditConfig` /
+    `UserAuditConfig` declare their body fields with no dataclass default, so
+    `_from_dict`'s MISSING-derivation already requires them. Only
+    `TemplateAuditConfig` populates it (`{enabled, full_scan, sample_size}`) —
+    that dataclass *gives* those three defaults, so without the explicit set an
+    empty `template_audit: {}` block would silently validate instead of
+    erroring. See CONTEXT.md "BodySpec".
+    """
+    cls: type
+    pv: Callable[[Any], Any]
+    required: frozenset[str] = frozenset()
+
+
+@dataclass(frozen=True)
+class ConfigBlockSpec:
+    """Descriptor carrying the only things that differ between the four
+    rule-bearing audit config blocks when `_build_rule_audit_config` parses
+    them. The config-parse mirror of `AuditCategory`. See CONTEXT.md
+    "ConfigBlockSpec".
+
+    - `path`: dotted location of the rules mapping (e.g. `"audit.rules"`),
+      prefixing every `*.rules` error message.
+    - `body_path`: dotted location of the block itself (e.g. `"audit"`),
+      prefixing body-level mapping/key error messages.
+    - `registry`: zero-arg callable returning *this* category's valid rule ids
+      (lazy import inside, to dodge the config↔audit circular import).
+    - `body`: the block's scalar-body spec, or `None` for a rules-only block
+      (`cloud_drift`, which has no `enabled`/`full_scan`/`sample_size`).
+    """
+    path: str
+    body_path: str
+    registry: Callable[[], frozenset[str]]
+    body: BodySpec | None
+
+
+def _build_rule_audit_config(data: dict | None, spec: ConfigBlockSpec, *, default: Any) -> Any:
+    """The single builder for every rule-bearing audit config block.
+
+    Owns everything identical across the four blocks: the `None → default`
+    short-circuit, the mapping checks, the required-key gate, the `_from_dict`
+    body parse, and the `_validate_rules_block` + `replace` rule-merge. The
+    per-block differences arrive via `spec`. See CONTEXT.md
+    "_build_rule_audit_config".
+
+    Error wording matches the pre-collapse builders by construction — `path`
+    and `body_path` carry it — so the existing config tests pass unchanged.
+    The first-failure ordering is preserved per block:
+
+      - rules-only (`spec.body is None`, i.e. cloud_drift): `_validate_dict_schema`
+        on the container ("{body_path}: ..."), then the `rules` isinstance check
+        ("{path}: expected mapping"), then `_validate_rules_block`.
+      - bodied: container isinstance ("{body_path}: expected mapping"), the
+        explicit required-key gate, the `rules` isinstance check, then
+        `_from_dict` (its own unknown/missing/scalar checks) before
+        `_validate_rules_block`.
+    """
     if data is None:
-        return AuditConfig(enabled=False, full_scan=False, sample_size=500, agents_timeout_seconds=180, rules={})
+        return default
+
+    if spec.body is None:
+        _validate_dict_schema(data, expected={"rules"}, required=set(), name=spec.body_path)
+        raw_rules = data.get("rules") or {}
+        if not isinstance(raw_rules, dict):
+            raise ConfigError(f"{spec.path}: expected mapping")
+        rules = _validate_rules_block(raw_rules, valid_rule_ids=spec.registry(), path=spec.path)
+        return replace(default, rules=rules)
+
     if not isinstance(data, dict):
-        raise ConfigError("audit: expected mapping")
+        raise ConfigError(f"{spec.body_path}: expected mapping")
     raw = dict(data)
     raw_rules = raw.pop("rules", None) or {}
+    missing = spec.body.required - set(raw)
+    if missing:
+        raise ConfigError(f"{spec.body_path}: missing required key(s): {sorted(missing)}")
     if not isinstance(raw_rules, dict):
-        raise ConfigError("audit.rules: expected mapping")
-
-    def pv(obj):
-        return _positive_int_fields(obj, "audit", ("sample_size", "agents_timeout_seconds"))
-
-    obj = _from_dict(AuditConfig, raw, "audit", post_validate=pv)
-    valid_audit_ids, _, _, _ = _registry_rule_ids()
-    rules = _validate_rules_block(raw_rules, valid_rule_ids=valid_audit_ids, path="audit.rules")
+        raise ConfigError(f"{spec.path}: expected mapping")
+    obj = _from_dict(spec.body.cls, raw, spec.body_path, post_validate=spec.body.pv)
+    rules = _validate_rules_block(raw_rules, valid_rule_ids=spec.registry(), path=spec.path)
     return replace(obj, rules=rules)
+
+
+_AUDIT_BLOCK_SPEC = ConfigBlockSpec(
+    path="audit.rules",
+    body_path="audit",
+    registry=_audit_rule_ids,
+    body=BodySpec(
+        cls=AuditConfig,
+        pv=lambda obj: _positive_int_fields(obj, "audit", ("sample_size", "agents_timeout_seconds")),
+    ),
+)
+
+_USER_AUDIT_BLOCK_SPEC = ConfigBlockSpec(
+    path="user_audit.rules",
+    body_path="user_audit",
+    registry=_user_rule_ids,
+    body=BodySpec(
+        cls=UserAuditConfig,
+        pv=lambda obj: _positive_int_fields(obj, "user_audit", ("sample_size",)),
+    ),
+)
+
+_CLOUD_DRIFT_BLOCK_SPEC = ConfigBlockSpec(
+    path="cloud_drift.rules",
+    body_path="cloud_drift",
+    registry=_cloud_rule_ids,
+    body=None,
+)
+
+_TEMPLATE_AUDIT_BLOCK_SPEC = ConfigBlockSpec(
+    path="template_audit.rules",
+    body_path="template_audit",
+    registry=_template_rule_ids,
+    body=BodySpec(
+        cls=TemplateAuditConfig,
+        pv=lambda obj: _positive_int_fields(obj, "template_audit", ("sample_size",)),
+        required=frozenset({"enabled", "full_scan", "sample_size"}),
+    ),
+)
+
+
+def _build_audit_config(data: dict | None) -> AuditConfig:
+    return _build_rule_audit_config(data, _AUDIT_BLOCK_SPEC, default=_default_audit())
 
 
 def _build_user_audit_config(data: dict | None) -> UserAuditConfig:
-    """Validator for the `user_audit:` block. Mirrors `_build_audit_config`
-    but validates against the user-rule registry and builds the
-    `UserAuditConfig` shape."""
-    if data is None:
-        return UserAuditConfig(enabled=False, full_scan=False, sample_size=500, rules={})
-    if not isinstance(data, dict):
-        raise ConfigError("user_audit: expected mapping")
-    raw = dict(data)
-    raw_rules = raw.pop("rules", None) or {}
-    if not isinstance(raw_rules, dict):
-        raise ConfigError("user_audit.rules: expected mapping")
-
-    def pv(obj):
-        return _positive_int_fields(obj, "user_audit", ("sample_size",))
-
-    obj = _from_dict(UserAuditConfig, raw, "user_audit", post_validate=pv)
-    _, valid_user_ids, _, _ = _registry_rule_ids()
-    rules = _validate_rules_block(raw_rules, valid_rule_ids=valid_user_ids, path="user_audit.rules")
-    return replace(obj, rules=rules)
+    return _build_rule_audit_config(data, _USER_AUDIT_BLOCK_SPEC, default=_default_user_audit())
 
 
 def _build_cloud_integration_config(data: dict | None) -> CloudIntegrationConfig:
@@ -531,60 +640,21 @@ def _build_cloud_integration_config(data: dict | None) -> CloudIntegrationConfig
 
 
 def _build_cloud_drift_config(data: dict | None) -> CloudDriftConfig:
-    """Validator for the optional `cloud_drift:` block.
-
-    Mirrors `_build_user_audit_config` rule-validation logic against the
-    cloud-drift rule registry. Has no top-level `enabled`/`full_scan`/
-    `sample_size` keys — sampling does not apply to cloud-drift rules
-    (they read aggregate counts) and the category-level enable lives in
-    `checks.cloud_drift_audit` like every other check.
-
-    Not routed through `_from_dict`: the sole field is `rules: dict`, and
-    `_from_dict`/_check_scalar cannot validate a dict-typed field. This is
-    a deliberate non-migration, not an oversight.
-    """
-    if data is None:
-        return _default_cloud_drift()
-    _validate_dict_schema(
-        data,
-        expected={"rules"},
-        required=set(),
-        name="cloud_drift",
-    )
-    raw_rules = data.get("rules") or {}
-    if not isinstance(raw_rules, dict):
-        raise ConfigError("cloud_drift.rules: expected mapping")
-    _, _, valid_cloud_ids, _ = _registry_rule_ids()
-    rules = _validate_rules_block(raw_rules, valid_rule_ids=valid_cloud_ids, path="cloud_drift.rules")
-    return CloudDriftConfig(rules=rules)
+    """Validator for the optional `cloud_drift:` block — a rules-only block
+    (no `enabled`/`full_scan`/`sample_size`; sampling does not apply to
+    cloud-drift rules and the category enable lives in `checks.cloud_drift_audit`).
+    Thin shim over `_build_rule_audit_config` with a `body=None` spec; see
+    CONTEXT.md "The four config builders"."""
+    return _build_rule_audit_config(data, _CLOUD_DRIFT_BLOCK_SPEC, default=_default_cloud_drift())
 
 
 def _build_template_audit_config(data: dict | None) -> TemplateAuditConfig:
-    """Validator for the `template_audit:` block. Mirrors
-    `_build_user_audit_config` but validates against the template-rule
-    registry and builds the `TemplateAuditConfig` shape."""
-    if data is None:
-        return _default_template_audit()
-    if not isinstance(data, dict):
-        raise ConfigError("template_audit: expected mapping")
-    raw = dict(data)
-    raw_rules = raw.pop("rules", None) or {}
-    required = {"enabled", "full_scan", "sample_size"}
-    missing = required - set(raw.keys())
-    if missing:
-        raise ConfigError(
-            f"template_audit: missing required key(s): {sorted(missing)}"
-        )
-    if not isinstance(raw_rules, dict):
-        raise ConfigError("template_audit.rules: expected mapping")
-
-    def pv(obj):
-        return _positive_int_fields(obj, "template_audit", ("sample_size",))
-
-    obj = _from_dict(TemplateAuditConfig, raw, "template_audit", post_validate=pv)
-    _, _, _, valid_template_ids = _registry_rule_ids()
-    rules = _validate_rules_block(raw_rules, valid_rule_ids=valid_template_ids, path="template_audit.rules")
-    return replace(obj, rules=rules)
+    """Validator for the `template_audit:` block. Thin shim over
+    `_build_rule_audit_config`; its spec carries the explicit
+    `{enabled, full_scan, sample_size}` required-key gate (load-bearing because
+    `TemplateAuditConfig` gives those fields defaults). See CONTEXT.md
+    "The four config builders" / "BodySpec"."""
+    return _build_rule_audit_config(data, _TEMPLATE_AUDIT_BLOCK_SPEC, default=_default_template_audit())
 
 
 def _build_report_config(data: Any) -> ReportConfig:
