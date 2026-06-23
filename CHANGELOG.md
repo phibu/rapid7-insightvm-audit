@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.4] - 2026-06-23
+
+Internal refactor. No change to the frozen 1.0 contract (`config.yaml` schema,
+exit codes, CLI flags) and no user-visible behavior change — the existing
+end-to-end auth tests pass unchanged.
+
+### Changed
+
+- Extracted auth resolution out of `run()` into `_resolve_auth_or_none`. The
+  `auth_mode` dispatch (reading `R7_API_KEY`, or `R7_BASIC_USER` /
+  `R7_BASIC_PASSWORD`, and choosing the `(api_key, basic_auth)` pair) was inline
+  business logic in the entrypoint; it now lives in one resolver that mirrors the
+  existing `_build_cloud_client_or_none` pattern — config + env in, `(value,
+  error)` out. The env-var-missing cases are unit-testable directly rather than
+  only end-to-end through `run()`.
+
 ## [1.0.3] - 2026-06-23
 
 Internal refactor. No change to the frozen 1.0 contract (`config.yaml` schema,
