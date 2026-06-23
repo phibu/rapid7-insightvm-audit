@@ -52,14 +52,6 @@ def findings_of(check: CheckResult) -> Iterator[tuple[str, Finding]]:
             yield check.name, f
 
 
-def rollup_status(findings: list[Finding]) -> Status:
-    if any(f.severity == "fail" for f in findings):
-        return "fail"
-    if any(f.severity == "warn" for f in findings):
-        return "warn"
-    return "pass"
-
-
 class Check(Protocol):
     name: str
     description: str
