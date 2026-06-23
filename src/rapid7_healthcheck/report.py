@@ -9,6 +9,7 @@ from pathlib import Path
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from rapid7_healthcheck import state_engine
+from rapid7_healthcheck.audit.rule_rollup import rule_summary
 from rapid7_healthcheck.checks import CheckResult, Finding, findings_of
 
 _TEMPLATE_DIR = Path(__file__).parent / "templates"
@@ -72,41 +73,29 @@ def _metrics(results: list[CheckResult]) -> dict:
     findings_total = findings_fail = findings_warn = 0
     total_duration_ms = 0
 
-    # This keeps its own rule_results loop because it rolls up rule-level
-    # fields (rr.status, rr.sampled), not just findings. The finding xor-walk
-    # invariant lives canonically in `checks.findings_of`.
+    # Rule-level counts come from `rule_summary` (the same rollup the runners
+    # use to build each CheckResult.summary), summed across checks. Only
+    # `rules_sampled` is added here — `rule_summary` doesn't carry it.
+    # Finding-level counts iterate `findings_of`, the single owner of the
+    # rule_results-xor-top-level-findings walk; no xor branch re-typed here.
     for r in results:
         if r.duration_ms:
             total_duration_ms += r.duration_ms
         if r.rule_results:
-            for rr in r.rule_results:
-                rules_total += 1
-                if rr.status == "fail":
-                    rules_fail += 1
-                elif rr.status == "warn":
-                    rules_warn += 1
-                elif rr.status == "pass":
-                    rules_pass += 1
-                elif rr.status == "skipped":
-                    rules_skipped += 1
-                elif rr.status == "error":
-                    rules_error += 1
-                if rr.sampled:
-                    rules_sampled += 1
-                for f in rr.findings:
-                    findings_total += 1
-                    if f.severity == "fail":
-                        findings_fail += 1
-                    elif f.severity == "warn":
-                        findings_warn += 1
-        else:
-            # No rule_results — count top-level findings (legacy / pre-0.2.6).
-            for f in r.findings:
-                findings_total += 1
-                if f.severity == "fail":
-                    findings_fail += 1
-                elif f.severity == "warn":
-                    findings_warn += 1
+            summary = rule_summary(r.rule_results)
+            rules_total += summary["rules_total"]
+            rules_fail += summary["rules_fail"]
+            rules_warn += summary["rules_warn"]
+            rules_pass += summary["rules_pass"]
+            rules_skipped += summary["rules_skipped"]
+            rules_error += summary["rules_error"]
+            rules_sampled += sum(1 for rr in r.rule_results if rr.sampled)
+        for _rule_id, f in findings_of(r):
+            findings_total += 1
+            if f.severity == "fail":
+                findings_fail += 1
+            elif f.severity == "warn":
+                findings_warn += 1
     return {
         "rules_total": rules_total,
         "rules_fail": rules_fail,
