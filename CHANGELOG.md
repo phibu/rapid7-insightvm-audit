@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.3] - 2026-06-23
+
+Internal refactor. No change to the frozen 1.0 contract (`config.yaml` schema,
+exit codes, CLI flags) and no user-visible behavior change — the exit-code
+contract-lock tests pass unchanged.
+
+### Changed
+
+- Made `worst_status` the single owner of the status precedence
+  `fail/error > warn > pass`. It was previously written three times — the
+  check-level rollup (`rule_rollup.rollup_status`), the report hero verdict
+  (`report._verdict`), and the process exit code (`__main__.pick_exit_code`).
+  `rollup_status` is now a bare alias of `worst_status`; `_verdict` and
+  `pick_exit_code` reduce the run with `worst_status` and map its single result
+  through a status→presentation table, so neither re-encodes the ordering.
+
 ## [1.0.2] - 2026-06-23
 
 Internal refactor. No change to the frozen 1.0 contract (`config.yaml` schema,
