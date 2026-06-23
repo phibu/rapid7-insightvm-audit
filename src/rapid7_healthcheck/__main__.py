@@ -55,7 +55,14 @@ _REGISTRY: dict[str, type[Check]] = {
 }
 
 
-def _parse_args(argv: list[str]) -> argparse.Namespace:
+def _build_parser() -> argparse.ArgumentParser:
+    """Construct the CLI argument parser.
+
+    Split out from ``_parse_args`` so the frozen flag set is introspectable
+    (the 1.0 contract-lock test asserts the exact option strings). The set of
+    flags here is part of the 1.0 public contract — see
+    ``tests/test_contract_lock.py``.
+    """
     p = argparse.ArgumentParser(prog="rapid7-healthcheck")
     p.add_argument("--config", default="config.yaml", help="Path to config YAML (default: config.yaml)")
     p.add_argument("--output", default=None, help="Override report output path")
@@ -79,7 +86,11 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         action="store_true",
         help="Suppress progress output (overrides TTY auto-detect).",
     )
-    return p.parse_args(argv)
+    return p
+
+
+def _parse_args(argv: list[str]) -> argparse.Namespace:
+    return _build_parser().parse_args(argv)
 
 
 def _resolve_progress_enabled(*, progress: bool, no_progress: bool) -> bool | None:
