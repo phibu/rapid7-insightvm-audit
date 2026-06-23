@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-06-23
+
+Internal refactor and tooling patch. No change to the frozen 1.0 contract
+(`config.yaml` schema, exit codes, CLI flags) and no user-visible behavior
+change in the audit or health-check output.
+
+### Changed
+
+- Consolidated the three mirrored rule-result rollups into a single
+  `audit/rule_rollup.py` helper, shared by both audit verticals and the
+  operational checks.
+- Extracted `UserSnapshot` out of the 990-line `EnvSnapshot` into
+  `audit/user_permission/snapshot.py`, so user-audit rules no longer load the
+  full configuration-audit snapshot.
+- Routed `report._metrics` through `rule_summary` + `findings_of` and dropped
+  the historical-rename aliases in `report.py`.
+
+### Added
+
+- `unslop-ai-code` developer skill under `.agents/skills/` (repository tooling
+  only; not part of the runtime and not shipped in the release zip).
+
 ## [1.0.0] - 2026-06-23
 
 First stable release. No functional change from 0.9.0 — this release declares
