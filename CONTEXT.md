@@ -12,6 +12,16 @@ _Avoid_: "the main API", "the REST API" (ambiguous — there are two).
 The InsightVM Cloud API under `/v4/integration/...`. Responses wrap results in `{data, metadata, links}`, with `metadata.totalPages` driving pagination. Auth is `X-Api-Key` only.
 _Avoid_: "the cloud endpoint", "the v4 endpoint" (it is an API surface, not one endpoint).
 
+## Templates
+
+**Scan template**:
+A reusable scan-configuration object on the Security Console (`/api/3/scan_templates`) carrying the ~50 tunable settings that govern how a scan runs — checks, discovery, service discovery, performance, web, policy, database, telnet. This is the *only* template the Template Configuration Audit examines. When this glossary or a rule says "template" unqualified, it means a scan template.
+_Avoid_: bare "template" in code or docs that touch report templates; "scan config" (that is the per-site binding, not the reusable object).
+
+**Report template**:
+A separate reusable object (`/api/3/report_templates`) governing report *layout and content*, unrelated to how scans run. Currently **un-audited** by this tool. Named here only to keep it distinct from a scan template — the two share the word "template" and nothing else.
+_Avoid_: calling this a "template" without the "report" qualifier when a scan template is also in scope.
+
 ## HTTP layer
 
 **HttpTransport**:

@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-06-23
+
+### Added
+
+- **Five new Template Configuration Audit rules** covering asset-discovery and discovery-performance settings that no existing rule examined (gap found by cross-referencing the committed `/api/3/scan_templates` schema against the 16 existing template rules, then validating each candidate against the Rapid7 *Scan Template Best Practices* doc):
+  - `template.tcp_reset_treated_as_asset` (**warn**) — flags `discovery.asset.treatTcpResetAsAsset` set to `true` **or absent**. The v3 API defaults this to `true`, which lets firewall/IDS TCP-resets register as ghost assets; Rapid7 highly recommends disabling it. The **only** discovery rule that flags the absent case, because the API default *is* the dangerous value — see [ADR-0001](docs/adr/0001-tcp-reset-rule-flags-absent.md).
+  - `template.udp_all_ports` (**warn**) — flags `discovery.service.udp.ports == "all"` (Rapid7: never scan all 65,535 UDP ports). Default `well-known`; skip-absent.
+  - `template.discovery_retry_limit_high` (**info**) — flags `discovery.performance.retryLimit` above `max_retry_limit` (default 1). Skip-absent.
+  - `template.discovery_timeout_high` (**info**) — flags `discovery.performance.timeout.initial`/`.maximum` (ISO-8601 durations) above `max_timeout_initial_ms` (200) / `max_timeout_ceiling_ms` (500). Unparseable values are skipped, never crashed or false-flagged. Skip-absent.
+  - `template.windows_services_disabled` (**info**, unscoped) — flags vuln-enabled templates with `enableWindowsServices` off/absent (default off). Unscoped in v1 because the template alone can't prove its bound sites are Windows; a follow-up will scope to Windows-credentialed sites and raise to warn (tracked in backlog).
+  - The first four are scoped to discovery-active templates (`vuln_enabled OR discoveryOnly`) via a shared rule-layer helper; the fifth to `vuln_enabled` only.
+  - **Read-only contract unchanged.** All five read only the existing shared `GET /api/3/scan_templates` (`EnvSnapshot.templates_full()`) — no new API call, no new snapshot accessor, no HTTP added. `CONTEXT.md` gains a **Scan template / Report template** disambiguation; ADR-0001 records the flag-absent decision. Each rule has a config block in `docs/examples/config.yaml`, a README row, and a test file.
+
 ## [0.8.9] - 2026-06-19
 
 ### Internal

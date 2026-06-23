@@ -220,6 +220,24 @@ template_audit:
       enabled: true             # enable/disable this rule
       severity: info            # finding severity: info | warn | fail
       similarity_threshold: 0.95  # fraction of fields that must match to cluster (0.0-1.0); rule is O(N²) and skipped when template count > sample_size
+    template.tcp_reset_treated_as_asset:
+      enabled: true             # enable/disable this rule
+      severity: warn            # finding severity: info | warn | fail
+    template.udp_all_ports:
+      enabled: true             # enable/disable this rule
+      severity: warn            # finding severity: info | warn | fail
+    template.discovery_retry_limit_high:
+      enabled: true             # enable/disable this rule
+      severity: info            # finding severity: info | warn | fail
+      max_retry_limit: 1        # flag templates whose discovery retryLimit exceeds this
+    template.discovery_timeout_high:
+      enabled: true             # enable/disable this rule
+      severity: info            # finding severity: info | warn | fail
+      max_timeout_initial_ms: 200   # flag when timeout.initial (first per-port wait) exceeds this
+      max_timeout_ceiling_ms: 500   # flag when timeout.maximum (ceiling after retries) exceeds this
+    template.windows_services_disabled:
+      enabled: true             # enable/disable this rule
+      severity: info            # finding severity: info | warn | fail (unscoped — verify bound sites are Windows)
 
 # -----------------------------------------------------------------------------
 # Cloud Integration — Insight Platform (v4 API), required for Cloud Drift Audit
