@@ -197,6 +197,22 @@ The CLI prints the absolute path of the written report on success.
 | 3 | Startup failure — bad config, missing API key, auth failed, network unreachable |
 | 4 | Internal error in the tool |
 
+## Stability
+
+As of **1.0.0**, this tool follows [semantic versioning](https://semver.org/).
+The following surfaces are **stable** — a breaking change to any of them will
+only land in a new major version (2.0.0):
+
+- **`config.yaml` schema** — the accepted keys at every level (unknown keys are rejected).
+- **Exit codes** — the `0`/`1`/`2`/`3`/`4` mapping in the table above (safe to branch on in CI).
+- **CLI flags** — `--config`, `--output`, `--verbose`, `--log-file`, `--no-log-file`, `--log-format`, `--progress`, `--no-progress`.
+
+The HTML report's layout and its embedded state blob, the internal snapshot, and
+the exact set of audit rules are **not** part of this promise and may change in
+any minor release — pin a specific version if you depend on report internals.
+The read-only guarantee (the tool only issues `GET` plus the allowlisted
+`POST /api/3/assets/search`) is covered separately in [SECURITY.md](SECURITY.md).
+
 ## Configuration Audit
 
 In addition to the four operational health checks, the tool runs a **Configuration Audit**: eleven best-practice rules sourced from official Rapid7 documentation, each grounded in a public Rapid7 source URL.

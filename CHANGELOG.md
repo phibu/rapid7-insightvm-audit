@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-06-23
+
+First stable release. No functional change from 0.9.0 — this release declares
+and enforces the public contract.
+
+### Stability
+
+From 1.0.0, the following surfaces are **frozen** under semantic versioning —
+a breaking change to any of them requires a major-version bump (2.0.0):
+
+- **`config.yaml` schema** — the set of accepted keys at every level. Unknown
+  keys are rejected (and have been since well before 1.0); the accepted-key set
+  per block is now part of the stability promise.
+- **Exit codes** — `0` healthy · `1` warnings · `2` action required (fail/error)
+  · `3` startup failure · `4` internal error. CI pipelines may branch on these.
+- **CLI flags** — `--config`, `--output`, `--verbose`, `--log-file`,
+  `--no-log-file`, `--log-format`, `--progress`, `--no-progress`.
+
+Explicitly **NOT** frozen (free to evolve in minor releases): the HTML report's
+layout and its embedded machine-readable state blob, the snapshot internals, and
+the set of audit `rule_id`s (rules are added and refined continuously). Pin a
+specific version if you depend on report internals.
+
+These frozen surfaces are guarded by `tests/test_contract_lock.py`, so an
+accidental change to a flag, an exit code, or a config-key set fails the test
+suite rather than slipping out silently.
+
+### Added
+
+- **Contract-lock tests** (`tests/test_contract_lock.py`) pinning the frozen CLI
+  flag set and the `0/1/2/3/4` exit-code mapping — including the first coverage
+  of `EXIT_INTERNAL` (`4`), the uncaught-exception path in `main()`. `_parse_args`
+  is split into an introspectable `_build_parser()` so the flag set can be
+  asserted exactly. Config-schema keys were already locked by the per-block
+  unknown-key rejection tests in `test_config.py`. No HTTP added; the read-only
+  contract is unchanged.
+
 ## [0.9.0] - 2026-06-23
 
 ### Added
