@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from rapid7_healthcheck.audit import RuleResult
+from rapid7_healthcheck.audit import AuditRule, RuleResult
 from rapid7_healthcheck.audit.template import register_template_rule
 from rapid7_healthcheck.checks import Finding
 
 
 @register_template_rule
-class ParallelAssetsExtremeRule:
+class ParallelAssetsExtremeRule(AuditRule):
     rule_id = "template.parallel_assets_extreme"
     rule_name = "Parallel Asset Count Outside Expected Range"
     description = (
@@ -67,30 +67,15 @@ class ParallelAssetsExtremeRule:
 
         failed = len(findings)
 
-        if any(f.severity == "fail" for f in findings):
-            status = "fail"
-        elif any(f.severity == "warn" for f in findings):
-            status = "warn"
-        else:
-            status = "pass"
-
-        return RuleResult(
-            rule_id=self.rule_id,
-            rule_name=self.rule_name,
-            description=self.description,
+        return self.result(
+            findings,
             severity=severity,
-            status=status,
-            findings=findings,
             summary={
                 "templates_examined": examined,
                 "templates_flagged": failed,
                 "min_threshold": min_threshold,
                 "max_threshold": max_threshold,
             },
-            card_summary={
-                "examined": examined,
-                "passed": max(0, examined - failed),
-                "failed": failed,
-            },
-            sources=list(self.sources),
+            examined=examined,
+            failed=failed,
         )

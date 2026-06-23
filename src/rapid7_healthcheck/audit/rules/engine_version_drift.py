@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from rapid7_healthcheck.audit import RuleResult, register
+from rapid7_healthcheck.audit import AuditRule, RuleResult, register
 from rapid7_healthcheck.checks import Finding
 
 
@@ -38,7 +38,7 @@ def _first_present(d: dict, keys) -> str | None:
 
 
 @register
-class EngineVersionDriftRule:
+class EngineVersionDriftRule(AuditRule):
     rule_id = "engine_version_drift"
     rule_name = "Scan Engine Version Drift or Stale Content Refresh"
     description = (
@@ -144,20 +144,9 @@ class EngineVersionDriftRule:
                 details=engine_details,
             ))
 
-        if any(f.severity == "fail" for f in findings):
-            status = "fail"
-        elif any(f.severity == "warn" for f in findings):
-            status = "warn"
-        else:
-            status = "pass"
-
-        return RuleResult(
-            rule_id=self.rule_id,
-            rule_name=self.rule_name,
-            description=self.description,
+        return self.result(
+            findings,
             severity=severity,
-            status=status,
-            findings=findings,
             summary={
                 "engines_examined": len(engines),
                 "engines_flagged": engines_flagged,
@@ -167,10 +156,6 @@ class EngineVersionDriftRule:
                 "console_content_version": console_content,
                 "refresh_stale_days": stale_days,
             },
-            card_summary={
-                "examined": len(engines),
-                "passed": max(0, len(engines) - engines_flagged),
-                "failed": engines_flagged,
-            },
-            sources=list(self.sources),
+            examined=len(engines),
+            failed=engines_flagged,
         )

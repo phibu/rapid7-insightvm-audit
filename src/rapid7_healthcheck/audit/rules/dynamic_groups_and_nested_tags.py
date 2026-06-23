@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from rapid7_healthcheck.audit import RuleResult, register
+from rapid7_healthcheck.audit import AuditRule, RuleResult, register
 from rapid7_healthcheck.checks import Finding
 
 
@@ -77,7 +77,7 @@ def _find_cycles(edges: dict[str, set[str]]) -> list[list[str]]:
 
 
 @register
-class DynamicGroupsAndNestedTagsRule:
+class DynamicGroupsAndNestedTagsRule(AuditRule):
     rule_id = "dynamic_groups_and_nested_tags"
     rule_name = "Excessive Dynamic Asset Groups or Nested Tag References"
     description = (
@@ -186,20 +186,9 @@ class DynamicGroupsAndNestedTagsRule:
                 details={"groups": groups_referencing_tags},
             ))
 
-        if any(f.severity == "fail" for f in findings):
-            status = "fail"
-        elif any(f.severity == "warn" for f in findings):
-            status = "warn"
-        else:
-            status = "pass"
-
-        return RuleResult(
-            rule_id=self.rule_id,
-            rule_name=self.rule_name,
-            description=self.description,
+        return self.result(
+            findings,
             severity=severity,
-            status=status,
-            findings=findings,
             summary={
                 "dynamic_group_count": len(dynamic_groups),
                 "total_group_count": len(groups),
@@ -209,10 +198,6 @@ class DynamicGroupsAndNestedTagsRule:
                 "dynamic_groups_referencing_tags": len(groups_referencing_tags),
                 "threshold": dynamic_group_limit,
             },
-            card_summary={
-                "examined": len(tag_by_name),
-                "passed": max(0, len(tag_by_name) - len(findings)),
-                "failed": len(findings),
-            },
-            sources=list(self.sources),
+            examined=len(tag_by_name),
+            failed=len(findings),
         )

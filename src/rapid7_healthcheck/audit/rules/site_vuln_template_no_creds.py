@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from rapid7_healthcheck.audit import RuleResult, register
+from rapid7_healthcheck.audit import AuditRule, RuleResult, register
 from rapid7_healthcheck.checks import Finding
 
 
@@ -50,7 +50,7 @@ def _site_has_credentials(snapshot, site_id: int) -> bool:
 
 
 @register
-class SiteVulnTemplateNoCredsRule:
+class SiteVulnTemplateNoCredsRule(AuditRule):
     rule_id = "site_vuln_template_no_creds"
     rule_name = "Vulnerability Template Without Credentials"
     description = (
@@ -93,25 +93,10 @@ class SiteVulnTemplateNoCredsRule:
             ))
             sites_flagged += 1
 
-        if any(f.severity == "fail" for f in findings):
-            status = "fail"
-        elif any(f.severity == "warn" for f in findings):
-            status = "warn"
-        else:
-            status = "pass"
-
-        return RuleResult(
-            rule_id=self.rule_id,
-            rule_name=self.rule_name,
-            description=self.description,
+        return self.result(
+            findings,
             severity=severity,
-            status=status,
-            findings=findings,
             summary={"sites_examined": sites_examined, "sites_flagged": sites_flagged},
-            card_summary={
-                "examined": sites_examined,
-                "passed": max(0, sites_examined - sites_flagged),
-                "failed": sites_flagged,
-            },
-            sources=list(self.sources),
+            examined=sites_examined,
+            failed=sites_flagged,
         )

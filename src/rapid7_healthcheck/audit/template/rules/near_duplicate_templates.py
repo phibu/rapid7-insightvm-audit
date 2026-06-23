@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from rapid7_healthcheck.audit import RuleResult
+from rapid7_healthcheck.audit import AuditRule, RuleResult
 from rapid7_healthcheck.audit.template import register_template_rule
 from rapid7_healthcheck.checks import Finding
 
@@ -20,7 +20,7 @@ def _similarity(t1: dict, t2: dict) -> float:
 
 
 @register_template_rule
-class NearDuplicateTemplatesRule:
+class NearDuplicateTemplatesRule(AuditRule):
     rule_id = "template.near_duplicate_templates"
     rule_name = "Near-Duplicate Templates"
     description = (
@@ -71,13 +71,9 @@ class NearDuplicateTemplatesRule:
                     "sample_size": sample_size,
                 },
             )
-            return RuleResult(
-                rule_id=self.rule_id,
-                rule_name=self.rule_name,
-                description=self.description,
+            return self.result(
+                [skip_finding],
                 severity=severity,
-                status="pass",
-                findings=[skip_finding],
                 summary={
                     "templates_total": total,
                     "skipped": True,
@@ -85,7 +81,6 @@ class NearDuplicateTemplatesRule:
                     "similarity_threshold": threshold,
                 },
                 card_summary={"examined": 0, "passed": 0, "failed": 0},
-                sources=list(self.sources),
             )
 
         # Greedy cluster grouping: walk templates in order; each unvisited
@@ -133,30 +128,15 @@ class NearDuplicateTemplatesRule:
                 },
             ))
 
-        if any(f.severity == "fail" for f in findings):
-            status = "fail"
-        elif any(f.severity == "warn" for f in findings):
-            status = "warn"
-        else:
-            status = "pass"
-
-        return RuleResult(
-            rule_id=self.rule_id,
-            rule_name=self.rule_name,
-            description=self.description,
+        return self.result(
+            findings,
             severity=severity,
-            status=status,
-            findings=findings,
             summary={
                 "templates_examined": total,
                 "clusters_found": len(clusters),
                 "templates_in_clusters": flagged_templates,
                 "similarity_threshold": threshold,
             },
-            card_summary={
-                "examined": total,
-                "passed": max(0, total - flagged_templates),
-                "failed": flagged_templates,
-            },
-            sources=list(self.sources),
+            examined=total,
+            failed=flagged_templates,
         )

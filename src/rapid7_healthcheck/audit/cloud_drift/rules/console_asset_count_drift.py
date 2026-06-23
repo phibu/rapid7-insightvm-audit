@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from rapid7_healthcheck.audit import RuleResult
+from rapid7_healthcheck.audit import AuditRule, RuleResult
 from rapid7_healthcheck.audit.cloud_drift import register_cloud_rule
 from rapid7_healthcheck.checks import Finding
 
@@ -9,7 +9,7 @@ _DEFAULT_TOLERANCE_PERCENT = 5
 
 
 @register_cloud_rule
-class ConsoleAssetCountDriftRule:
+class ConsoleAssetCountDriftRule(AuditRule):
     rule_id = "cd.console_asset_count_drift"
     rule_name = "Console / Cloud Asset Count Drift"
     description = (
@@ -77,25 +77,13 @@ class ConsoleAssetCountDriftRule:
                     },
                 ))
 
-        if any(f.severity == "fail" for f in findings):
-            status = "fail"
-        elif any(f.severity == "warn" for f in findings):
-            status = "warn"
-        else:
-            status = "pass"
-
-        return RuleResult(
-            rule_id=self.rule_id,
-            rule_name=self.rule_name,
-            description=self.description,
+        return self.result(
+            findings,
             severity=severity,
-            status=status,
-            findings=findings,
             summary={
                 "console_total": console_total,
                 "cloud_total": cloud_total,
                 "drift_percent": round(drift_percent, 2) if drift_percent is not None else None,
                 "tolerance_percent": tolerance,
             },
-            sources=list(self.sources),
         )

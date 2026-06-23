@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from rapid7_healthcheck.audit import RuleResult, register
+from rapid7_healthcheck.audit import AuditRule, RuleResult, register
 from rapid7_healthcheck.checks import Finding
 
 
 @register
-class PolicyAndVulnInSameTemplateRule:
+class PolicyAndVulnInSameTemplateRule(AuditRule):
     rule_id = "policy_and_vuln_in_same_template"
     rule_name = "Policy and Vulnerability in Same Template"
     description = (
@@ -40,25 +40,10 @@ class PolicyAndVulnInSameTemplateRule:
                     details={"template_id": tpl_id, "sites_using": site_ids},
                 ))
 
-        if any(f.severity == "fail" for f in findings):
-            status = "fail"
-        elif any(f.severity == "warn" for f in findings):
-            status = "warn"
-        else:
-            status = "pass"
-
-        return RuleResult(
-            rule_id=self.rule_id,
-            rule_name=self.rule_name,
-            description=self.description,
+        return self.result(
+            findings,
             severity=severity,
-            status=status,
-            findings=findings,
             summary={"templates_examined": len(in_use), "templates_flagged": len(findings)},
-            card_summary={
-                "examined": len(in_use),
-                "passed": max(0, len(in_use) - len(findings)),
-                "failed": len(findings),
-            },
-            sources=list(self.sources),
+            examined=len(in_use),
+            failed=len(findings),
         )

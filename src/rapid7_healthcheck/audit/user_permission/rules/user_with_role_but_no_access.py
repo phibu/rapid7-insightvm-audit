@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from rapid7_healthcheck.audit import RuleResult
+from rapid7_healthcheck.audit import AuditRule, RuleResult
 from rapid7_healthcheck.audit.user_permission import register_user_rule
 from rapid7_healthcheck.checks import Finding
 
 
 @register_user_rule
-class UserWithRoleButNoAccessRule:
+class UserWithRoleButNoAccessRule(AuditRule):
     rule_id = "user_with_role_but_no_access"
     rule_name = "User Has Role But No Site or Asset Group Access"
     description = (
@@ -72,36 +72,21 @@ class UserWithRoleButNoAccessRule:
                 },
             ))
 
-        if any(f.severity == "fail" for f in findings):
-            status = "fail"
-        elif any(f.severity == "warn" for f in findings):
-            status = "warn"
-        else:
-            status = "pass"
-
-        return RuleResult(
-            rule_id=self.rule_id,
-            rule_name=self.rule_name,
-            description=self.description,
+        return self.result(
+            findings,
             severity=severity,
-            status=status,
-            findings=findings,
             summary={
                 "candidates": len(candidates),
                 "users_examined": len(examined),
                 "users_flagged": len(findings),
             },
-            card_summary={
-                # examined is the user subset this rule actually evaluated:
-                # disabled users / Global Admins / superusers / users with
-                # wildcard roles are filtered out at the candidates step and
-                # never checked. Counting them as "passed" would mirror the
-                # sub2 sites_overdue_scans bug. Matches summary["users_examined"].
-                "examined": len(examined),
-                "passed": max(0, len(examined) - len(findings)),
-                "failed": len(findings),
-            },
+            # examined is the user subset this rule actually evaluated:
+            # disabled users / Global Admins / superusers / users with
+            # wildcard roles are filtered out at the candidates step and
+            # never checked. Counting them as "passed" would mirror the
+            # sub2 sites_overdue_scans bug. Matches summary["users_examined"].
+            examined=len(examined),
+            failed=len(findings),
             sampled=sampled,
             sample_info=sample_info,
-            sources=list(self.sources),
         )

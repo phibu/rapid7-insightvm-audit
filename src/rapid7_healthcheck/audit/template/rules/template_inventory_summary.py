@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from rapid7_healthcheck.audit import RuleResult
+from rapid7_healthcheck.audit import AuditRule, RuleResult
 from rapid7_healthcheck.audit.template import register_template_rule
 from rapid7_healthcheck.audit.snapshot import EnvSnapshot
 from rapid7_healthcheck.checks import Finding
 
 
 @register_template_rule
-class TemplateInventorySummaryRule:
+class TemplateInventorySummaryRule(AuditRule):
     rule_id = "template.template_inventory_summary"
     rule_name = "Template Inventory Summary"
     description = (
@@ -32,23 +32,15 @@ class TemplateInventorySummaryRule:
 
         findings: list[Finding] = []
 
-        return RuleResult(
-            rule_id=self.rule_id,
-            rule_name=self.rule_name,
-            description=self.description,
+        return self.result(
+            findings,
             severity=severity,
-            status="pass",
-            findings=findings,
             summary={
                 "total": total,
                 "vuln_enabled": vuln_enabled,
                 "policy_enabled": policy_enabled,
                 "discovery_only": discovery_only,
             },
-            card_summary={
-                "examined": total,
-                "passed": total,
-                "failed": 0,
-            },
-            sources=list(self.sources),
+            examined=total,
+            failed=0,
         )

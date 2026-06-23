@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from rapid7_healthcheck.audit import RuleResult
+from rapid7_healthcheck.audit import AuditRule, RuleResult
 from rapid7_healthcheck.audit.user_permission import register_user_rule
 from rapid7_healthcheck.checks import Finding
 from rapid7_healthcheck.client import Rapid7ClientError
@@ -27,7 +27,7 @@ def _is_external_auth(user: dict) -> bool:
 
 
 @register_user_rule
-class PrivilegedUserWithoutMfaRule:
+class PrivilegedUserWithoutMfaRule(AuditRule):
     rule_id = "privileged_user_without_mfa"
     rule_name = "Privileged User Without MFA"
     description = (
@@ -220,20 +220,9 @@ class PrivilegedUserWithoutMfaRule:
                 },
             ))
 
-        if any(f.severity == "fail" for f in findings):
-            status = "fail"
-        elif any(f.severity == "warn" for f in findings):
-            status = "warn"
-        else:
-            status = "pass"
-
-        return RuleResult(
-            rule_id=self.rule_id,
-            rule_name=self.rule_name,
-            description=self.description,
+        return self.result(
+            findings,
             severity=severity,
-            status=status,
-            findings=findings,
             summary={
                 "privileged_users": len(privileged),
                 "users_examined": len(examined),
@@ -241,12 +230,8 @@ class PrivilegedUserWithoutMfaRule:
                 "users_exempt": users_exempt,
                 "users_external_auth": len(external_auth_users),
             },
-            card_summary={
-                "examined": len(examined),
-                "passed": max(0, len(examined) - users_without_mfa),
-                "failed": users_without_mfa,
-            },
+            examined=len(examined),
+            failed=users_without_mfa,
             sampled=sampled,
             sample_info=sample_info,
-            sources=list(self.sources),
         )

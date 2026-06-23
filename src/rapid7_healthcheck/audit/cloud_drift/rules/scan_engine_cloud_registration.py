@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta, timezone
 
-from rapid7_healthcheck.audit import RuleResult
+from rapid7_healthcheck.audit import AuditRule, RuleResult
 from rapid7_healthcheck.audit.cloud_drift import register_cloud_rule
 from rapid7_healthcheck.audit.cloud_drift._utils import _coerce_positive_int
 from rapid7_healthcheck.checks import Finding
@@ -45,7 +45,7 @@ def _normalize_host_key(value) -> str | None:
 
 
 @register_cloud_rule
-class ScanEngineCloudRegistrationRule:
+class ScanEngineCloudRegistrationRule(AuditRule):
     rule_id = "cd.scan_engine_cloud_registration"
     rule_name = "Scan Engine Cloud Registration"
     description = (
@@ -219,20 +219,9 @@ class ScanEngineCloudRegistrationRule:
                     },
                 ))
 
-        if any(f.severity == "fail" for f in findings):
-            status = "fail"
-        elif any(f.severity == "warn" for f in findings):
-            status = "warn"
-        else:
-            status = "pass"
-
-        return RuleResult(
-            rule_id=self.rule_id,
-            rule_name=self.rule_name,
-            description=self.description,
+        return self.result(
+            findings,
             severity=severity,
-            status=status,
-            findings=findings,
             summary={
                 "console_engines": len(console_engines),
                 "cloud_engines": len(cloud_engines),
@@ -241,10 +230,6 @@ class ScanEngineCloudRegistrationRule:
                 "max_age_hours": max_age_hours,
                 "ignore_engines": sorted(ignore),
             },
-            card_summary={
-                "examined": engines_examined,
-                "passed": max(0, engines_examined - (missing_from_cloud + stale_in_cloud)),
-                "failed": missing_from_cloud + stale_in_cloud,
-            },
-            sources=list(self.sources),
+            examined=engines_examined,
+            failed=missing_from_cloud + stale_in_cloud,
         )

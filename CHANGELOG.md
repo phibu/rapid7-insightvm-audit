@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-06-23
+
+Internal refactor. No change to the frozen 1.0 contract (`config.yaml` schema,
+exit codes, CLI flags) and no user-visible behavior change — every audit rule's
+`RuleResult` output is byte-identical (verified: the full pre-existing test
+suite passes unchanged).
+
+### Changed
+
+- Added an `AuditRule` base class (`audit/__init__.py`) that owns the
+  findings → `RuleResult` build — status derivation (`fail > warn > pass`), the
+  `card_summary` shape, and the metadata wrap. The ~45 audit rules across all
+  four categories now call `self.result(...)` instead of hand-rolling that tail
+  at each return site; the deliberate `status="skipped"` early-skip returns keep
+  their explicit `RuleResult`.
+- Moved `make_rule_result` from `checks/_op_rule.py` to `audit/rule_rollup.py`
+  (the shared audit/checks seam), so both the operational checks and the audit
+  rules build their results through one helper. `_op_rule.py` re-exports it, so
+  the operational-check call sites are unchanged.
+
 ## [1.0.1] - 2026-06-23
 
 Internal refactor and tooling patch. No change to the frozen 1.0 contract

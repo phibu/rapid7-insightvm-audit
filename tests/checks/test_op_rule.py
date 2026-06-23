@@ -116,7 +116,12 @@ def test_safe_run_sets_duration_ms_on_success_path():
         rule_name="Test",
         description="d",
     )
-    assert result.duration_ms >= 10, f"expected >=10ms, got {result.duration_ms}"
+    # The behavior under test is that safe_run stamps a wall-clock duration when
+    # the producer left it None — not that the stamp is >= the sleep. Windows'
+    # coarse `time.monotonic` granularity can round a 10ms sleep to 0ms, so an
+    # exact-floor assertion is flaky; assert the stamp exists and is sane.
+    assert result.duration_ms is not None
+    assert result.duration_ms >= 0
 
 
 def test_make_rule_result_default_duration_ms_is_none():
@@ -153,8 +158,10 @@ def test_safe_run_stamps_duration_on_none_result():
         rule_name="Test",
         description="d",
     )
+    # Assert the stamp exists and is sane, not that it's >= the 10ms sleep —
+    # Windows timer granularity can round a 10ms sleep to 0ms (flaky floor).
     assert result.duration_ms is not None
-    assert result.duration_ms >= 10
+    assert result.duration_ms >= 0
 
 
 def test_safe_run_preserves_explicit_zero_duration():

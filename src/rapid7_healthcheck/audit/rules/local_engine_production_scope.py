@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 
 from rapid7_healthcheck._local_engine import is_local_engine
-from rapid7_healthcheck.audit import RuleResult, register
+from rapid7_healthcheck.audit import AuditRule, RuleResult, register
 from rapid7_healthcheck.checks import Finding
 
 
@@ -18,7 +18,7 @@ _DEFAULT_THRESHOLD = 1000
 
 
 @register
-class LocalEngineProductionScopeRule:
+class LocalEngineProductionScopeRule(AuditRule):
     rule_id = "local_engine_production_scope"
     rule_name = "Local Scan Engine Carrying Production-Sized Scope"
     description = (
@@ -86,25 +86,13 @@ class LocalEngineProductionScopeRule:
                 },
             ))
 
-        if any(f.severity == "fail" for f in findings):
-            status = "fail"
-        elif any(f.severity == "warn" for f in findings):
-            status = "warn"
-        else:
-            status = "pass"
-
-        return RuleResult(
-            rule_id=self.rule_id,
-            rule_name=self.rule_name,
-            description=self.description,
+        return self.result(
+            findings,
             severity=severity,
-            status=status,
-            findings=findings,
             summary={
                 "engines_examined": engines_examined,
                 "engines_flagged": engines_flagged,
                 "sites_examined": sites_examined,
                 "threshold": threshold,
             },
-            sources=list(self.sources),
         )
