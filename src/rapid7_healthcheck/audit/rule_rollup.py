@@ -25,7 +25,7 @@ runners already use — so it introduces no new package cycle.
 """
 from __future__ import annotations
 
-from typing import Iterable
+from typing import Any, Iterable
 
 from rapid7_healthcheck.audit import RuleResult
 from rapid7_healthcheck.checks import Finding, Severity, Status
@@ -98,17 +98,33 @@ def make_rule_result(
     )
 
 
-def rollup_status(rule_results: list[RuleResult]) -> Status:
-    """Aggregate rule statuses into a check-level status.
+def worst_status(items: Iterable[Any]) -> Status:
+    """The single owner of the status precedence ``fail/error > warn > pass``.
 
-    Pure pass when every rule passed or was skipped; warn if any warned; fail
-    if any failed or errored.
+    Reduce any iterable of status-carrying items — anything with a ``.status``
+    field, i.e. both ``RuleResult`` and ``CheckResult`` — to the worst status:
+    ``fail`` if any item is ``fail`` or ``error``, else ``warn`` if any is
+    ``warn``, else ``pass``. ``skipped`` is neither, so it falls through to
+    ``pass`` (a self-skipped check or rule never escalates the run).
+
+    This is the one place the ordering is written. ``report._verdict`` and
+    ``__main__.pick_exit_code`` map this result through a status->presentation
+    table rather than re-encoding the precedence; the two runners reach it
+    through the ``rollup_status`` alias. See CONTEXT.md "worst_status".
     """
-    if any(r.status in ("fail", "error") for r in rule_results):
+    if any(i.status in ("fail", "error") for i in items):
         return "fail"
-    if any(r.status == "warn" for r in rule_results):
+    if any(i.status == "warn" for i in items):
         return "warn"
     return "pass"
+
+
+# The check-level application of the same reduction: a check's
+# ``list[RuleResult]`` -> the check's status. A bare alias, not a second body —
+# a check is ``fail`` if any rule failed/errored, ``warn`` if any warned, else
+# ``pass``, which is exactly ``worst_status``. Kept as a domain-named entry point
+# the two runners (and the ``rollup_check_status`` op-side alias) import.
+rollup_status = worst_status
 
 
 def flatten_findings(rule_results: list[RuleResult]) -> list[Finding]:

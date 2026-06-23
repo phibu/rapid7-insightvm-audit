@@ -15,6 +15,7 @@ from dotenv import load_dotenv
 
 from rapid7_healthcheck import __version__
 from rapid7_healthcheck.audit import ConfigurationAuditCheck
+from rapid7_healthcheck.audit.rule_rollup import worst_status
 from rapid7_healthcheck.audit.cloud_drift import CloudDriftAuditCheck
 from rapid7_healthcheck.audit.template import TemplateAuditCheck
 from rapid7_healthcheck.audit.user_permission import UserPermissionAuditCheck
@@ -193,12 +194,20 @@ def build_thresholds_table(cfg: AppConfig) -> list[tuple[str, str]]:
     return rows
 
 
+# The process exit code for each worst-status outcome. The status precedence
+# lives once, in `worst_status`; this is only the status->int mapping. The
+# startup/internal exit codes (3/4) are not run-status outcomes and never come
+# from here. `worst_status` collapses the run to one of fail/warn/pass, so those
+# three are the only keys reached.
+_EXIT_BY_STATUS: dict[str, int] = {
+    "fail": EXIT_FAIL,
+    "warn": EXIT_WARN,
+    "pass": EXIT_HEALTHY,
+}
+
+
 def pick_exit_code(results: list[CheckResult]) -> int:
-    if any(r.status in ("fail", "error") for r in results):
-        return EXIT_FAIL
-    if any(r.status == "warn" for r in results):
-        return EXIT_WARN
-    return EXIT_HEALTHY
+    return _EXIT_BY_STATUS[worst_status(results)]
 
 
 def _build_inventory_totals(snapshot: Any) -> "InventoryTotals | None":

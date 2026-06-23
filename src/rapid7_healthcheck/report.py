@@ -9,7 +9,7 @@ from pathlib import Path
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from rapid7_healthcheck import state_engine
-from rapid7_healthcheck.audit.rule_rollup import rule_summary
+from rapid7_healthcheck.audit.rule_rollup import rule_summary, worst_status
 from rapid7_healthcheck.checks import CheckResult, Finding, findings_of
 
 _TEMPLATE_DIR = Path(__file__).parent / "templates"
@@ -138,12 +138,19 @@ class ReportContext:
     inventory_totals: "InventoryTotals | None" = None
 
 
+# The hero verdict for each worst-status outcome: (css-class, label). The
+# status precedence itself lives once, in `worst_status` — this is only the
+# status->presentation mapping. `skipped`/`error` never reach here as a key:
+# `worst_status` collapses the run to one of fail/warn/pass.
+_VERDICT_BY_STATUS: dict[str, tuple[str, str]] = {
+    "fail": ("fail", "Action required"),
+    "warn": ("warn", "Warnings"),
+    "pass": ("pass", "Healthy"),
+}
+
+
 def _verdict(results: list[CheckResult]) -> tuple[str, str]:
-    if any(r.status in ("fail", "error") for r in results):
-        return ("fail", "Action required")
-    if any(r.status == "warn" for r in results):
-        return ("warn", "Warnings")
-    return ("pass", "Healthy")
+    return _VERDICT_BY_STATUS[worst_status(results)]
 
 
 def _annotate_findings(results: list[CheckResult]) -> None:
