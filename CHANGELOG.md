@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Release ZIP is leaner (#26).** The runtime asset now strips dev/repo
+  artifacts an operator never opens — the v3/v4 API specs (`docs/research/`,
+  the bulk of the old size), `docs/adr/`, `docs/agents/`, `CLAUDE.md`,
+  `CONTEXT.md`, `.github/`, and repo plumbing (`.gitignore`, `.gitattributes`,
+  `skills-lock.json`) — while keeping the operator-facing docs (`README.md`,
+  `SECURITY.md`, `CHANGELOG.md`, `LICENSE`, `.env.example`, `docs/examples/`).
+  The dividing line is "does an operator running the tool need this?", not
+  "does it execute?" (see ADR-0005). Affects the next tagged release onward.
+
 ### Fixed
 
 - **Template audit false positive (#31): `template.service_discovery_disabled`

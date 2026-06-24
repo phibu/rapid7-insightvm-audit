@@ -6,7 +6,7 @@ We chose a **middle position**: the dividing line is **"does an operator running
 
 ## Decision
 
-**Strip** (dev/repo-only, an operator never opens them): `docs/research/` (the v3/v4 API specs — developer cross-check material), `docs/adr/` (decision history), `CLAUDE.md`, `CONTEXT.md` (AI/dev guidance), `.github/`, `.gitignore`, `.gitattributes`, `skills-lock.json` — on top of the already-excluded `tests/`, `docs/superpowers/`, `.agents/`.
+**Strip** (dev/repo-only, an operator never opens them): `docs/research/` (the v3/v4 API specs — developer cross-check material), `docs/adr/` (decision history), `docs/agents/` (agent/dev guidance — issue-tracker, triage-labels, domain), `CLAUDE.md`, `CONTEXT.md` (AI/dev guidance), `.github/`, `.gitignore`, `.gitattributes`, `skills-lock.json` — on top of the already-excluded `tests/`, `docs/superpowers/`, `.agents/`. (`docs/agents/` was not in the original draft of this decision; empirically verifying the built zip surfaced it as the same category of dev guidance and it was added.)
 
 **Keep** (operator-facing): `src/`, `pyproject.toml`, `README.md` (how to run), `SECURITY.md` (the read-only safety contract — important for the GA-credential audience), `CHANGELOG.md` (upgrade orientation), `LICENSE`, `.env.example` and `docs/examples/` (config templates).
 
