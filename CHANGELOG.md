@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Built-in scan templates are labelled, not suppressed (#30).** Findings
+  raised against Rapid7's built-in (default, non-editable) scan templates now
+  carry `details.builtin = true` and append clone-and-rebind remediation to
+  the message ("Built-in template — remediate by cloning it, fixing the clone,
+  and rebinding the affected site."). They are **not** excluded by default: a
+  misconfigured built-in bound to a live site still scans badly, so the signal
+  is kept and labelled rather than hidden (see ADR-0003). Detection is by
+  known template `id` (`EnvSnapshot.is_builtin_template`) — the v3 object has
+  no built-in flag and an id-shape test is unsound. The built-in id set is
+  documented from the Rapid7 scan-templates appendix; an unrecognised built-in
+  degrades safely to unlabelled and a user template is never mislabelled.
+
 ### Changed
 
 - **Release ZIP is leaner (#26).** The runtime asset now strips dev/repo

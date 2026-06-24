@@ -17,15 +17,70 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from rapid7_healthcheck.audit import Rule
+from dataclasses import replace
+
+from rapid7_healthcheck.audit import Rule, RuleResult
+from rapid7_healthcheck.audit.rule_rollup import flatten_findings
 from rapid7_healthcheck.audit.snapshot import EnvSnapshot, build_env_snapshot
-from rapid7_healthcheck.checks import CheckResult
-from rapid7_healthcheck.config import AppConfig
+from rapid7_healthcheck.checks import CheckResult, Finding
 
 logger = logging.getLogger(__name__)
 
 
 _TEMPLATE_RULE_REGISTRY: dict[str, type[Rule]] = {}
+
+# Appended to the message of any finding raised against a built-in scan
+# template. Built-ins are not editable, so the remediation is indirect.
+_BUILTIN_REMEDIATION = (
+    " (Built-in template — remediate by cloning it, fixing the clone, and "
+    "rebinding the affected site.)"
+)
+
+
+def _label_finding_if_builtin(finding: Finding) -> Finding:
+    """Stamp ``details['builtin']=True`` and append clone-and-rebind guidance
+    when a finding is about a built-in scan template.
+
+    Detection keys off the ``template_id`` every template-rule finding carries
+    (rollup/summary findings without one pass through untouched). Idempotent:
+    already-labelled findings are returned unchanged so re-application never
+    duplicates the remediation text. ``Finding`` is frozen, so a labelled copy
+    is built via ``dataclasses.replace``.
+    """
+    details = finding.details or {}
+    tid = details.get("template_id")
+    if not (isinstance(tid, str) and EnvSnapshot.is_builtin_template({"id": tid})):
+        return finding
+    if details.get("builtin") is True:
+        return finding  # already labelled — idempotent
+    return replace(
+        finding,
+        message=finding.message + _BUILTIN_REMEDIATION,
+        details={**details, "builtin": True},
+    )
+
+
+def label_builtin_findings(rule_results: list[RuleResult]) -> list[RuleResult]:
+    """Return ``rule_results`` with every built-in-template finding labelled.
+
+    Built-in templates stay in scope but their findings are marked rather than
+    suppressed (see docs/adr/0003-audit-builtin-templates-but-label-them.md).
+    Applied once at the ``TemplateAuditCheck`` seam — keeps the shared
+    ``AuditRunner`` and the ~17 rule files untouched, since every template
+    finding already carries ``details['template_id']``. Rebuilds each
+    ``RuleResult`` with re-stamped findings; status/severity/summary are
+    unchanged (labelling never alters whether something is flagged).
+    """
+    out: list[RuleResult] = []
+    for rr in rule_results:
+        if not rr.findings:
+            out.append(rr)
+            continue
+        out.append(replace(
+            rr,
+            findings=[_label_finding_if_builtin(f) for f in rr.findings],
+        ))
+    return out
 
 
 def register_template_rule(rule_cls: type[Rule]) -> type[Rule]:
@@ -88,7 +143,16 @@ class TemplateAuditCheck:
             gate=gate,
             build_snapshot=build_snapshot,
         )
-        return AuditRunner().run(category, client=client, config=config, progress=progress)
+        result = AuditRunner().run(category, client=client, config=config, progress=progress)
+
+        # Label (don't suppress) findings on built-in scan templates. Applied
+        # here at the category seam so the shared AuditRunner and the rule
+        # files stay untouched (see docs/adr/0003). A skipped category carries
+        # no rule_results — nothing to label.
+        if result.rule_results:
+            result.rule_results = label_builtin_findings(result.rule_results)
+            result.findings = flatten_findings(result.rule_results)
+        return result
 
 
 # Register every template-audit rule at package-import time. The directory is

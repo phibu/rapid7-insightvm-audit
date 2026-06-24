@@ -870,3 +870,24 @@ def test_config_driven_snapshot_sites_route_through_the_builder():
         "these config-driven sites construct EnvSnapshot directly instead of "
         f"routing through build_env_snapshot: {offenders}"
     )
+
+
+def test_is_builtin_template_known_id():
+    """A documented built-in slug is recognized as built-in."""
+    assert EnvSnapshot.is_builtin_template({"id": "denial-of-service"}) is True
+    assert EnvSnapshot.is_builtin_template({"id": "full-audit-without-web-spider"}) is True
+    assert EnvSnapshot.is_builtin_template({"id": "discovery"}) is True
+
+
+def test_is_builtin_template_user_id_not_builtin():
+    """A user-created template (name-derived slug not in the set) is not built-in.
+    This is the safe direction — never mislabel a user's own template.
+    """
+    assert EnvSnapshot.is_builtin_template({"id": "my-custom-audit"}) is False
+    assert EnvSnapshot.is_builtin_template({"id": "acme-prod-weekly"}) is False
+
+
+def test_is_builtin_template_missing_or_malformed_id():
+    assert EnvSnapshot.is_builtin_template({}) is False
+    assert EnvSnapshot.is_builtin_template({"id": None}) is False
+    assert EnvSnapshot.is_builtin_template({"id": ""}) is False

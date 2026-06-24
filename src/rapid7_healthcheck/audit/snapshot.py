@@ -19,6 +19,38 @@ logger = logging.getLogger(__name__)
 # data and so never touches this timeout.)
 DEFAULT_AGENTS_TIMEOUT = 180
 
+# The API `id` slugs of Rapid7's built-in (default, non-editable) scan
+# templates. The v3 `ScanTemplate` object carries NO built-in/system flag and
+# an id-*shape* test fails (user templates also get name-derived kebab slugs),
+# so a finding is labelled "built-in" iff its template id is in this set (see
+# docs/adr/0003-audit-builtin-templates-but-label-them.md). Sourced from the
+# Rapid7 scan-templates appendix:
+#   https://docs.rapid7.com/insightvm/scan-templates/
+# Only `full-audit-without-web-spider` and `discovery` are confirmed by the
+# committed v3 spec's id examples; the rest are the long-stable Nexpose/
+# InsightVM built-in slugs and MUST be confirmed against a live console
+# (GET /api/3/scan_templates) — a refresh is a one-line edit here. Failure is
+# safe: an unrecognised built-in is audited *unlabelled* (degrades to
+# pre-feature behaviour); a user template is never mislabelled as built-in.
+BUILTIN_TEMPLATE_IDS = frozenset({
+    "full-audit",
+    "full-audit-without-web-spider",
+    "exhaustive",
+    "discovery",
+    "aggressive-discovery",
+    "denial-of-service",
+    "internet-dmz-audit",
+    "linux-rpms",
+    "microsoft-hotfix",
+    "hipaa",
+    "pci-audit",
+    "pentest-audit",
+    "safe-network-audit",
+    "scada-audit",
+    "sox-audit",
+    "web-audit",
+})
+
 
 @dataclass
 class IncludedTargets:
@@ -607,6 +639,21 @@ class EnvSnapshot:
         if isinstance(nested, dict):
             return bool(nested.get("enabled"))
         return False
+
+    @staticmethod
+    def is_builtin_template(template: dict) -> bool:
+        """Whether a scan template is one of Rapid7's built-in (default,
+        non-editable) templates.
+
+        Detection is by known `id` (see `BUILTIN_TEMPLATE_IDS`): the v3 object
+        has no built-in flag and an id-shape test is unsound. Returns False for
+        a missing/empty/non-string id — the safe direction (never label a
+        template built-in without a positive id match).
+        """
+        if not isinstance(template, dict):
+            return False
+        tid = template.get("id")
+        return isinstance(tid, str) and tid in BUILTIN_TEMPLATE_IDS
 
     @staticmethod
     def site_scan_template_id(site: dict) -> str | None:
