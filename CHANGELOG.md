@@ -23,6 +23,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Credential governance rules (#33).** Two new Configuration Audit rules,
+  both `info` (governance guidance, never escalating the run on their own):
+  - `site_credential_centralization_candidates` — surfaces site-specific
+    credentials whose identity recurs across multiple sites (could be a single
+    shared credential) and shared credentials assigned to only one site
+    ("shared" in name only).
+  - `duplicate_credential_clusters` — groups credentials (site + shared) that
+    look like the same account; a cluster escalates to `warn` only when its
+    members carry different names (uncoordinated copies that drift on rotation).
+    Expensive — reads every site's credentials, so it honours
+    `audit.sample_size` in fast mode and discloses any truncation.
+
+  Both key credentials by **non-secret identity** — `(service, username,
+  domain, hostRestriction, portRestriction)`, **never the password** (the v3
+  API does not return secrets on GET, and a secret has no place in a grouping
+  key). Credentials named to match `local_name_pattern` (default `^LOCAL_`,
+  per-rule tunable) are treated as intentional locals and excluded. Read-only.
+
 - **Built-in scan templates are labelled, not suppressed (#30).** Findings
   raised against Rapid7's built-in (default, non-editable) scan templates now
   carry `details.builtin = true` and append clone-and-rebind remediation to

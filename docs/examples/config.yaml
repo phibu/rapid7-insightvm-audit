@@ -123,6 +123,14 @@ audit:
       enabled: true             # enable/disable this rule
       severity: info            # finding severity: info | warn | fail
       warn_below_percent: 70    # warn when agent coverage falls below this % of total assets; 0 disables
+    site_credential_centralization_candidates:
+      enabled: true             # enable/disable this rule
+      severity: info            # finding severity: info | warn | fail
+      local_name_pattern: "^LOCAL_"  # cred names matching this are intentional site-locals (excluded)
+    duplicate_credential_clusters:
+      enabled: true             # enable/disable this rule
+      severity: info            # finding severity: info | warn | fail (escalates to warn per-cluster on name disagreement)
+      local_name_pattern: "^LOCAL_"  # cred names matching this are intentional site-locals (excluded)
 
 # -----------------------------------------------------------------------------
 # User & Permission Audit

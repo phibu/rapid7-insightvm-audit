@@ -232,6 +232,8 @@ Rules (the `rule_id` is the config key under `audit.rules:`):
 | Scan and Report Schedules Overlap on Shared Scope (`scan_report_schedule_overlap`) | warn | `assumed_report_duration_minutes` (30), `assumed_scan_duration_minutes` (60) | Console Best Practices |
 | Scan Engine Version Drift or Stale Content Refresh (`engine_version_drift`) | warn | `refresh_stale_days` (7), `check_product_version` (true), `check_content_version` (true) | Console Best Practices |
 | Insight Agent Fleet Coverage (`insight_agent_deployed`) | info | `warn_below_percent` (70) — warn when agent coverage falls below this % of total assets | Insight Agent overview |
+| Credential Centralization Candidates (`site_credential_centralization_candidates`) | info | `local_name_pattern` (`^LOCAL_`) | Managing shared scan credentials |
+| Duplicate Credential Clusters (`duplicate_credential_clusters`) | info (per-cluster warn on name disagreement) | `local_name_pattern` (`^LOCAL_`) | Managing shared scan credentials |
 
 In fast mode (`audit.full_scan: false`), `agent_unauth_collision`'s per-site enumeration is capped at `audit.sample_size` and short-circuits on the first agent-managed asset; sites that hit the cap without a match are listed in a single aggregate info finding. Set `audit.full_scan: true` to remove the cap.
 

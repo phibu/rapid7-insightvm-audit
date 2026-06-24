@@ -27,6 +27,8 @@ def test_all_rules_registered():
         "local_engine_production_scope", "dynamic_groups_and_nested_tags",
         "scan_report_schedule_overlap", "engine_version_drift",
         "insight_agent_deployed",
+        "site_credential_centralization_candidates",
+        "duplicate_credential_clusters",
     }
     assert set(_RULE_REGISTRY.keys()) == expected
 
