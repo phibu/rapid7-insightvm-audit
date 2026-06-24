@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Template audit false positive (#31): `template.service_discovery_disabled`
+  read the wrong subtree.** The rule inspected `discovery.asset.tcpPorts` /
+  `udpPorts` — those are **Asset** discovery (host-liveness) ports — while its
+  name and message referred to **Service** discovery. It now reads
+  `discovery.service.tcp` / `udp` and flags only when BOTH protocols
+  explicitly scan no ports (`ports` empty/`none` with no `additionalPorts`).
+  Templates with asset discovery off but service discovery scanning
+  `well-known` ports (a valid config) are no longer flagged. Absent
+  service-discovery config is treated as the benign `well-known` default
+  (skip-absent), not as disabled.
+- **Template audit false positive (#29): `template.vuln_enabled_but_no_checks`
+  ignored disabled-lists and individual checks.** The rule flagged any
+  vuln-enabled template whose `checks.types.enabled` and
+  `checks.categories.enabled` were both empty. But Rapid7's inclusion model is
+  *enable-minus-disable*: a template can run a large check set via
+  `categories.disabled` (the "all except X" pattern) or `individual.enabled`.
+  The rule now flags only when **every** enable AND disable list is empty
+  (categories, types, individual), and its severity drops from **fail to
+  warn** — the true check baseline is not knowable from the template object,
+  so the finding asserts "no check configuration is present", not "will
+  produce no findings". The rule was renamed *Vulnerability Scan Enabled With
+  No Check Configuration* (was *…No Checks Selected*); its finding signatures
+  change on the next run (one-time cross-run delta churn).
+
 ## [1.0.5] - 2026-06-23
 
 Internal refactor. No change to the frozen 1.0 contract (`config.yaml` schema,
