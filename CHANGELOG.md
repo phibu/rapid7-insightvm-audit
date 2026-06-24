@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Agent-only coverage gap is now exact and fast (#32).** The
+  `op.asset_coverage.agent_only_assets` rule was rewritten: it previously
+  sampled ~100 Insight Agents and fetched each asset individually
+  (`GET /api/3/assets/{id}` in a serial loop — a chief cause of multi-minute
+  runs on large consoles) to produce a *directional estimate* of agents whose
+  IP fell outside any site's scan scope. It now reports the **exact, complete**
+  set of assets that belong to the Insight Agent site but to **no** scan-engine
+  site — issue #32's literal definition (site *membership*, not IP scope). The
+  agent site is resolved by name (`agent_site_name`, default
+  "Rapid7 Insight Agents"; its id varies per console), then a single
+  `POST /api/3/assets/search` with `site-id in [agent] and not-in [scan sites]`
+  returns the count from result metadata (no per-asset fetch). The rule is no
+  longer sampled; its summary keys changed (`agent_only_count` replaces the
+  `*_sampled` / `estimated_*` keys), so its finding signatures change once
+  (one-time cross-run delta churn). New knob:
+  `thresholds.asset_coverage.agent_site_name`.
+
 - **Terminal progress output is hierarchical and clearer (#28).** The run loop
   previously shared one flat counter between checks and an audit category's
   rules, producing a confusing interleave (`[1/8]…[1/11]…[5/8]`). Checks now

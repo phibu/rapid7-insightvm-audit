@@ -45,7 +45,8 @@ thresholds:
     never_scanned_days: 90                 # days since last scan to flag an asset as effectively never scanned
     flag_dead_asset_groups: true           # flag asset groups whose criteria match zero assets
     dead_groups_fallback_cap: 200          # max per-group fallback GETs for missing inline counts; 0 disables
-    flag_agent_only_assets: false          # flag agent assets outside scan scope (needs audit.full_scan: true)
+    flag_agent_only_assets: false          # flag assets in the Insight Agent site that no scan-engine site covers (exact, server-side)
+    agent_site_name: "Rapid7 Insight Agents"  # display name of the Insight Agent site (id varies per console; resolved by name)
     flag_ghost_assets: true                # flag assets with NO OS fingerprint AND NO hostname (phantom records)
   data_quality:
     flag_missing_os: true                  # flag assets with an empty OS fingerprint

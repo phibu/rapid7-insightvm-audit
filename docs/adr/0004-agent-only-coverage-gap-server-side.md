@@ -10,9 +10,11 @@ Use the documented filtered-asset-search **site-name** filter (verified in the R
 
 ```
 match: all
-  - field: site-name, operator: is,     values: ["Rapid7 Insight Agents"]
-  - field: site-name, operator: is-not, values: [<all scan-site names>]
+  - field: site-id, operator: in,     values: [<agent_site_id>]
+  - field: site-id, operator: not-in, values: [<all scan-site ids>]
 ```
+
+> **Correction (implementation):** the original draft used a `site-name` filter taken from the InsightVM **UI** filter set. The v3 **API** `POST /api/3/assets/search` has **no `site-name` token** — the committed spec's filter-field table lists `site-id` with operators `in` / `not-in` (and no name variant). The rule therefore resolves the agent site's **id** by matching its name in `snapshot.sites()`, then filters by `site-id`. This is the same server-side approach; only the field token changed, so Plan B (client-side set arithmetic) is **not needed**.
 
 The **exact count** comes from `page.totalResources` on page 0 — **zero asset bodies fetched** (the `total_asset_count()` metadata pattern already used elsewhere). Only the ~500 example rows the report actually renders are paginated (`_bounded_asset_search`), with the remainder shown as a rollup. Result: **complete, not sampled**, and seconds instead of minutes.
 
@@ -21,8 +23,8 @@ The cross-site membership union is exposed as a lazy, cached `EnvSnapshot.asset_
 ## Considered options
 
 - **Sample + extrapolate (the old rule).** Rejected: directional only, fails #32's "complete list" ask; the per-asset GET loop was itself the runtime culprit.
-- **Client-side set arithmetic over every site's full asset pages.** Viable fallback (parallel, ID-only pages via the existing `parallel_pages` prefetch) and kept as Plan B **if the `site-name` search field turns out unavailable/misnamed on a target console**. Slower than the metadata query but still complete and far faster than the old loop.
-- **Server-side site-name query (chosen).** Cheapest and complete. Sole dependency: the `site-name` filter field being accepted by `/api/3/assets/search` — documented in the InsightVM UI filter set; the **exact API `field` token** (`site-name` vs `site-id`) must be confirmed at implementation against a live console / the API's filter-field validation error.
+- **Client-side set arithmetic over every site's full asset pages.** Was kept as Plan B in case server-side site filtering proved unavailable. **No longer needed** — `site-id` filtering is confirmed in the spec.
+- **Server-side `site-id` query (chosen).** Cheapest and complete. The committed v3 spec's filter-field table lists `site-id` with operators `in` / `not-in`; the agent site's id is resolved by name from `snapshot.sites()`. (The original draft assumed a `site-name` token from the UI filter set — that token does not exist in the API.)
 
 ## Consequences
 
