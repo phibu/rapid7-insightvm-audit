@@ -60,6 +60,10 @@ class AssetCoverageThresholds:
     flag_agent_only_assets: bool = False
     dead_groups_fallback_cap: int = 200
     flag_ghost_assets: bool = True
+    # The display name of the site Rapid7 auto-assigns Insight-Agent assets to.
+    # The id varies per console but the name is deterministic, so the
+    # agent-only-coverage-gap rule resolves the site by name (see ADR-0004).
+    agent_site_name: str = "Rapid7 Insight Agents"
 
 
 @dataclass(frozen=True)

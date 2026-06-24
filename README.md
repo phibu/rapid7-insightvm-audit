@@ -314,14 +314,14 @@ Per-rule severity and enable/disable live in the `checks.data_quality` block of 
 
 ## Asset Coverage
 
-An operational health check that detects blind spots in scanning coverage: stale assets, never-scanned assets, dead asset-groups, and Insight Agent assets outside scheduled scan scope.
+An operational health check that detects blind spots in scanning coverage: stale assets, never-scanned assets, dead asset-groups, and Insight Agent assets that no scan-engine site covers.
 
 | Rule ID | Description | Default severity | Source |
 |---------|-------------|-------------------|--------|
 | `op.asset_coverage.stale_assets` | Assets not scanned within the stale threshold (coverage gap, not yet expired). | warn | https://docs.rapid7.com/insightvm/filtered-asset-search |
 | `op.asset_coverage.never_scanned_assets` | Assets never scanned or not scanned within the never-scanned threshold (effectively expired). | fail | https://docs.rapid7.com/insightvm/filtered-asset-search |
 | `op.asset_coverage.dead_asset_groups` | Asset groups whose membership criteria match zero assets. Orphaned RBAC/report scopes. | warn | https://docs.rapid7.com/insightvm/asset-groups/ |
-| `op.asset_coverage.agent_only_assets` | Sampled (up to `audit.sample_size` agents). Reports Insight-Agent assets whose IP is outside every site's `included_targets`. Directional estimate, not full enumeration. | warn | https://docs.rapid7.com/insightvm/insight-agent-overview/ |
+| `op.asset_coverage.agent_only_assets` | Assets in the Insight Agent site (found by name via `agent_site_name`) that belong to **no** scan-engine site — agent-only blind spots for scan-based controls. Computed server-side and **exact** (count from `/api/3/assets/search` metadata, `site-id in [agent] and not-in [scan sites]`), not sampled. | warn | https://docs.rapid7.com/insightvm/insight-agent-overview/ |
 | `op.asset_coverage.ghost_assets` | Assets with NO OS fingerprint AND NO hostname — phantom records the console knows about but cannot identify. Stricter than `op.data_quality.missing_os`. Toggle via `flag_ghost_assets`. | fail | https://docs.rapid7.com/insightvm/filtered-asset-search |
 
 Per-rule severity and enable/disable live in the `checks.asset_coverage` block of `config.yaml`.
@@ -491,7 +491,8 @@ Register-ScheduledTask -TaskName "Rapid7 HealthCheck" -Action $action -Trigger $
 | `asset_coverage.flag_unscanned_assets` | bool, required | Also list assets not scanned recently. |
 | `asset_coverage.never_scanned_days` | int, required | Days since last scan to flag an asset as effectively never scanned. |
 | `asset_coverage.flag_dead_asset_groups` | bool, default `true` | Flag asset groups whose membership criteria match zero assets (orphaned RBAC/report scopes). |
-| `asset_coverage.flag_agent_only_assets` | bool, default `false` | Flag Insight-Agent assets outside every site's scan target ranges. Requires `audit.full_scan: true` to actually run. |
+| `asset_coverage.flag_agent_only_assets` | bool, default `false` | Flag assets in the Insight Agent site that no scan-engine site covers. Computed exactly (server-side `site-id` filter); not sampled and not gated on `full_scan`. |
+| `asset_coverage.agent_site_name` | str, default `"Rapid7 Insight Agents"` | Display name of the Insight Agent site. Its id varies per console, so the agent-only rule resolves it by name; set this if your agent site is named differently. |
 | `asset_coverage.dead_groups_fallback_cap` | int, default `200` | Max per-group `GET /asset_groups/{id}/assets` fallbacks when the listing endpoint omits inline counts. `0` disables the fallback. |
 | `data_quality.flag_missing_os` | bool, required | Toggle the missing-OS sub-check. |
 | `data_quality.flag_empty_sites` | bool, required | Toggle the empty-sites sub-check. |

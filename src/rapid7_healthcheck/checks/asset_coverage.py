@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Any, Callable
 logger = logging.getLogger(__name__)
 
 from rapid7_healthcheck.audit import RuleResult
-from rapid7_healthcheck.client import Rapid7ClientError
 
 if TYPE_CHECKING:
     from rapid7_healthcheck.audit.snapshot import EnvSnapshot
@@ -429,19 +428,18 @@ class DeadAssetGroupsRule:
 
 class AgentOnlyAssetsRule:
     RULE_ID = "op.asset_coverage.agent_only_assets"
-    RULE_NAME = "Insight Agent assets outside scheduled scan scope"
+    RULE_NAME = "Insight Agent assets in no scan-engine site"
     DESCRIPTION = (
-        "Assets reporting via Insight Agent whose IP falls outside "
-        "every site's configured included_targets. These assets only "
-        "get opportunistic agent data; they're never reached by "
-        "scheduled scans.\n\n"
-        "Sampled. Inspects up to audit.sample_size agents (default "
-        "100) drawn in API default order from /api/3/agents. Result "
-        "is a directional estimate, not a complete inventory — for "
-        "environments with hundreds of thousands of agents, full "
-        "enumeration is intentionally avoided. Increase "
-        "audit.sample_size for a tighter estimate at the cost of "
-        "more API calls."
+        "Assets that belong to the Insight Agent site but to no "
+        "scan-engine site — the console only ever sees them through the "
+        "endpoint agent, never via a network scan, so any control that "
+        "relies on scan-engine data has a blind spot for them.\n\n"
+        "Computed server-side and complete (not sampled): the agent "
+        "site is found by name (its id varies per console), then "
+        "/api/3/assets/search returns assets with site-id IN the agent "
+        "site AND NOT-IN any scan site. The exact count comes from the "
+        "result metadata (no per-asset fetch); only example rows are "
+        "materialized."
     )
     SOURCES = (_SRC_INSIGHT_AGENT,)
     DEFAULT_SEVERITY = "warn"
@@ -451,7 +449,6 @@ class AgentOnlyAssetsRule:
         snapshot: "EnvSnapshot | None",
         client: Any,
         t,
-        audit_settings,
     ) -> RuleResult:
         if not t.flag_agent_only_assets:
             return skipped_rule(
@@ -463,9 +460,7 @@ class AgentOnlyAssetsRule:
 
         if snapshot is None:
             # An error RuleResult carries no findings — the reason lives in
-            # summary, matching the error_rule() helper. A warn-severity
-            # finding inside an error rule would leak into flatten_findings
-            # and the delta signature index.
+            # summary, matching the error_rule() helper.
             return RuleResult(
                 rule_id=self.RULE_ID,
                 rule_name=self.RULE_NAME,
@@ -473,152 +468,85 @@ class AgentOnlyAssetsRule:
                 severity=self.DEFAULT_SEVERITY,
                 status="error",
                 findings=[],
-                summary={"agent_only_count_sampled": 0, "error": "snapshot required"},
+                summary={"agent_only_count": 0, "error": "snapshot required"},
                 error="snapshot required but not provided to check",
                 sources=self.SOURCES,
             )
 
         rule_start = time.monotonic()
 
-        # Prime _agents_unavailable via the sampled accessor — its head probe
-        # is the only thing that flips the flag for this rule's code path.
-        # Calling is_agents_unavailable() before this would always see the
-        # initial False and miss the genuine 404 → empty-fleet ambiguity.
-        sample_ids, total_agents = snapshot.agent_asset_ids_sampled()
-
-        if snapshot.is_agents_unavailable():
-            return skipped_rule(
-                rule_id=self.RULE_ID,
-                rule_name=f"{self.RULE_NAME} (agents endpoint unavailable on this console)",
-                description=self.DESCRIPTION,
-                sources=self.SOURCES,
-            )
-
-        targets = snapshot.all_included_targets()
-
-        if targets is None:
-            # snapshot fake / edge case — no scope coverage info, rule
-            # indeterminate. An error RuleResult carries no findings; the
-            # reason lives in summary/error (matches the error_rule() helper).
-            return RuleResult(
-                rule_id=self.RULE_ID,
-                rule_name=self.RULE_NAME,
-                description=self.DESCRIPTION,
-                severity=self.DEFAULT_SEVERITY,
-                status="error",
-                findings=[],
-                summary={"agent_only_count_sampled": 0, "error": "no targets"},
-                error="all_included_targets() returned None",
-                sources=self.SOURCES,
-            )
-
-        logger.info(
-            "agent_only_assets: sampling %d of %d agents (sample_size=%d)",
-            len(sample_ids),
-            total_agents,
-            audit_settings.sample_size,
+        agent_site_name = t.agent_site_name
+        sites = snapshot.sites()
+        agent_site_id = next(
+            (s.get("id") for s in sites if s.get("name") == agent_site_name),
+            None,
         )
 
-        # Empty fleet: short-circuit with an informational pass.
-        if total_agents == 0:
-            sample_info = (
-                f"strategy=first-n; sampled=0; configured_sample_size="
-                f"{audit_settings.sample_size}; population=0"
-            )
+        # No agent site on this console → no agent-only gap. Info pass.
+        if agent_site_id is None:
             return make_rule_result(
                 rule_id=self.RULE_ID,
                 rule_name=self.RULE_NAME,
                 description=self.DESCRIPTION,
                 findings=[Finding(
                     severity="info",
-                    message="No Insight Agents deployed in this environment.",
+                    message=(
+                        f"No site named '{agent_site_name}' was found — no "
+                        f"Insight Agent site to compare against. (Set "
+                        f"thresholds.asset_coverage.agent_site_name if your "
+                        f"agent site is named differently.)"
+                    ),
+                    details={"agent_site_name": agent_site_name},
                 )],
                 sources=self.SOURCES,
                 summary={
-                    "agent_only_count_sampled": 0,
-                    "sample_size": 0,
-                    "sample_size_configured": audit_settings.sample_size,
-                    "sampled_fetched": 0,
-                    "total_agents": 0,
-                    "sampled_outside_scope_pct": 0.0,
-                    "estimated_outsiders_fleetwide": 0,
+                    "agent_only_count": 0,
+                    "agent_site_id": None,
+                    "scan_sites": 0,
                 },
-                sampled=True,
-                sample_info=sample_info,
                 duration_ms=int((time.monotonic() - rule_start) * 1000),
             )
 
-        outsiders: list[dict] = []
-        fetched_count = 0
-        for aid in sample_ids:
-            try:
-                asset = client.get(f"/api/3/assets/{aid}")
-            except Rapid7ClientError as e:
-                logger.warning("agent_only_assets: skipping asset %s due to error: %s", aid, e)
-                continue
-            fetched_count += 1
-            ip_str = asset.get("ip")
-            if not ip_str:
-                continue
-            if not targets.contains(str(ip_str)):
-                outsiders.append({
-                    "asset_id": aid,
-                    "ip": str(ip_str),
-                    "hostname": asset.get("hostName"),
-                })
+        scan_site_ids = [
+            s.get("id") for s in sites
+            if s.get("id") is not None and s.get("id") != agent_site_id
+        ]
 
-        denom = fetched_count if fetched_count > 0 else 1
-        pct = round(len(outsiders) / denom * 100, 1)
-        estimate = round(len(outsiders) / denom * total_agents) if total_agents else 0
-
-        # Summary finding (always present): describes the sample + extrapolation.
-        summary_severity = "warn" if outsiders else "info"
-        sample_share_pct = round(fetched_count / total_agents * 100, 1) if total_agents else 0.0
-        summary_finding = Finding(
-            severity=summary_severity,
-            message=(
-                f"Sampled {fetched_count} of {total_agents} agents "
-                f"({sample_share_pct}%): "
-                f"{len(outsiders)} of sample ({pct}%) are outside every site's "
-                f"scan scope. Extrapolated estimate: ≈{estimate} of {total_agents} "
-                f"agents fleet-wide. Sample is first-N by API default order; "
-                f"result is directional."
-            ),
-            details={
-                "sample_size": len(sample_ids),
-                "sample_size_configured": audit_settings.sample_size,
-                "sampled_fetched": fetched_count,
-                "total_agents": total_agents,
-                "outsiders_in_sample": len(outsiders),
-                "sampled_outside_scope_pct": pct,
-                "estimated_outsiders_fleetwide": estimate,
-            },
-        )
-
-        findings: list[Finding] = [summary_finding]
-
-        def _build_outsider(o: dict) -> Finding:
-            label = o.get("hostname") or o.get("ip") or f"id={o.get('asset_id')}"
-            return Finding(
-                severity="warn",
-                message=f"Agent-managed asset {label} is outside every site's scan scope",
-                details=o,
+        # site-id supports IN / NOT-IN (per the v3 spec filter-field table).
+        # match: all → in the agent site AND in no scan site. With no scan
+        # sites, every agent-site asset is by definition agent-only, so the
+        # not-in clause is omitted (NOT-IN [] is meaningless).
+        filters: list[dict] = [
+            {"field": "site-id", "operator": "in", "values": [agent_site_id]},
+        ]
+        if scan_site_ids:
+            filters.append(
+                {"field": "site-id", "operator": "not-in", "values": scan_site_ids}
             )
+        body = {"filters": filters, "match": "all"}
 
-        findings.extend(_capped_findings_with_rollup(
-            outsiders,
-            _build_outsider,
+        examples, total = _bounded_asset_search(client, body)
+
+        findings = _per_asset_findings(
+            examples,
             severity="warn",
-            label="asset",
-        ))
-
-        sample_info = (
-            f"strategy=first-n; sampled={len(sample_ids)}; "
-            f"configured_sample_size={audit_settings.sample_size}; "
-            f"population={total_agents}; "
-            f"note=Sample is first-N by API default order, not uniform random. "
-            f"Result is directional."
+            message_for=lambda a: (
+                f"Agent-only asset {_asset_label(a)}: in '{agent_site_name}' "
+                f"but no scan-engine site covers it"
+            ),
+            extra_details={"agent_site_id": agent_site_id},
+            total=total,
         )
+
+        if total == 0:
+            findings = [Finding(
+                severity="info",
+                message=(
+                    f"No agent-only assets: every asset in '{agent_site_name}' "
+                    f"is also covered by at least one scan-engine site."
+                ),
+                details={"agent_site_id": agent_site_id, "scan_sites": len(scan_site_ids)},
+            )]
 
         return make_rule_result(
             rule_id=self.RULE_ID,
@@ -627,16 +555,10 @@ class AgentOnlyAssetsRule:
             findings=findings,
             sources=self.SOURCES,
             summary={
-                "agent_only_count_sampled": len(outsiders),
-                "sample_size": len(sample_ids),
-                "sample_size_configured": audit_settings.sample_size,
-                "sampled_fetched": fetched_count,
-                "total_agents": total_agents,
-                "sampled_outside_scope_pct": pct,
-                "estimated_outsiders_fleetwide": estimate,
+                "agent_only_count": total,
+                "agent_site_id": agent_site_id,
+                "scan_sites": len(scan_site_ids),
             },
-            sampled=True,
-            sample_info=sample_info,
             duration_ms=int((time.monotonic() - rule_start) * 1000),
         )
 
@@ -801,6 +723,6 @@ class AssetCoverageCheck:
             safe_run_rule(stale, lambda: stale.run(client, t)),
             safe_run_rule(never, lambda: never.run(client, t)),
             safe_run_rule(dead, lambda: dead.run(snapshot, t)),
-            safe_run_rule(agent_only, lambda: agent_only.run(snapshot, client, t, config.audit)),
+            safe_run_rule(agent_only, lambda: agent_only.run(snapshot, client, t)),
             safe_run_rule(ghost, lambda: ghost.run(client, snapshot, t)),
         ]
