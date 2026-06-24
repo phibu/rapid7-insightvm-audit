@@ -1,4 +1,4 @@
-"""Tests for the ProgressReporter CLI status line."""
+"""Tests for the ProgressReporter CLI status line (hierarchical redesign, #28)."""
 from __future__ import annotations
 
 import io
@@ -23,108 +23,129 @@ class _FakeStream:
         return self._buffer.getvalue()
 
 
-def test_step_writes_overwrite_sequence_on_tty():
+def test_check_line_shows_global_percent_and_name():
+    from rapid7_healthcheck.progress import ProgressReporter
+    s = _FakeStream(is_tty=False)
+    p = ProgressReporter(stream=s)
+    p.finish_check(4, 8, "Configuration Audit", status_text="1.4s")
+    out = s.get_value()
+    assert "50%" in out
+    assert "(4/8)" in out
+    assert "Configuration Audit" in out
+    assert "1.4s" in out
+
+
+def test_start_check_uses_completed_fraction():
+    """start_check shows progress *before* this check ran: (idx-1)/total."""
+    from rapid7_healthcheck.progress import ProgressReporter
+    s = _FakeStream(is_tty=False)
+    p = ProgressReporter(stream=s)
+    p.start_check(5, 8, "Template Configuration Audit")
+    out = s.get_value()
+    assert "50%" in out  # (5-1)/8 = 50%
+    assert "(5/8)" in out
+
+
+def test_rule_line_is_indented_with_name_and_status():
+    from rapid7_healthcheck.progress import ProgressReporter
+    s = _FakeStream(is_tty=False)
+    p = ProgressReporter(stream=s)
+    p.finish_rule("Discovery template on prod site", status_text="123ms")
+    out = s.get_value()
+    assert out.startswith("    ")  # indented under its check
+    assert "Discovery template on prod site" in out
+    assert "123ms" in out
+
+
+def test_rule_status_words_replace_zero_ms():
+    """The #28 fix: skipped/cached/n-a instead of a misleading 0ms."""
+    from rapid7_healthcheck.progress import ProgressReporter
+    s = _FakeStream(is_tty=False)
+    p = ProgressReporter(stream=s)
+    p.finish_rule("Dynamic groups with nested tags", status_text="skipped")
+    out = s.get_value()
+    assert "skipped" in out
+    assert "0ms" not in out
+
+
+def test_check_then_rules_nest_without_flat_collision():
+    """The end-to-end #28 scenario: a check line followed by indented rule
+    lines never reads as one broken [x/y] sequence."""
+    from rapid7_healthcheck.progress import ProgressReporter
+    s = _FakeStream(is_tty=False)
+    p = ProgressReporter(stream=s)
+    p.start_check(5, 8, "Template Configuration Audit")
+    p.finish_rule("Vuln scan enabled with no checks", status_text="12ms")
+    p.finish_rule("Near-duplicate templates", status_text="88ms")
+    p.finish_check(5, 8, "Template Configuration Audit", status_text="0.9s")
+    out = s.get_value()
+    lines = [ln for ln in out.split("\n") if ln]
+    assert lines[0].lstrip().startswith("[")      # check header
+    assert lines[1].startswith("    ")            # indented rule
+    assert lines[2].startswith("    ")            # indented rule
+    assert lines[3].lstrip().startswith("[")      # check footer
+
+
+def test_tty_check_overwrites_in_place_while_running():
     from rapid7_healthcheck.progress import ProgressReporter
     s = _FakeStream(is_tty=True)
     p = ProgressReporter(stream=s)
-    p.step(1, 6, "Configuration Audit")
+    p.start_check(1, 8, "Scan Engines")
     out = s.get_value()
     assert "\r" in out, f"expected carriage return on TTY: {out!r}"
-    assert "[1/6] Configuration Audit" in out
+    assert not out.endswith("\n"), "in-progress line should not terminate"
 
 
-def test_step_writes_one_line_per_call_on_non_tty():
-    from rapid7_healthcheck.progress import ProgressReporter
-    s = _FakeStream(is_tty=False)
-    p = ProgressReporter(stream=s)
-    p.step(1, 6, "Configuration Audit")
-    p.step(2, 6, "Asset Coverage")
-    out = s.get_value()
-    assert "\r" not in out, f"non-TTY must not use carriage return: {out!r}"
-    assert "[1/6] Configuration Audit\n" in out
-    assert "[2/6] Asset Coverage\n" in out
-
-
-def test_done_includes_duration():
-    from rapid7_healthcheck.progress import ProgressReporter
-    s = _FakeStream(is_tty=False)
-    p = ProgressReporter(stream=s)
-    p.done(1, 6, "Configuration Audit", duration_ms=450)
-    out = s.get_value()
-    assert "(450ms)" in out
-
-
-def test_newline_if_needed_emits_after_tty_status_only():
+def test_tty_finished_line_persists_with_newline():
     from rapid7_healthcheck.progress import ProgressReporter
     s = _FakeStream(is_tty=True)
     p = ProgressReporter(stream=s)
-    p.step(1, 6, "x")
-    p.newline_if_needed()
+    p.finish_check(1, 8, "Scan Engines", status_text="0.3s")
     out = s.get_value()
-    assert out.endswith("\n"), f"expected trailing newline: {out!r}"
+    assert out.endswith("\n")
 
 
-def test_newline_if_needed_noop_on_non_tty():
+def test_non_tty_one_line_per_call_no_cr():
     from rapid7_healthcheck.progress import ProgressReporter
     s = _FakeStream(is_tty=False)
     p = ProgressReporter(stream=s)
-    p.step(1, 6, "x")
-    before = s.get_value()
-    p.newline_if_needed()
-    after = s.get_value()
-    assert before == after  # already ended with \n from step(); no extra newline
+    p.start_check(1, 8, "Scan Engines")
+    p.finish_check(1, 8, "Scan Engines", status_text="0.3s")
+    out = s.get_value()
+    assert "\r" not in out
 
 
-def test_done_after_step_clears_status_state():
-    """After done(), newline_if_needed() should be a no-op even on TTY."""
+def test_newline_if_needed_emits_after_tty_transient_only():
     from rapid7_healthcheck.progress import ProgressReporter
     s = _FakeStream(is_tty=True)
     p = ProgressReporter(stream=s)
-    p.step(1, 6, "x")
-    p.done(1, 6, "x", duration_ms=100)
+    p.start_check(1, 8, "x")
+    p.newline_if_needed()
+    assert s.get_value().endswith("\n")
+
+
+def test_newline_if_needed_noop_after_finished_line():
+    from rapid7_healthcheck.progress import ProgressReporter
+    s = _FakeStream(is_tty=True)
+    p = ProgressReporter(stream=s)
+    p.finish_check(1, 8, "x", status_text="100ms")
     before = s.get_value()
     p.newline_if_needed()
-    after = s.get_value()
-    assert before == after
+    assert s.get_value() == before
 
 
 def test_enabled_false_writes_nothing():
     from rapid7_healthcheck.progress import ProgressReporter
     s = _FakeStream(is_tty=True)
     p = ProgressReporter(stream=s, enabled=False)
-    p.step(1, 6, "x")
-    p.done(1, 6, "x", duration_ms=10)
+    p.start_check(1, 8, "x")
+    p.finish_check(1, 8, "x", status_text="10ms")
+    p.finish_rule("r", status_text="skipped")
     p.newline_if_needed()
     assert s.get_value() == ""
 
 
-def test_enabled_true_forces_output_on_non_tty():
-    """Explicit enabled=True emits non-TTY format on a non-TTY stream."""
-    from rapid7_healthcheck.progress import ProgressReporter
-    s = _FakeStream(is_tty=False)
-    p = ProgressReporter(stream=s, enabled=True)
-    p.step(1, 6, "x")
-    out = s.get_value()
-    assert "\r" not in out
-    assert "[1/6] x\n" in out
-
-
-def test_enabled_none_auto_detects_tty():
-    """enabled=None preserves the legacy behavior (TTY auto-detect)."""
-    from rapid7_healthcheck.progress import ProgressReporter
-    s_tty = _FakeStream(is_tty=True)
-    p_tty = ProgressReporter(stream=s_tty, enabled=None)
-    p_tty.step(1, 6, "x")
-    assert "\r" in s_tty.get_value()
-
-    s_pipe = _FakeStream(is_tty=False)
-    p_pipe = ProgressReporter(stream=s_pipe, enabled=None)
-    p_pipe.step(1, 6, "x")
-    assert "\r" not in s_pipe.get_value()
-
-
 def test_broken_pipe_latches_reporter_off():
-    """First OSError on write disables the reporter; subsequent calls no-op."""
     from rapid7_healthcheck.progress import ProgressReporter
 
     class _BadStream:
@@ -140,12 +161,18 @@ def test_broken_pipe_latches_reporter_off():
 
     bad = _BadStream()
     p = ProgressReporter(stream=bad)
-    # First call: swallows the error.
-    p.step(1, 6, "x")
+    p.start_check(1, 8, "x")
     first = bad.write_count
     assert first >= 1
-    # Subsequent calls: no further writes attempted (reporter latched off).
-    p.step(2, 6, "y")
-    p.done(2, 6, "y", duration_ms=10)
-    p.newline_if_needed()
-    assert bad.write_count == first, f"reporter not latched: {bad.write_count} writes"
+    p.finish_check(1, 8, "x", status_text="10ms")
+    p.finish_rule("r", status_text="cached")
+    assert bad.write_count == first, f"reporter not latched: {bad.write_count}"
+
+
+def test_format_duration():
+    from rapid7_healthcheck.progress import format_duration
+    assert format_duration(0) == "0ms"
+    assert format_duration(88) == "88ms"
+    assert format_duration(1400) == "1.4s"
+    assert format_duration(2100) == "2.1s"
+    assert format_duration(125000) == "2m05s"

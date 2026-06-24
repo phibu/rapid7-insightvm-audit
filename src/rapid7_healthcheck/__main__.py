@@ -297,12 +297,10 @@ def _run_checks(
                 status="skipped",
             ))
             if progress is not None:
-                skipped_label = f"{instance.name} (skipped)"
-                progress.step(idx, total, skipped_label)
-                progress.done(idx, total, skipped_label, duration_ms=0)
+                progress.finish_check(idx, total, instance.name, status_text="skipped")
             continue
         if progress is not None:
-            progress.step(idx, total, instance.name)
+            progress.start_check(idx, total, instance.name)
         logger.info("running check: %s", instance.name)
         start = time.monotonic()
         try:
@@ -328,9 +326,10 @@ def _run_checks(
                 ))
         finally:
             if progress is not None:
-                progress.done(
+                from rapid7_healthcheck.progress import format_duration
+                progress.finish_check(
                     idx, total, instance.name,
-                    duration_ms=int((time.monotonic() - start) * 1000),
+                    status_text=format_duration(int((time.monotonic() - start) * 1000)),
                 )
     return results
 

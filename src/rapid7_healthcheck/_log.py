@@ -34,13 +34,13 @@ class ProgressAwareStreamHandler(logging.StreamHandler):
     leaves the cursor parked at the end of the line with no trailing newline.
     A vanilla StreamHandler would then write its record starting at that
     cursor position — gluing the log message onto the status label
-    (e.g. ``[2/6] Scan Activity2026-05-07 14:23:45,375 INFO ...``).
+    (e.g. ``[ 25%] (2/8) Scan Activity2026-05-07 14:23:45,375 INFO ...``).
 
     This handler prefixes ``\\r\\x1b[K`` to each record on TTY streams so the
-    status line is cleared before the log is rendered. Progress.step()'s next
-    call also starts with ``\\r\\x1b[K`` and redraws cleanly on the now-empty
-    line below. On non-TTY streams (file redirect, CI), the prefix is omitted
-    so log files stay free of escape sequences.
+    status line is cleared before the log is rendered. The reporter's next
+    transient line also starts with ``\\r\\x1b[K`` and redraws cleanly on the
+    now-empty line below. On non-TTY streams (file redirect, CI), the prefix is
+    omitted so log files stay free of escape sequences.
     """
 
     def emit(self, record: logging.LogRecord) -> None:

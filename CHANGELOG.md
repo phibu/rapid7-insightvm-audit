@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Terminal progress output is hierarchical and clearer (#28).** The run loop
+  previously shared one flat counter between checks and an audit category's
+  rules, producing a confusing interleave (`[1/8]…[1/11]…[5/8]`). Checks now
+  render a global-percent line (`[ 50%] (4/8) Configuration Audit`) and their
+  rules indent one level beneath with human-readable names instead of rule ids
+  (`    └ Discovery template on prod site (123ms)`). Finished steps show a real
+  status — a formatted duration (`88ms`, `1.4s`, `2m05s`), or `skipped` —
+  replacing the misleading `0ms` that skipped/cached steps used to print.
+  `ProgressReporter` gains `start_check`/`finish_check`/`start_rule`/
+  `finish_rule` (the old flat `step`/`done` are removed); CLI flags
+  `--progress`/`--no-progress` are unchanged.
+
 ### Added
 
 - **Built-in scan templates are labelled, not suppressed (#30).** Findings
