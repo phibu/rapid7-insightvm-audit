@@ -7,36 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
+## [1.1.0] - 2026-06-24
 
-- **Agent-only coverage gap is now exact and fast (#32).** The
-  `op.asset_coverage.agent_only_assets` rule was rewritten: it previously
-  sampled ~100 Insight Agents and fetched each asset individually
-  (`GET /api/3/assets/{id}` in a serial loop — a chief cause of multi-minute
-  runs on large consoles) to produce a *directional estimate* of agents whose
-  IP fell outside any site's scan scope. It now reports the **exact, complete**
-  set of assets that belong to the Insight Agent site but to **no** scan-engine
-  site — issue #32's literal definition (site *membership*, not IP scope). The
-  agent site is resolved by name (`agent_site_name`, default
-  "Rapid7 Insight Agents"; its id varies per console), then a single
-  `POST /api/3/assets/search` with `site-id in [agent] and not-in [scan sites]`
-  returns the count from result metadata (no per-asset fetch). The rule is no
-  longer sampled; its summary keys changed (`agent_only_count` replaces the
-  `*_sampled` / `estimated_*` keys), so its finding signatures change once
-  (one-time cross-run delta churn). New knob:
-  `thresholds.asset_coverage.agent_site_name`.
-
-- **Terminal progress output is hierarchical and clearer (#28).** The run loop
-  previously shared one flat counter between checks and an audit category's
-  rules, producing a confusing interleave (`[1/8]…[1/11]…[5/8]`). Checks now
-  render a global-percent line (`[ 50%] (4/8) Configuration Audit`) and their
-  rules indent one level beneath with human-readable names instead of rule ids
-  (`    └ Discovery template on prod site (123ms)`). Finished steps show a real
-  status — a formatted duration (`88ms`, `1.4s`, `2m05s`), or `skipped` —
-  replacing the misleading `0ms` that skipped/cached steps used to print.
-  `ProgressReporter` gains `start_check`/`finish_check`/`start_rule`/
-  `finish_rule` (the old flat `step`/`done` are removed); CLI flags
-  `--progress`/`--no-progress` are unchanged.
+Issue batch: two false-positive fixes, a terminal-UX overhaul, three new
+capabilities (built-in-template labelling, credential governance rules, an
+installer + connectivity pre-flight), a leaner release ZIP, and a rewritten
+agent-only coverage check that is exact instead of sampled. New backward-
+compatible functionality and an additive CLI flag — no change to the frozen
+config schema or exit-code contract.
 
 ### Added
 
@@ -49,8 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Python 3.11+, creates `.venv`, installs the tool, bootstraps `.env` (API key
   written only to `.env`, never echoed) and `config.yaml` (from the example
   template), then runs `--check-connection`. The flag is an additive,
-  backward-compatible CLI addition (minor bump); existing invocations are
-  unaffected.
+  backward-compatible CLI addition; existing invocations are unaffected.
 
 - **Credential governance rules (#33).** Two new Configuration Audit rules,
   both `info` (governance guidance, never escalating the run on their own):
@@ -83,6 +60,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   degrades safely to unlabelled and a user template is never mislabelled.
 
 ### Changed
+
+- **Agent-only coverage gap is now exact and fast (#32).** The
+  `op.asset_coverage.agent_only_assets` rule was rewritten: it previously
+  sampled ~100 Insight Agents and fetched each asset individually
+  (`GET /api/3/assets/{id}` in a serial loop — a chief cause of multi-minute
+  runs on large consoles) to produce a *directional estimate* of agents whose
+  IP fell outside any site's scan scope. It now reports the **exact, complete**
+  set of assets that belong to the Insight Agent site but to **no** scan-engine
+  site — issue #32's literal definition (site *membership*, not IP scope). The
+  agent site is resolved by name (`agent_site_name`, default
+  "Rapid7 Insight Agents"; its id varies per console), then a single
+  `POST /api/3/assets/search` with `site-id in [agent] and not-in [scan sites]`
+  returns the count from result metadata (no per-asset fetch). The rule is no
+  longer sampled; its summary keys changed (`agent_only_count` replaces the
+  `*_sampled` / `estimated_*` keys), so its finding signatures change once
+  (one-time cross-run delta churn). New knob:
+  `thresholds.asset_coverage.agent_site_name`.
+
+- **Terminal progress output is hierarchical and clearer (#28).** The run loop
+  previously shared one flat counter between checks and an audit category's
+  rules, producing a confusing interleave (`[1/8]…[1/11]…[5/8]`). Checks now
+  render a global-percent line (`[ 50%] (4/8) Configuration Audit`) and their
+  rules indent one level beneath with human-readable names instead of rule ids
+  (`    └ Discovery template on prod site (123ms)`). Finished steps show a real
+  status — a formatted duration (`88ms`, `1.4s`, `2m05s`), or `skipped` —
+  replacing the misleading `0ms` that skipped/cached steps used to print.
+  `ProgressReporter` gains `start_check`/`finish_check`/`start_rule`/
+  `finish_rule` (the old flat `step`/`done` are removed); CLI flags
+  `--progress`/`--no-progress` are unchanged.
 
 - **Release ZIP is leaner (#26).** The runtime asset now strips dev/repo
   artifacts an operator never opens — the v3/v4 API specs (`docs/research/`,
