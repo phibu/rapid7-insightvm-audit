@@ -124,8 +124,7 @@ class AuditRunner:
 
         rules_cfg = category.rules_config(config)
         rule_results: list[RuleResult] = []
-        total_rules = len(category.registry)
-        for rule_idx, (rule_id, rule_cls) in enumerate(category.registry.items(), start=1):
+        for rule_id, rule_cls in category.registry.items():
             rule_cfg = rules_cfg.get(rule_id)
             if rule_cfg is None or not rule_cfg.enabled:
                 rule_results.append(RuleResult(
@@ -137,13 +136,10 @@ class AuditRunner:
                     sources=list(rule_cls.sources),
                 ))
                 if progress is not None:
-                    skipped_label = f"{category.progress_prefix}: {rule_id} (skipped)"
-                    progress.step(rule_idx, total_rules, skipped_label)
-                    progress.done(rule_idx, total_rules, skipped_label, duration_ms=0)
+                    progress.finish_rule(rule_cls.rule_name, status_text="skipped")
                 continue
-            label = f"{category.progress_prefix}: {rule_id}"
             if progress is not None:
-                progress.step(rule_idx, total_rules, label)
+                progress.start_rule(rule_cls.rule_name)
             rule_start = time.monotonic()
             try:
                 try:
@@ -173,9 +169,10 @@ class AuditRunner:
                     ))
             finally:
                 if progress is not None:
-                    progress.done(
-                        rule_idx, total_rules, label,
-                        duration_ms=int((time.monotonic() - rule_start) * 1000),
+                    from rapid7_healthcheck.progress import format_duration
+                    progress.finish_rule(
+                        rule_cls.rule_name,
+                        status_text=format_duration(int((time.monotonic() - rule_start) * 1000)),
                     )
 
         return CheckResult(

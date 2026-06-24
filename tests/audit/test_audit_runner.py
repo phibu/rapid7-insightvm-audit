@@ -79,11 +79,17 @@ class _RecordingProgress:
     def __init__(self) -> None:
         self.events: list = []
 
-    def step(self, current, total, label):
-        self.events.append(("step", current, total, label))
+    def start_check(self, idx, total, name):
+        self.events.append(("start_check", idx, total, name))
 
-    def done(self, current, total, label, *, duration_ms):
-        self.events.append(("done", current, total, label, duration_ms))
+    def finish_check(self, idx, total, name, *, status_text):
+        self.events.append(("finish_check", idx, total, name, status_text))
+
+    def start_rule(self, name):
+        self.events.append(("start_rule", name))
+
+    def finish_rule(self, name, *, status_text):
+        self.events.append(("finish_rule", name, status_text))
 
 
 _SENTINEL_SNAPSHOT = object()
@@ -375,7 +381,7 @@ def test_findings_are_flattened_from_rule_results():
 
 # --- progress choreography -------------------------------------------------
 
-def test_progress_emits_step_and_done_for_ran_rules():
+def test_progress_emits_start_and_finish_rule_for_ran_rules():
     cat = _category(
         registry={"r": _make_rule("r")},
         rules_config=lambda c: {"r": _RuleConfig()},
@@ -383,13 +389,15 @@ def test_progress_emits_step_and_done_for_ran_rules():
     )
     progress = _RecordingProgress()
     AuditRunner().run(cat, client=object(), config=object(), progress=progress)
-    labels = [e[3] for e in progress.events]
-    assert "fake-audit: r" in labels
-    assert any(e[0] == "step" and e[3] == "fake-audit: r" for e in progress.events)
-    assert any(e[0] == "done" and e[3] == "fake-audit: r" for e in progress.events)
+    # Rules are announced by human-readable name (rule_name), not rule_id.
+    assert ("start_rule", "Fake Rule") in progress.events
+    finishes = [e for e in progress.events if e[0] == "finish_rule" and e[1] == "Fake Rule"]
+    assert len(finishes) == 1
+    # A ran rule's status is a formatted duration (ends with 'ms' or 's'), never '0ms'-as-skip.
+    assert finishes[0][2].endswith(("ms", "s"))
 
 
-def test_progress_tags_skipped_rules_and_uses_zero_duration():
+def test_progress_finishes_skipped_rule_with_skipped_status():
     cat = _category(
         registry={"r": _make_rule("r")},
         rules_config=lambda c: {"r": _RuleConfig(enabled=False)},
@@ -397,8 +405,8 @@ def test_progress_tags_skipped_rules_and_uses_zero_duration():
     )
     progress = _RecordingProgress()
     AuditRunner().run(cat, client=object(), config=object(), progress=progress)
-    skipped_steps = [e for e in progress.events if e[0] == "step" and "(skipped)" in e[3]]
-    skipped_dones = [e for e in progress.events if e[0] == "done" and "(skipped)" in e[3] and e[4] == 0]
-    assert len(skipped_steps) == 1
-    assert len(skipped_dones) == 1
-    assert skipped_steps[0][3] == "fake-audit: r (skipped)"
+    # A disabled rule finishes with the word 'skipped' — not a misleading 0ms,
+    # and not a start_rule (it never ran).
+    finishes = [e for e in progress.events if e[0] == "finish_rule"]
+    assert finishes == [("finish_rule", "Fake Rule", "skipped")]
+    assert not any(e[0] == "start_rule" for e in progress.events)

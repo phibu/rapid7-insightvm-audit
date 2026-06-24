@@ -58,19 +58,24 @@ def test_audit_skips_disabled_rules(app_config, fake_client, monkeypatch):
 
 
 class _RecordingProgress:
-    """Captures step()/done() calls for assertions."""
+    """Captures the hierarchical progress calls for assertions."""
     def __init__(self) -> None:
         self.events: list = []
-    def step(self, current, total, label):
-        self.events.append(("step", current, total, label))
-    def done(self, current, total, label, *, duration_ms):
-        self.events.append(("done", current, total, label, duration_ms))
+    def start_check(self, idx, total, name):
+        self.events.append(("start_check", idx, total, name))
+    def finish_check(self, idx, total, name, *, status_text):
+        self.events.append(("finish_check", idx, total, name, status_text))
+    def start_rule(self, name):
+        self.events.append(("start_rule", name))
+    def finish_rule(self, name, *, status_text):
+        self.events.append(("finish_rule", name, status_text))
     def newline_if_needed(self):
         pass
 
 
 def test_audit_emits_skipped_progress_for_disabled_rule(app_config, fake_client, monkeypatch):
-    """Rules disabled in config emit a step+done pair tagged '(skipped)'."""
+    """Each disabled rule finishes with a 'skipped' status (and no start_rule,
+    since it never ran)."""
     from rapid7_healthcheck.config import AuditConfig, RuleConfig
     rules = {
         rid: RuleConfig(enabled=False, severity="warn", knobs={})
@@ -88,20 +93,16 @@ def test_audit_emits_skipped_progress_for_disabled_rule(app_config, fake_client,
     progress = _RecordingProgress()
     ConfigurationAuditCheck().run(fake_client, cfg, progress=progress)
 
-    skipped_steps = [
+    skipped_finishes = [
         e for e in progress.events
-        if e[0] == "step" and "(skipped)" in e[3]
+        if e[0] == "finish_rule" and e[2] == "skipped"
     ]
-    skipped_dones = [
-        e for e in progress.events
-        if e[0] == "done" and "(skipped)" in e[3] and e[4] == 0
-    ]
-    assert len(skipped_steps) == len(_RULE_REGISTRY), (
-        f"expected one (skipped) step per disabled rule, got {len(skipped_steps)}"
+    assert len(skipped_finishes) == len(_RULE_REGISTRY), (
+        f"expected one skipped finish per disabled rule, got {len(skipped_finishes)}"
     )
-    assert len(skipped_dones) == len(_RULE_REGISTRY), (
-        f"expected one (skipped) done per disabled rule, got {len(skipped_dones)}"
-    )
+    # No rule should have been started (all disabled), and no false 0ms anywhere.
+    assert not any(e[0] == "start_rule" for e in progress.events)
+    assert not any(len(e) > 2 and e[2] == "0ms" for e in progress.events)
 
 
 def test_one_rule_raising_does_not_break_others(app_config, fake_client, monkeypatch):

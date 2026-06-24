@@ -220,6 +220,55 @@ def test_template_audit_check_isolates_rule_errors(empty_registry):
     assert result.status == "fail"
 
 
+def test_template_audit_labels_builtin_findings_end_to_end(empty_registry):
+    """Wiring check: a finding raised against a built-in template id is labelled
+    (details['builtin']=True + clone guidance) by the time it leaves
+    TemplateAuditCheck.run; a user-template finding is untouched.
+    """
+    from rapid7_healthcheck.checks import Finding
+
+    class _TwoFindings:
+        rule_id = "tpl.two"
+        rule_name = "Two findings"
+        description = "Emits one built-in and one user finding"
+        default_severity = "warn"
+        expensive = False
+        sources: list[str] = []
+
+        def run(self, snapshot, severity, full_scan, sample_size, knobs):
+            return RuleResult(
+                rule_id=self.rule_id,
+                rule_name=self.rule_name,
+                description=self.description,
+                severity=severity,
+                status="warn",
+                findings=[
+                    Finding(severity="warn", message="Built-in problem.",
+                            details={"template_id": "exhaustive"}),
+                    Finding(severity="warn", message="User problem.",
+                            details={"template_id": "acme-weekly"}),
+                ],
+                sources=list(self.sources),
+            )
+
+    _TEMPLATE_RULE_REGISTRY["tpl.two"] = _TwoFindings
+    cfg = _minimal_config(
+        template_audit_enabled=True,
+        rules={"tpl.two": RuleConfig(enabled=True, severity="warn", knobs={})},
+    )
+
+    result = TemplateAuditCheck().run(MagicMock(), cfg)
+
+    findings = result.rule_results[0].findings
+    by_tid = {f.details["template_id"]: f for f in findings}
+    assert by_tid["exhaustive"].details["builtin"] is True
+    assert "cloning" in by_tid["exhaustive"].message.lower()
+    assert "builtin" not in by_tid["acme-weekly"].details
+    # The flattened CheckResult.findings mirror carries the labelled copy too.
+    flat = {f.details["template_id"]: f for f in result.findings}
+    assert flat["exhaustive"].details["builtin"] is True
+
+
 def test_template_audit_skipped_when_check_disabled():
     """template_audit.enabled=False makes the orchestrator return status='skipped'
     without iterating the registry.

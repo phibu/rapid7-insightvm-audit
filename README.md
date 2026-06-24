@@ -379,6 +379,8 @@ The Template Configuration Audit is a 4th audit category alongside Configuration
 
 Toggled via `checks.template_audit` (default `true`) and configured via the `template_audit:` block in `config.yaml`. Each rule has per-rule severity and (where applicable) tuning knobs.
 
+**Built-in templates are audited but labelled.** Rapid7's built-in (default, non-editable) templates stay in scope — a misconfigured built-in bound to a live site still scans it badly. Findings on a built-in carry `details.builtin: true` and note the remediation (clone the template, fix the clone, rebind the site) rather than being suppressed. Detection is by known template `id` (the v3 API exposes no built-in flag); see [ADR-0003](docs/adr/0003-audit-builtin-templates-but-label-them.md).
+
 ### Vulnerability-check + policy correctness
 
 | Rule (`rule_id`) | Default | Notes |
