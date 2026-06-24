@@ -29,6 +29,18 @@ Get credentials for your InsightVM Security Console first (see [Authenticating a
 
 Each release is published as a runtime-only zip on the [GitHub Releases page](https://github.com/phibu/rapid7-insightvm-audit/releases). The instructions below assume you're installing the latest release (`vX.Y.Z`) — replace the version in the commands with the one you downloaded.
 
+### Automated setup (Windows, recommended)
+
+From the extracted release folder, run the bundled installer — it's idempotent (safe to re-run) and does everything the manual Windows steps below do:
+
+```powershell
+.\install-healthcheck.ps1
+```
+
+It verifies Python 3.11+, creates `.venv`, installs the tool, prompts for your API key (written only to `.env`, never echoed) and console URL (into `config.yaml` copied from the example), then validates connectivity with `--check-connection`. Pass `-SkipConnectionCheck` for offline setup. If PowerShell blocks the script, run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once and retry. Prefer the manual steps below if you'd rather configure each piece yourself.
+
+> **Validate connectivity any time** without running a full check or writing a report: `python -m rapid7_healthcheck --config config.yaml --check-connection` (exit 0 = reachable and authenticated; 3 = config/auth/network failure).
+
 ### Windows
 
 1. **Install Python 3.11+** from [python.org](https://www.python.org/downloads/windows/) if you don't already have it. During the installer, tick **Add Python to PATH**. Verify in a new PowerShell window:

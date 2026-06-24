@@ -23,6 +23,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Automated setup + connectivity pre-flight (#27).** A new
+  `--check-connection` CLI flag validates config, credentials, and console
+  connectivity, then exits without running any checks or writing a report
+  (exit 0 = reachable and authenticated; 3 = config/auth/network failure). It
+  reuses the read-only `Rapid7Client.connect()` probe — no new API surface. A
+  bundled, idempotent `install-healthcheck.ps1` (Windows/PowerShell) verifies
+  Python 3.11+, creates `.venv`, installs the tool, bootstraps `.env` (API key
+  written only to `.env`, never echoed) and `config.yaml` (from the example
+  template), then runs `--check-connection`. The flag is an additive,
+  backward-compatible CLI addition (minor bump); existing invocations are
+  unaffected.
+
 - **Credential governance rules (#33).** Two new Configuration Audit rules,
   both `info` (governance guidance, never escalating the run on their own):
   - `site_credential_centralization_candidates` — surfaces site-specific
