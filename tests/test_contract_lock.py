@@ -30,8 +30,10 @@ from rapid7_healthcheck.__main__ import (
 # Surface 1 — CLI flags: the exact set of option strings is frozen at 1.0.
 # --------------------------------------------------------------------------
 
-# The frozen public CLI surface. Adding, removing, or renaming a flag must be a
-# deliberate decision (and a major-version bump), so it must change this set.
+# The frozen public CLI surface. Any change to this set must be deliberate and
+# update this list. Removing or renaming a flag is breaking (major bump);
+# *adding* a backward-compatible flag (existing invocations unaffected) is a
+# minor bump. `--check-connection` was added in 1.1 as an additive pre-flight.
 FROZEN_CLI_FLAGS = {
     "--config",
     "--output",
@@ -41,6 +43,7 @@ FROZEN_CLI_FLAGS = {
     "--log-format",
     "--progress",
     "--no-progress",
+    "--check-connection",
 }
 
 

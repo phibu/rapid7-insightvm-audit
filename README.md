@@ -29,6 +29,18 @@ Get credentials for your InsightVM Security Console first (see [Authenticating a
 
 Each release is published as a runtime-only zip on the [GitHub Releases page](https://github.com/phibu/rapid7-insightvm-audit/releases). The instructions below assume you're installing the latest release (`vX.Y.Z`) — replace the version in the commands with the one you downloaded.
 
+### Automated setup (Windows, recommended)
+
+From the extracted release folder, run the bundled installer — it's idempotent (safe to re-run) and does everything the manual Windows steps below do:
+
+```powershell
+.\install-healthcheck.ps1
+```
+
+It verifies Python 3.11+, creates `.venv`, installs the tool, prompts for your API key (written only to `.env`, never echoed) and console URL (into `config.yaml` copied from the example), then validates connectivity with `--check-connection`. Pass `-SkipConnectionCheck` for offline setup. If PowerShell blocks the script, run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once and retry. Prefer the manual steps below if you'd rather configure each piece yourself.
+
+> **Validate connectivity any time** without running a full check or writing a report: `python -m rapid7_healthcheck --config config.yaml --check-connection` (exit 0 = reachable and authenticated; 3 = config/auth/network failure).
+
 ### Windows
 
 1. **Install Python 3.11+** from [python.org](https://www.python.org/downloads/windows/) if you don't already have it. During the installer, tick **Add Python to PATH**. Verify in a new PowerShell window:
@@ -232,6 +244,8 @@ Rules (the `rule_id` is the config key under `audit.rules:`):
 | Scan and Report Schedules Overlap on Shared Scope (`scan_report_schedule_overlap`) | warn | `assumed_report_duration_minutes` (30), `assumed_scan_duration_minutes` (60) | Console Best Practices |
 | Scan Engine Version Drift or Stale Content Refresh (`engine_version_drift`) | warn | `refresh_stale_days` (7), `check_product_version` (true), `check_content_version` (true) | Console Best Practices |
 | Insight Agent Fleet Coverage (`insight_agent_deployed`) | info | `warn_below_percent` (70) — warn when agent coverage falls below this % of total assets | Insight Agent overview |
+| Credential Centralization Candidates (`site_credential_centralization_candidates`) | info | `local_name_pattern` (`^LOCAL_`) | Managing shared scan credentials |
+| Duplicate Credential Clusters (`duplicate_credential_clusters`) | info (per-cluster warn on name disagreement) | `local_name_pattern` (`^LOCAL_`) | Managing shared scan credentials |
 
 In fast mode (`audit.full_scan: false`), `agent_unauth_collision`'s per-site enumeration is capped at `audit.sample_size` and short-circuits on the first agent-managed asset; sites that hit the cap without a match are listed in a single aggregate info finding. Set `audit.full_scan: true` to remove the cap.
 

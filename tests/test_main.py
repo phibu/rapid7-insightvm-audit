@@ -174,6 +174,31 @@ def test_run_with_all_checks_disabled_writes_skipped_report(tmp_path, monkeypatc
     assert "SKIPPED" in html
 
 
+def test_check_connection_exits_healthy_without_writing_report(tmp_path, monkeypatch):
+    """--check-connection validates connectivity and exits 0, running no checks
+    and writing no report."""
+    cfg = _write_config(tmp_path)
+    monkeypatch.setenv("R7_API_KEY", "k")
+    with patch("rapid7_healthcheck.__main__.Rapid7Client") as MockClient:
+        MockClient.return_value.connect.return_value = None
+        code = run(["--config", str(cfg), "--check-connection"])
+    assert code == EXIT_HEALTHY
+    # No report written.
+    assert list((tmp_path / "reports").glob("*.html")) == []
+
+
+def test_check_connection_unreachable_returns_startup_exit(tmp_path, monkeypatch):
+    """When the console is unreachable, --check-connection returns the startup
+    exit code (same failure path as a normal run)."""
+    from rapid7_healthcheck.client import Rapid7ClientError
+    cfg = _write_config(tmp_path)
+    monkeypatch.setenv("R7_API_KEY", "k")
+    with patch("rapid7_healthcheck.__main__.Rapid7Client") as MockClient:
+        MockClient.return_value.connect.side_effect = Rapid7ClientError("no route")
+        code = run(["--config", str(cfg), "--check-connection"])
+    assert code == EXIT_STARTUP
+
+
 def test_run_explicit_output_path(tmp_path, monkeypatch):
     cfg = _write_config(tmp_path)
     monkeypatch.setenv("R7_API_KEY", "k")

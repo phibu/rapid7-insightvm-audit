@@ -23,6 +23,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Automated setup + connectivity pre-flight (#27).** A new
+  `--check-connection` CLI flag validates config, credentials, and console
+  connectivity, then exits without running any checks or writing a report
+  (exit 0 = reachable and authenticated; 3 = config/auth/network failure). It
+  reuses the read-only `Rapid7Client.connect()` probe — no new API surface. A
+  bundled, idempotent `install-healthcheck.ps1` (Windows/PowerShell) verifies
+  Python 3.11+, creates `.venv`, installs the tool, bootstraps `.env` (API key
+  written only to `.env`, never echoed) and `config.yaml` (from the example
+  template), then runs `--check-connection`. The flag is an additive,
+  backward-compatible CLI addition (minor bump); existing invocations are
+  unaffected.
+
+- **Credential governance rules (#33).** Two new Configuration Audit rules,
+  both `info` (governance guidance, never escalating the run on their own):
+  - `site_credential_centralization_candidates` — surfaces site-specific
+    credentials whose identity recurs across multiple sites (could be a single
+    shared credential) and shared credentials assigned to only one site
+    ("shared" in name only).
+  - `duplicate_credential_clusters` — groups credentials (site + shared) that
+    look like the same account; a cluster escalates to `warn` only when its
+    members carry different names (uncoordinated copies that drift on rotation).
+    Expensive — reads every site's credentials, so it honours
+    `audit.sample_size` in fast mode and discloses any truncation.
+
+  Both key credentials by **non-secret identity** — `(service, username,
+  domain, hostRestriction, portRestriction)`, **never the password** (the v3
+  API does not return secrets on GET, and a secret has no place in a grouping
+  key). Credentials named to match `local_name_pattern` (default `^LOCAL_`,
+  per-rule tunable) are treated as intentional locals and excluded. Read-only.
+
 - **Built-in scan templates are labelled, not suppressed (#30).** Findings
   raised against Rapid7's built-in (default, non-editable) scan templates now
   carry `details.builtin = true` and append clone-and-rebind remediation to

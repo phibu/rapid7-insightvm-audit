@@ -77,6 +77,15 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--log-file", default=None, help="Also write logs to this file")
     p.add_argument("--no-log-file", action="store_true", help="Suppress the default-on run log file")
     p.add_argument(
+        "--check-connection",
+        action="store_true",
+        help=(
+            "Validate config, credentials, and console connectivity, then exit "
+            "(no checks run, no report written). Exit 0 = reachable; 3 = "
+            "config/auth/network failure."
+        ),
+    )
+    p.add_argument(
         "--log-format",
         choices=["plain", "cmtrace", "json"],
         default=None,
@@ -385,6 +394,16 @@ def run(argv: list[str] | None = None) -> int:
     except Rapid7ClientError as e:
         logger.error("could not reach Rapid7 (%s); check base_url and network", e)
         return EXIT_STARTUP
+
+    if args.check_connection:
+        # Pre-flight: config loaded, auth resolved, and the console answered
+        # client.connect(). Report success and exit before running any checks
+        # or writing a report. Failures already returned EXIT_STARTUP above.
+        logger.info(
+            "connection OK: reached %s and authenticated successfully",
+            cfg.rapid7.base_url,
+        )
+        return EXIT_HEALTHY
 
     cloud_client, cloud_error = _build_cloud_client_or_none(cfg.cloud_integration)
     if cloud_error is not None:
