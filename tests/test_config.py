@@ -243,35 +243,15 @@ def test_checks_configuration_audit_default_when_missing(tmp_path):
     assert cfg.checks["configuration_audit"] is True
 
 
-def test_auth_mode_defaults_to_api_key(tmp_path):
-    cfg = load_config(write(tmp_path, VALID_YAML))
-    assert cfg.rapid7.auth_mode == "api_key"
-
-
-def test_auth_mode_accepts_basic(tmp_path):
+def test_auth_mode_is_rejected_as_unknown_key(tmp_path):
+    """The Console v3 API authenticates with HTTP Basic only; the auth_mode
+    knob was removed. Any leftover ``auth_mode:`` in an old config.yaml is now
+    rejected as an unknown key so operators notice and delete the dead line."""
     body = VALID_YAML.replace(
         "max_retries: 3",
         "max_retries: 3\n  auth_mode: basic",
     )
-    cfg = load_config(write(tmp_path, body))
-    assert cfg.rapid7.auth_mode == "basic"
-
-
-def test_auth_mode_rejects_unknown_value(tmp_path):
-    body = VALID_YAML.replace(
-        "max_retries: 3",
-        "max_retries: 3\n  auth_mode: oauth2",
-    )
-    with pytest.raises(ConfigError, match="auth_mode"):
-        load_config(write(tmp_path, body))
-
-
-def test_auth_mode_rejects_non_string(tmp_path):
-    body = VALID_YAML.replace(
-        "max_retries: 3",
-        "max_retries: 3\n  auth_mode: 42",
-    )
-    with pytest.raises(ConfigError, match="auth_mode"):
+    with pytest.raises(ConfigError, match="unknown key"):
         load_config(write(tmp_path, body))
 
 
@@ -1478,16 +1458,17 @@ class TestTask5Report:
 
 
 class TestTask5Rapid7:
-    """Pin rapid7 auth_mode/range behavior through migration."""
+    """Pin rapid7 range behavior and auth_mode removal through migration."""
 
-    def test_rapid7_auth_mode_invalid_rejected(self, tmp_path):
-        """auth_mode not in allowlist must be rejected."""
+    def test_rapid7_auth_mode_rejected_as_unknown_key(self, tmp_path):
+        """auth_mode was removed (Console v3 is HTTP Basic only); any leftover
+        ``auth_mode:`` must be rejected as an unknown key."""
         from rapid7_healthcheck.config import _build_rapid7_config
-        with pytest.raises(ConfigError, match="auth_mode"):
+        with pytest.raises(ConfigError, match="unknown key"):
             _build_rapid7_config({
                 "base_url": "https://x", "verify_tls": True,
                 "request_timeout_seconds": 30, "max_retries": 3,
-                "auth_mode": "oauth2",
+                "auth_mode": "basic",
             })
 
     def test_rapid7_max_retries_zero_rejected(self, tmp_path):

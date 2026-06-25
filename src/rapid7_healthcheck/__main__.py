@@ -174,35 +174,27 @@ def _build_cloud_client_or_none(
 
 def _resolve_auth_or_none(
     rapid7: Rapid7Config,
-) -> tuple[tuple[str | None, tuple[str, str] | None] | None, str | None]:
-    """Resolve the ``(api_key, basic_auth)`` the Rapid7Client takes from the
-    configured ``auth_mode`` plus the environment, or ``(None, error)``.
+) -> tuple[tuple[str, str] | None, str | None]:
+    """Resolve the ``basic_auth`` pair the Rapid7Client takes from the
+    environment, or ``(None, error)``.
 
     Peer of ``_build_cloud_client_or_none``: reads ``os.environ`` inside and
     returns ``(value, error_or_None)``. The ``error`` string (when non-None) is
-    logged and surfaced as a startup error -- a configured ``auth_mode`` whose
-    env vars are unset is an operator mistake, so __main__ exits 3 rather than
-    proceeding without credentials.
+    logged and surfaced as a startup error -- missing credentials are an
+    operator mistake, so __main__ exits 3 rather than proceeding without them.
 
-    On success the value is a ``(api_key, basic_auth)`` pair where exactly one
-    side is populated: ``(key, None)`` for ``api_key`` mode, ``(None, (user,
-    password))`` for ``basic``. ``auth_mode`` is already validated against
-    ``_VALID_AUTH_MODES`` by config loading, so no else-branch is needed.
+    The Console v3 API authenticates with HTTP Basic only (X-Api-Key is a v4
+    Insight Platform mechanism the Console rejects), so the only credentials
+    are ``R7_BASIC_USER`` / ``R7_BASIC_PASSWORD``. ``rapid7`` is accepted for
+    signature parity with the cloud resolver but is currently unused.
     """
-    if rapid7.auth_mode == "api_key":
-        api_key = os.environ.get("R7_API_KEY")
-        if not api_key:
-            return None, "R7_API_KEY environment variable is not set"
-        return (api_key, None), None
-
-    # basic
     user = os.environ.get("R7_BASIC_USER")
     password = os.environ.get("R7_BASIC_PASSWORD")
     if not user:
         return None, "R7_BASIC_USER environment variable is not set"
     if not password:
         return None, "R7_BASIC_PASSWORD environment variable is not set"
-    return (None, (user, password)), None
+    return (user, password), None
 
 
 def _resolve_log_file(args: argparse.Namespace, cfg: AppConfig, log_format: str) -> Path | None:
@@ -367,11 +359,10 @@ def run(argv: list[str] | None = None) -> int:
         log_format=effective_log_format,
     )
 
-    auth, auth_error = _resolve_auth_or_none(cfg.rapid7)
+    basic_auth, auth_error = _resolve_auth_or_none(cfg.rapid7)
     if auth_error is not None:
         logger.error(auth_error)
         return EXIT_STARTUP
-    api_key, basic_auth = auth
 
     if not cfg.rapid7.verify_tls:
         logger.warning("TLS verification disabled (verify_tls: false)")
@@ -379,7 +370,6 @@ def run(argv: list[str] | None = None) -> int:
     try:
         client = Rapid7Client(
             base_url=cfg.rapid7.base_url,
-            api_key=api_key,
             basic_auth=basic_auth,
             verify_tls=cfg.rapid7.verify_tls,
             timeout_seconds=cfg.rapid7.request_timeout_seconds,

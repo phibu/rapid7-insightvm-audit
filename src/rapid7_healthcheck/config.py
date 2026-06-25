@@ -15,16 +15,12 @@ class ConfigError(Exception):
     """Raised when configuration is missing, malformed, or has unknown keys."""
 
 
-_VALID_AUTH_MODES = ("api_key", "basic")
-
-
 @dataclass(frozen=True)
 class Rapid7Config:
     base_url: str
     verify_tls: bool
     request_timeout_seconds: int
     max_retries: int
-    auth_mode: str = "api_key"
     parallel_pages: int = 1
     page_size: int = 250
 
@@ -382,18 +378,17 @@ _THRESHOLD_NESTED = {
 def _build_rapid7_config(data: Any) -> Rapid7Config:
     """Validator for the `rapid7:` block.
 
-    Unknown keys reject, scalar types enforced by `_from_dict`. Enum
-    membership (auth_mode), positive-int fields (request_timeout_seconds,
-    max_retries), range checks (parallel_pages [1,16], page_size [1,500]),
-    and the >8 parallel_pages warning are enforced in the post_validate hook.
+    Unknown keys reject, scalar types enforced by `_from_dict`. Positive-int
+    fields (request_timeout_seconds, max_retries), range checks (parallel_pages
+    [1,16], page_size [1,500]), and the >8 parallel_pages warning are enforced
+    in the post_validate hook.
+
+    The Console v3 API authenticates with HTTP Basic only, so there is no
+    auth-mode knob: credentials come from R7_BASIC_USER / R7_BASIC_PASSWORD.
 
     Note: the base_url HTTPS check lives in `_build_app_config`, not here.
     """
     def pv(c: Rapid7Config) -> Rapid7Config:
-        if c.auth_mode not in _VALID_AUTH_MODES:
-            raise ConfigError(
-                f"rapid7.auth_mode: must be one of {list(_VALID_AUTH_MODES)}, got {c.auth_mode!r}"
-            )
         _positive_int_fields(c, "rapid7", ("request_timeout_seconds", "max_retries"))
         if not (1 <= c.parallel_pages <= 16):
             raise ConfigError(

@@ -15,8 +15,9 @@ rapid7:
   max_retries: 3                               # retries on transient errors before a call fails
   parallel_pages: 1                            # pages fetched concurrently per paginated call (1-16; 1 = sequential)
   page_size: 250                               # page size for paginated calls (1-500)
-  # auth_mode: api_key                         # optional, default -- reads R7_API_KEY
-  # auth_mode: basic                           # optional -- reads R7_BASIC_USER + R7_BASIC_PASSWORD
+  # Auth: the Console v3 API uses HTTP Basic only (X-Api-Key is a v4 Insight
+  # Platform mechanism the Console rejects). Set R7_BASIC_USER + R7_BASIC_PASSWORD
+  # in .env -- there is no auth_mode knob.
 
 # -----------------------------------------------------------------------------
 # Report output

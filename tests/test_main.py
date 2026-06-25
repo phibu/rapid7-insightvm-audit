@@ -79,63 +79,16 @@ def test_pick_exit_code_error_treated_as_fail():
     ]) == EXIT_FAIL
 
 
-def test_run_missing_api_key_returns_startup_exit(tmp_path, monkeypatch):
+def test_run_missing_basic_user_returns_startup_exit(tmp_path, monkeypatch):
     cfg = _write_config(tmp_path)
-    monkeypatch.delenv("R7_API_KEY", raising=False)
-    code = run(["--config", str(cfg)])
-    assert code == EXIT_STARTUP
-
-
-def _write_basic_auth_config(tmp_path: Path) -> Path:
-    """Variant of _write_config with auth_mode: basic."""
-    body = textwrap.dedent(f"""
-        rapid7:
-          base_url: https://acme.hosted.rapid7.com
-          verify_tls: true
-          request_timeout_seconds: 30
-          max_retries: 3
-          auth_mode: basic
-        report:
-          output_dir: {tmp_path / "reports"}
-          filename_pattern: "rapid7-health-{{timestamp}}.html"
-          title: "T"
-        thresholds:
-          scan_engines:
-            last_contact_warn_hours: 2
-            last_contact_fail_hours: 24
-          scan_activity:
-            recent_window_days: 7
-            stuck_scan_hours: 24
-            site_no_scan_days: 14
-          asset_coverage:
-            stale_asset_days: 30
-            flag_unscanned_assets: true
-            never_scanned_days: 90
-          data_quality:
-            flag_missing_os: true
-            flag_empty_sites: true
-        checks:
-          scan_engines: false
-          scan_activity: false
-          asset_coverage: false
-          data_quality: false
-          configuration_audit: false
-    """).strip()
-    p = tmp_path / "config.yaml"
-    p.write_text(body, encoding="utf-8")
-    return p
-
-
-def test_run_basic_mode_missing_user_returns_startup_exit(tmp_path, monkeypatch):
-    cfg = _write_basic_auth_config(tmp_path)
     monkeypatch.delenv("R7_BASIC_USER", raising=False)
     monkeypatch.setenv("R7_BASIC_PASSWORD", "pw")
     code = run(["--config", str(cfg)])
     assert code == EXIT_STARTUP
 
 
-def test_run_basic_mode_missing_password_returns_startup_exit(tmp_path, monkeypatch):
-    cfg = _write_basic_auth_config(tmp_path)
+def test_run_missing_basic_password_returns_startup_exit(tmp_path, monkeypatch):
+    cfg = _write_config(tmp_path)
     monkeypatch.setenv("R7_BASIC_USER", "svc")
     monkeypatch.delenv("R7_BASIC_PASSWORD", raising=False)
     code = run(["--config", str(cfg)])
@@ -143,10 +96,9 @@ def test_run_basic_mode_missing_password_returns_startup_exit(tmp_path, monkeypa
 
 
 def test_run_basic_mode_passes_basic_auth_to_client(tmp_path, monkeypatch):
-    cfg = _write_basic_auth_config(tmp_path)
+    cfg = _write_config(tmp_path)
     monkeypatch.setenv("R7_BASIC_USER", "svc")
     monkeypatch.setenv("R7_BASIC_PASSWORD", "pw")
-    monkeypatch.delenv("R7_API_KEY", raising=False)
 
     with patch("rapid7_healthcheck.__main__.Rapid7Client") as MockClient:
         MockClient.return_value.connect.return_value = None
@@ -154,13 +106,15 @@ def test_run_basic_mode_passes_basic_auth_to_client(tmp_path, monkeypatch):
 
     assert code == EXIT_HEALTHY
     _, kwargs = MockClient.call_args
-    assert kwargs["api_key"] is None
     assert kwargs["basic_auth"] == ("svc", "pw")
+    # Console v3 is HTTP Basic only -- no api_key kwarg exists anymore.
+    assert "api_key" not in kwargs
 
 
 def test_run_with_all_checks_disabled_writes_skipped_report(tmp_path, monkeypatch):
     cfg = _write_config(tmp_path)
-    monkeypatch.setenv("R7_API_KEY", "k")
+    monkeypatch.setenv("R7_BASIC_USER", "svc")
+    monkeypatch.setenv("R7_BASIC_PASSWORD", "pw")
 
     with patch("rapid7_healthcheck.__main__.Rapid7Client") as MockClient:
         instance = MockClient.return_value
@@ -178,7 +132,8 @@ def test_check_connection_exits_healthy_without_writing_report(tmp_path, monkeyp
     """--check-connection validates connectivity and exits 0, running no checks
     and writing no report."""
     cfg = _write_config(tmp_path)
-    monkeypatch.setenv("R7_API_KEY", "k")
+    monkeypatch.setenv("R7_BASIC_USER", "svc")
+    monkeypatch.setenv("R7_BASIC_PASSWORD", "pw")
     with patch("rapid7_healthcheck.__main__.Rapid7Client") as MockClient:
         MockClient.return_value.connect.return_value = None
         code = run(["--config", str(cfg), "--check-connection"])
@@ -192,7 +147,8 @@ def test_check_connection_unreachable_returns_startup_exit(tmp_path, monkeypatch
     exit code (same failure path as a normal run)."""
     from rapid7_healthcheck.client import Rapid7ClientError
     cfg = _write_config(tmp_path)
-    monkeypatch.setenv("R7_API_KEY", "k")
+    monkeypatch.setenv("R7_BASIC_USER", "svc")
+    monkeypatch.setenv("R7_BASIC_PASSWORD", "pw")
     with patch("rapid7_healthcheck.__main__.Rapid7Client") as MockClient:
         MockClient.return_value.connect.side_effect = Rapid7ClientError("no route")
         code = run(["--config", str(cfg), "--check-connection"])
@@ -201,7 +157,8 @@ def test_check_connection_unreachable_returns_startup_exit(tmp_path, monkeypatch
 
 def test_run_explicit_output_path(tmp_path, monkeypatch):
     cfg = _write_config(tmp_path)
-    monkeypatch.setenv("R7_API_KEY", "k")
+    monkeypatch.setenv("R7_BASIC_USER", "svc")
+    monkeypatch.setenv("R7_BASIC_PASSWORD", "pw")
     out = tmp_path / "fixed.html"
     with patch("rapid7_healthcheck.__main__.Rapid7Client") as MockClient:
         MockClient.return_value.connect.return_value = None
@@ -212,7 +169,8 @@ def test_run_explicit_output_path(tmp_path, monkeypatch):
 
 def test_run_bad_config_returns_startup_exit(tmp_path, monkeypatch):
     bad = tmp_path / "missing.yaml"
-    monkeypatch.setenv("R7_API_KEY", "k")
+    monkeypatch.setenv("R7_BASIC_USER", "svc")
+    monkeypatch.setenv("R7_BASIC_PASSWORD", "pw")
     code = run(["--config", str(bad)])
     assert code == EXIT_STARTUP
 
@@ -366,7 +324,8 @@ def test_run_check_exception_becomes_error_status(tmp_path, monkeypatch):
     """).strip()
     cfg = tmp_path / "config.yaml"
     cfg.write_text(body, encoding="utf-8")
-    monkeypatch.setenv("R7_API_KEY", "k")
+    monkeypatch.setenv("R7_BASIC_USER", "svc")
+    monkeypatch.setenv("R7_BASIC_PASSWORD", "pw")
 
     def boom(self, client, config, **_kwargs):
         raise RuntimeError("simulated check failure")
@@ -387,14 +346,16 @@ def test_run_check_exception_becomes_error_status(tmp_path, monkeypatch):
     assert "simulated check failure" in html
 
 
-def test_api_key_never_leaks_to_stderr_or_report(tmp_path, monkeypatch, caplog):
-    """Whatever the run does, the API key must not end up in logs or the rendered HTML.
+def test_credentials_never_leak_to_stderr_or_report(tmp_path, monkeypatch, caplog):
+    """Whatever the run does, the basic-auth password must not end up in logs or
+    the rendered HTML.
 
-    This is a guardrail: the value goes into `Rapid7Client._headers["X-Api-Key"]` and
-    nowhere else by design. If a future change starts logging request bodies/URLs/headers
-    or stuffs the key into the report context, this test will catch it.
+    This is a guardrail: the value goes into `Rapid7Client`'s `auth=(user, pw)`
+    tuple (passed to requests) and nowhere else by design. If a future change
+    starts logging request bodies/URLs/headers or stuffs the credential into the
+    report context, this test will catch it.
     """
-    secret = "supersecretapikey-zZyx123-DO-NOT-LEAK"
+    secret = "supersecretpassword-zZyx123-DO-NOT-LEAK"
 
     body = textwrap.dedent(f"""
         rapid7:
@@ -430,7 +391,8 @@ def test_api_key_never_leaks_to_stderr_or_report(tmp_path, monkeypatch, caplog):
     """).strip()
     cfg = tmp_path / "config.yaml"
     cfg.write_text(body, encoding="utf-8")
-    monkeypatch.setenv("R7_API_KEY", secret)
+    monkeypatch.setenv("R7_BASIC_USER", "svc")
+    monkeypatch.setenv("R7_BASIC_PASSWORD", secret)
 
     out = tmp_path / "report.html"
     with patch("rapid7_healthcheck.__main__.Rapid7Client") as MockClient:
@@ -440,14 +402,14 @@ def test_api_key_never_leaks_to_stderr_or_report(tmp_path, monkeypatch, caplog):
 
     assert code == EXIT_HEALTHY
 
-    # API key must not appear in the rendered report.
+    # The credential must not appear in the rendered report.
     html = out.read_text(encoding="utf-8")
-    assert secret not in html, "API key leaked into the HTML report"
+    assert secret not in html, "credential leaked into the HTML report"
 
-    # API key must not appear in any log record (message, args, or formatted output).
+    # The credential must not appear in any log record (message, args, or formatted output).
     for record in caplog.records:
         assert secret not in record.getMessage(), (
-            f"API key leaked into log record: {record.name} {record.levelname}"
+            f"credential leaked into log record: {record.name} {record.levelname}"
         )
 
 
@@ -510,7 +472,8 @@ def test_run_with_audit_enabled_writes_audit_report(tmp_path, monkeypatch):
     """).strip()
     cfg = tmp_path / "config.yaml"
     cfg.write_text(body, encoding="utf-8")
-    monkeypatch.setenv("R7_API_KEY", "k")
+    monkeypatch.setenv("R7_BASIC_USER", "svc")
+    monkeypatch.setenv("R7_BASIC_PASSWORD", "pw")
 
     out_path = tmp_path / "out.html"
     with patch("rapid7_healthcheck.__main__.Rapid7Client") as MockClient:
@@ -534,7 +497,8 @@ def test_cli_log_format_overrides_config(tmp_path, monkeypatch):
         'title: "T"\n  log_format: cmtrace',
     )
     cfg_path.write_text(body, encoding="utf-8")
-    monkeypatch.delenv("R7_API_KEY", raising=False)
+    monkeypatch.delenv("R7_BASIC_USER", raising=False)
+    monkeypatch.delenv("R7_BASIC_PASSWORD", raising=False)
 
     captured = {}
     real_setup = __import__("rapid7_healthcheck.__main__", fromlist=["_setup_logging"])._setup_logging
@@ -546,7 +510,7 @@ def test_cli_log_format_overrides_config(tmp_path, monkeypatch):
     with patch("rapid7_healthcheck.__main__._setup_logging", side_effect=spy):
         code = run(["--config", str(cfg_path), "--log-format", "json", "--no-log-file"])
 
-    assert code == EXIT_STARTUP  # short-circuits via missing API key
+    assert code == EXIT_STARTUP  # short-circuits via missing basic-auth creds
     assert captured["log_format"] == "json"  # CLI override wins
 
 
@@ -558,7 +522,8 @@ def test_cli_log_format_falls_back_to_config(tmp_path, monkeypatch):
         'title: "T"\n  log_format: cmtrace',
     )
     cfg_path.write_text(body, encoding="utf-8")
-    monkeypatch.delenv("R7_API_KEY", raising=False)
+    monkeypatch.delenv("R7_BASIC_USER", raising=False)
+    monkeypatch.delenv("R7_BASIC_PASSWORD", raising=False)
 
     captured = {}
     real_setup = __import__("rapid7_healthcheck.__main__", fromlist=["_setup_logging"])._setup_logging

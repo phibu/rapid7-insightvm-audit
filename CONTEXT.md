@@ -5,7 +5,7 @@ Domain and architecture language for the read-only audit tool that runs against 
 ## The two Rapid7 APIs
 
 **Console API (v3)**:
-The on-prem Security Console REST API under `/api/3/...`. Responses wrap results in `{resources, page}`, with `page.totalPages` driving pagination. Auth is `X-Api-Key` or HTTP Basic.
+The on-prem Security Console REST API under `/api/3/...`. Responses wrap results in `{resources, page}`, with `page.totalPages` driving pagination. Auth is HTTP Basic only (the Console does not accept `X-Api-Key` -- that is the v4 Cloud API's mechanism).
 _Avoid_: "the main API", "the REST API" (ambiguous -- there are two).
 
 **Cloud Integrations API (v4)**:

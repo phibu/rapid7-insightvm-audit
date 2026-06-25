@@ -1,29 +1,19 @@
 # Rapid7 InsightVM Health Check
 
-Read-only health check for a Rapid7 InsightVM environment. Calls the InsightVM Security Console API (v3) with a read-only API key and produces a single self-contained HTML report. The optional Cloud Drift Audit additionally calls the Insight Platform Cloud Integrations API (v4).
+Read-only health check for a Rapid7 InsightVM environment. Calls the InsightVM Security Console API (v3) with read-only HTTP Basic credentials and produces a single self-contained HTML report. The optional Cloud Drift Audit additionally calls the Insight Platform Cloud Integrations API (v4).
 
-### What's new in 1.1.1
+### What's new
 
-- **The Windows installer now runs on Windows PowerShell 5.1 *and* PowerShell 7.** Earlier copies of `install-healthcheck.ps1` failed to start under the PowerShell 5.1 that ships with Windows (a file-encoding issue produced confusing "missing `)` / `}`" errors). The script now parses cleanly on both. No action needed beyond using the 1.1.1 installer.
-- **The installer sets up TLS for corporate proxies automatically.** If you're behind a TLS-inspecting proxy (Zscaler, Palo Alto, Netskope, etc.), setup used to fail with a certificate error. `install-healthcheck.ps1` now installs `pip-system-certs` first, so `pip` and the tool trust your machine's certificate store out of the box. See [Troubleshooting](#troubleshooting) if you still hit a TLS error.
-
-Highlights from earlier releases:
-
-- **0.8.0** -- new audit category: **Template Configuration Audit**, a 4th sibling alongside Configuration / User & Permission / Cloud Drift. InsightVM scan templates have 50+ tunable settings; a misconfigured template can complete scans successfully while producing wrong or degraded results. The vertical walks every template and flags 17 categories of settings that don't match best practices (vuln-enabled with no checks selected, policy-enabled with no policies, web spider with no credentials, telnet regex that fails to compile, near-duplicate templates, etc.). Default-on; toggle via `checks.template_audit: false`. See [Template Configuration Audit](#template-configuration-audit).
-- **1.0.0 / 1.1.0** -- the config schema, exit codes, and CLI flags are a frozen, stable contract. 1.1.0 added the `--check-connection` connectivity pre-flight and the bundled Windows installer, labelled findings against built-in scan templates, added credential-governance rules, and made the agent-only coverage check exact instead of sampled.
-- **0.7.0** -- rule-card streamline. Every rule that has a meaningful per-item population renders a standardized `N examined · N passed · N failed` line in the report card. New `RuleResult.card_summary` field; existing `summary` keys unchanged (delta-blob byte-compatible).
-- **0.6.6** -- Ghost Assets rule (`op.asset_coverage.ghost_assets` -- fail when an asset has neither OS nor hostname); report header Inventory Totals strip (assets / sites / engines / asset groups / scans).
-- **0.6.5** -- example `config.yaml` restructured (this README is now the authoritative key reference); per-rule severity & enable in user-permission audit; correctness fixes for zero-GA detection, SSO external-source detection, FQDN trailing-dot match.
-- **0.5.0** -- new **Cloud Drift Audit** category (7th check), reconciling the Security Console against the Insight Platform v4 API.
-- **0.3.x** -- **User & Permission Audit** category matured; `--progress` / `--no-progress` flags; per-call `audit.agents_timeout_seconds`.
-- **0.2.8** -- opt-in concurrent pagination (`rapid7.parallel_pages`) and tunable `rapid7.page_size`; default request timeout raised to 60 s.
-- **0.2.0** -- report interactivity layer: sticky filter bar (severity chips, search, "Changed since last run"), three-state theme toggle, URL-hash-synced filter state, native `<details>` rule cards for accessibility.
+- **1.1.2 -- BREAKING: Security Console auth is HTTP Basic only.** The v3 Console API does not accept an `X-Api-Key` header (that is a v4 Insight Platform mechanism), so the misleading `api_key` auth path is gone: the `rapid7.auth_mode` config key is removed, and console credentials now come from `R7_BASIC_USER` / `R7_BASIC_PASSWORD` instead of `R7_API_KEY`. To migrate, delete any `auth_mode:` line from `config.yaml` and replace `R7_API_KEY` in `.env` with the two basic-auth vars. `R7_CLOUD_API_KEY` (Cloud Drift Audit, v4) is unaffected. See [Authenticating against your console](#authenticating-against-your-console).
+- **1.1 (incl. 1.1.1)** -- bundled Windows installer (`install-healthcheck.ps1`, now parses on PowerShell 5.1 and 7, sets up TLS for corporate proxies) and the `--check-connection` connectivity pre-flight; built-in scan templates are labelled rather than suppressed; two credential-governance audit rules; the agent-only coverage check is now exact instead of sampled; hierarchical terminal progress and a leaner release ZIP.
+- **1.0** -- first stable release. The `config.yaml` schema, exit codes, and CLI flags are a **frozen contract** guarded by `tests/test_contract_lock.py`; a breaking change to any of them requires a major bump. Report internals and the audit `rule_id` set are explicitly not frozen.
+- **0.9** -- five new Template Configuration Audit rules covering asset-discovery and discovery-performance settings (TCP-reset-as-asset, all-UDP-ports, discovery retry/timeout limits, Windows-services discovery), each grounded in the Rapid7 *Scan Template Best Practices* doc.
 
 ## Requirements
 
 - Python 3.11+
 - Network access to your **InsightVM Security Console** (`https://<console-host>:3780` for self-hosted, or `https://<tenant>.hosted.rapid7.com` for Rapid7-hosted)
-- A read-only **Security Console API key** -- or HTTP Basic Auth credentials (see [Authenticating against your console](#authenticating-against-your-console))
+- Read-only **Security Console HTTP Basic Auth credentials** -- a console username and password, ideally a dedicated service account (see [Authenticating against your console](#authenticating-against-your-console))
 - *Optional, only for the Cloud Drift Audit:* network access to your Insight Platform region URL (e.g. `https://us.api.insight.rapid7.com`) and a separate Insight Platform API key
 
 ## Setup
@@ -40,7 +30,7 @@ From the extracted release folder, run the bundled installer -- it's idempotent 
 .\install-healthcheck.ps1
 ```
 
-It verifies Python 3.11+, creates `.venv`, installs the tool, prompts for your API key (written only to `.env`, never echoed) and console URL (into `config.yaml` copied from the example), then validates connectivity with `--check-connection`. Pass `-SkipConnectionCheck` for offline setup. If PowerShell blocks the script, run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once and retry. Prefer the manual steps below if you'd rather configure each piece yourself.
+It verifies Python 3.11+, creates `.venv`, installs the tool, prompts for your Security Console username and password (written only to `.env`, never echoed) and console URL (into `config.yaml` copied from the example), then validates connectivity with `--check-connection`. Pass `-SkipConnectionCheck` for offline setup. If PowerShell blocks the script, run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once and retry. Prefer the manual steps below if you'd rather configure each piece yourself.
 
 The installer runs on both **Windows PowerShell 5.1** (the version built into Windows) and **PowerShell 7**, and it installs `pip-system-certs` up front so setup works behind a TLS-inspecting corporate proxy without a certificate error.
 
@@ -84,8 +74,7 @@ The installer runs on both **Windows PowerShell 5.1** (the version built into Wi
    ```powershell
    copy .env.example .env
    notepad .env
-   # set R7_API_KEY=<your key>
-   # -- or, for Basic Auth -- set R7_BASIC_USER and R7_BASIC_PASSWORD
+   # set R7_BASIC_USER and R7_BASIC_PASSWORD (Console v3 uses HTTP Basic auth)
 
    copy docs\examples\config.yaml config.yaml
    notepad config.yaml
@@ -135,8 +124,7 @@ The installer runs on both **Windows PowerShell 5.1** (the version built into Wi
    ```bash
    cp .env.example .env
    nano .env
-   # set R7_API_KEY=<your key>
-   # -- or, for Basic Auth -- set R7_BASIC_USER and R7_BASIC_PASSWORD
+   # set R7_BASIC_USER and R7_BASIC_PASSWORD (Console v3 uses HTTP Basic auth)
 
    cp docs/examples/config.yaml config.yaml
    nano config.yaml
@@ -160,17 +148,16 @@ The Insight Platform region URLs (`https://us.api.insight.rapid7.com` etc.) belo
 
 ### Authenticating against your console
 
-The tool supports two auth modes against the `/api/3` Security Console API. Pick one in `config.yaml`:
+The `/api/3` Security Console API authenticates with **HTTP Basic Auth** only. (An `X-Api-Key` header is an *Insight Platform* / Cloud Integrations v4 mechanism the Console does not accept, so there is no API-key mode and no `auth_mode` knob.)
 
-```yaml
-rapid7:
-  # auth_mode: api_key   # default
-  # auth_mode: basic
+Set your console username and password in `.env`:
+
+```
+R7_BASIC_USER=<console-username>
+R7_BASIC_PASSWORD=<console-password>
 ```
 
-**API key (`auth_mode: api_key`, default).** Generate the key in the Security Console UI itself -- *not* on `insight.rapid7.com`. Open `https://<your-console>` directly, then **User → API Keys** (or **Administration → Users → [your user]**). Set `R7_API_KEY=<key>` in `.env`.
-
-**HTTP Basic Auth (`auth_mode: basic`).** Use this when the console UI does not let you mint an API key -- common on Rapid7-hosted consoles where your user is SAML-provisioned with MFA. Set `R7_BASIC_USER=<console-username>` and `R7_BASIC_PASSWORD=<console-password>` in `.env`. For production use, ask your Rapid7 admin to provision a dedicated read-only service account so the credentials don't ride on a personal user.
+For production use, ask your Rapid7 admin to provision a dedicated read-only service account so the credentials don't ride on a personal user. This also sidesteps MFA prompts on SAML-provisioned interactive users.
 
 The tool issues only `GET` requests (plus one Rapid7-mandated `POST /api/3/assets/search` for asset filter searches) regardless of auth mode. See [SECURITY.md](SECURITY.md) for the full read-only contract.
 
@@ -211,7 +198,7 @@ The CLI prints the absolute path of the written report on success.
 | 0 | Healthy -- all checks pass |
 | 1 | Warnings -- at least one `warn`, no `fail`/`error` |
 | 2 | Action required -- at least one `fail` or `error` |
-| 3 | Startup failure -- bad config, missing API key, auth failed, network unreachable |
+| 3 | Startup failure -- bad config, missing credentials, auth failed, network unreachable |
 | 4 | Internal error in the tool |
 
 ## Stability
@@ -335,11 +322,11 @@ Per-rule severity and enable/disable live in the `checks.asset_coverage` block o
 
 A sibling audit category to the configuration audit, scoped to console user accounts and authentication settings. Toggled separately via `checks.user_permission_audit` and configured via the `user_audit:` block.
 
-**Required permission:** the API key must belong to a **Global Administrator**. The `/api/3/users` and `/api/3/authentication_sources` endpoints are GA-only. If the key lacks this, the audit self-skips with a single info finding rather than failing.
+**Required permission:** the console account must be a **Global Administrator**. The `/api/3/users` and `/api/3/authentication_sources` endpoints are GA-only. If the account lacks this, the audit self-skips with a single info finding rather than failing.
 
 | Rule (`rule_id`) | Default | Notes |
 | --- | --- | --- |
-| Privileged User Without MFA (`privileged_user_without_mfa`) | fail | Scoped to GA / `role.superuser` users only. Service accounts that legitimately use HTTP Basic Auth (which bypasses MFA) can be allowlisted via `mfa_exempt_logins`. Requires Global Administrator key -- non-GA keys receive 401 from `/api/3/users/{id}/2FA` and the rule self-skips with an info finding. External-auth users (SAML/LDAP/Kerberos) are excluded from local 2FA checks; their MFA enforcement is delegated to the IdP and they are surfaced in a single aggregate info finding. |
+| Privileged User Without MFA (`privileged_user_without_mfa`) | fail | Scoped to GA / `role.superuser` users only. Service accounts that legitimately use HTTP Basic Auth (which bypasses MFA) can be allowlisted via `mfa_exempt_logins`. Requires a Global Administrator account -- non-GA accounts receive 401 from `/api/3/users/{id}/2FA` and the rule self-skips with an info finding. External-auth users (SAML/LDAP/Kerberos) are excluded from local 2FA checks; their MFA enforcement is delegated to the IdP and they are surfaced in a single aggregate info finding. |
 | Local Accounts When SSO Is Configured (`local_account_when_sso_configured`) | warn | Excessive local accounts when LDAP/SAML/Kerberos is configured. Knob: `max_local_accounts_when_sso` (default 2). External auth sources are detected by either a truthy `external` flag or a non-`normal` `type` -- robust to either API payload shape. |
 | Multiple Global Administrators (`multiple_global_administrators`) | warn / fail | Privilege creep. Knob: `max_global_administrators` (default 2). Emits `warn` when GA count exceeds the threshold, and a hard `fail` when **zero** enabled Global Administrators exist (a console nobody can administer). |
 | Locked User Account (`locked_user_account`) | warn | Stuck account or brute-force indicator. |
@@ -364,8 +351,8 @@ Platform sees -- broken sync, scan engines that never registered with the
 cloud, and assets the platform hasn't reassessed recently.
 
 This category is **disabled by default**. It requires a separate
-Insight Platform API key in addition to your existing console
-`R7_API_KEY`.
+Insight Platform API key in addition to your console HTTP Basic
+credentials (`R7_BASIC_USER` / `R7_BASIC_PASSWORD`).
 
 ### Cloud Drift Audit rules
 
@@ -390,7 +377,7 @@ When `cloud_integration.enabled` is `false` (the default) or the env var is
 missing, the entire category produces a single `skipped` `CheckResult` with
 a clear configuration hint and the run continues normally. When enabled
 without the env var, the run exits `3` (startup error) -- same exit code
-as the existing `R7_API_KEY` missing case.
+as the missing-console-credentials case.
 
 ## Template Configuration Audit
 
@@ -469,7 +456,7 @@ Register-ScheduledTask -TaskName "Rapid7 HealthCheck" -Action $action -Trigger $
 | `verify_tls` | bool, required | Verify the console's TLS certificate. Set `false` only as a last resort (see Troubleshooting). |
 | `request_timeout_seconds` | int, required | Per-request read timeout. Example default `60`. Raise to `120` for consoles slow under load. |
 | `max_retries` | int, required | Retries on transient errors. Worst-case wait per call ≈ `(max_retries + 1) × request_timeout_seconds`. |
-| `auth_mode` | `api_key` \| `basic`, default `api_key` | `api_key` reads `R7_API_KEY`; `basic` reads `R7_BASIC_USER` + `R7_BASIC_PASSWORD`. See [Authenticating](#authenticating-against-your-console). |
+| *(auth)* | n/a | The Console v3 API uses HTTP Basic only -- there is no `auth_mode` key. Credentials come from `R7_BASIC_USER` + `R7_BASIC_PASSWORD` in `.env`. See [Authenticating](#authenticating-against-your-console). |
 | `parallel_pages` | int 1-16, default `1` | Pages fetched concurrently within one paginated call. `8` is the API-supported ceiling; `9-16` work but emit a startup warning. `1` = sequential. |
 | `page_size` | int 1-500, default `250` | Page size for paginated calls. `500` regularly times out on large filtered `/api/3/assets/search` queries. |
 
@@ -540,7 +527,7 @@ A rule set to `severity: info` produces findings without escalating check status
 
 ## Troubleshooting
 
-- **401 / 403 at startup**: API key wrong, expired, or lacks read scopes. Re-issue the key.
+- **401 / 403 at startup**: console username/password wrong, the account is disabled/locked, or it lacks read scopes. Verify `R7_BASIC_USER` / `R7_BASIC_PASSWORD` and the account's permissions. (For the optional Cloud Drift Audit, a 401/403 against the v4 API instead means the `R7_CLOUD_API_KEY` is wrong or expired -- re-issue that Insight Platform key.)
 - **Connection refused / DNS error at startup**: the `base_url` likely points to the wrong region or US data centre. Try `us2` / `us3` / `eu` etc.
 - **All checks return `SKIPPED`**: every toggle in `checks:` is `false` in `config.yaml`.
 - **Specific check shows `ERROR`**: the per-check exception message appears in the report. Run with `--verbose --log-file run.log` to capture the full traceback.

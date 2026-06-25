@@ -55,7 +55,7 @@ pytest -v
 pytest tests/audit/rules/test_overlapping_scan_windows.py -v
 pytest tests/audit/rules/test_overlapping_scan_windows.py::test_overlap_detected -v
 
-# run the tool against a real environment (requires R7_API_KEY env + config.yaml)
+# run the tool against a real environment (requires R7_BASIC_USER + R7_BASIC_PASSWORD env + config.yaml)
 python -m rapid7_healthcheck
 python -m rapid7_healthcheck --config path/to/config.yaml --output report.html --verbose --log-file run.log
 ```
@@ -147,7 +147,7 @@ The cross-run delta engine lives in `state_engine.py` (extracted so deltas are t
 
 ### Layer rules (do not violate)
 
-- `client.py` is the **only** module that issues HTTP. It owns auth (`X-Api-Key` header or HTTP Basic), retries, exponential backoff, `Retry-After` parsing, and response validation. Never call `requests` from a check or rule. Since 0.2.8, `_paginate` may execute concurrent page fetches inside one call when `parallel_pages > 1`; `requests.Session` is documented thread-safe for read operations, so we share one session across worker threads without explicit locks. The read-only verb/path check in `_request` is stateless and runs per-call, so concurrency does not weaken the invariant.
+- `client.py` is the **only** module that issues HTTP. It owns auth (v3 Console: HTTP Basic only; the v4 `cloud_client.py` peer uses an `X-Api-Key` header), retries, exponential backoff, `Retry-After` parsing, and response validation. Never call `requests` from a check or rule. Since 0.2.8, `_paginate` may execute concurrent page fetches inside one call when `parallel_pages > 1`; `requests.Session` is documented thread-safe for read operations, so we share one session across worker threads without explicit locks. The read-only verb/path check in `_request` is stateless and runs per-call, so concurrency does not weaken the invariant.
 - `Rapid7ClientError.status_code` is the canonical way to branch on HTTP status when trapping per-endpoint compatibility issues (e.g. an endpoint returning 404 on a hosted console but 200 on on-prem). **Never substring-match the error message** -- the message includes the request path and up to 1500 chars of response body, so substrings like `"404"` or `"400"` can appear in a 500's body and silently swallow real errors. Branch on `e.status_code == 404`, not on `"404" in str(e)`.
 - `checks/*.py` and `audit/rules/*.py` interpret API responses; they know nothing about HTML.
 - `report.py` renders HTML; it knows nothing about the API.
@@ -195,7 +195,7 @@ The 0.1.9 layout embeds a `<script id="report-state" type="application/json">` b
 
 `audit.sample_size` and `user_audit.sample_size` apply **only** to the audit verticals (Configuration Audit, User & Permission Audit). Operational checks (`checks/*.py` -- scan engines, scan activity, asset coverage, data quality) run against the full population by design and do not honor `sample_size`. They produce aggregate counts where sampling would give a misleading smaller number; if a count is too slow, the fix is to compute it more efficiently (e.g. read `page.totalResources` from the first response), not to sample.
 
-The `R7_API_KEY` environment variable is the only secret. The tool also loads `.env` via `python-dotenv` (non-overriding) at startup.
+The console credentials (`R7_BASIC_USER` / `R7_BASIC_PASSWORD`) are the primary secrets; `R7_CLOUD_API_KEY` is an additional secret used only by the optional Cloud Drift Audit (v4). The tool also loads `.env` via `python-dotenv` (non-overriding) at startup.
 
 ## Agent skills
 

@@ -130,12 +130,12 @@ def test_post_call_sites_are_explicitly_allowlisted() -> None:
 
 def test_runtime_guard_rejects_unknown_verb() -> None:
     """Belt-and-braces: the runtime guard itself works."""
-    c = client_module.Rapid7Client(base_url="https://x", api_key="k")
+    c = client_module.Rapid7Client(base_url="https://x", basic_auth=("user", "pw"))
     with pytest.raises(client_module.ReadOnlyViolationError):
         c._request("PUT", "/api/3/sites/1")
 
 
 def test_runtime_guard_rejects_unallowlisted_post() -> None:
-    c = client_module.Rapid7Client(base_url="https://x", api_key="k")
+    c = client_module.Rapid7Client(base_url="https://x", basic_auth=("user", "pw"))
     with pytest.raises(client_module.ReadOnlyViolationError):
         c._request("POST", "/api/3/sites", json_body={})

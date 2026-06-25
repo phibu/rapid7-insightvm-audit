@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.2] - 2026-06-25
+
+Removes the API-key authentication path for the Security Console (v3). The
+Console v3 API authenticates with HTTP Basic only; the `api_key` path never
+worked against a real console and is now gone. **This is a behaviour-breaking
+change to the config schema and credential env vars** -- existing `config.yaml`
+/ `.env` files that relied on `auth_mode: api_key` / `R7_API_KEY` must migrate
+(see below). No API calls changed; the read-only contract is unchanged.
+
+### Removed
+
+- **API-key authentication for the Security Console (v3) is gone.**
+  The Console v3 API authenticates with HTTP Basic only -- an `X-Api-Key`
+  header is an Insight Platform / Cloud Integrations (v4) mechanism the Console
+  does not accept -- so the misleading `api_key` path has been removed entirely:
+  - The `rapid7.auth_mode` config key is deleted. HTTP Basic is the only mode,
+    so there is nothing to select. Any leftover `auth_mode:` in an existing
+    `config.yaml` is now rejected as an unknown key at startup (exit `3`);
+    delete the line.
+  - `R7_API_KEY` is no longer read for the console. Set `R7_BASIC_USER` and
+    `R7_BASIC_PASSWORD` instead. (`R7_CLOUD_API_KEY`, used only by the optional
+    Cloud Drift Audit's v4 client, is unaffected -- the v4 API genuinely uses
+    an API key.)
+  - `Rapid7Client` no longer accepts an `api_key` argument; `basic_auth` is
+    required.
+  - The installer (`install-healthcheck.ps1`) now prompts for a console
+    username and password instead of an API key.
+
+  **Migration:** remove any `auth_mode:` line from `config.yaml`, and replace
+  `R7_API_KEY=...` in `.env` with `R7_BASIC_USER=...` and
+  `R7_BASIC_PASSWORD=...`. No API calls changed; the read-only contract is
+  unchanged.
+
 ## [1.1.1] - 2026-06-25
 
 Patch release: a Windows installer fix and a repo-wide source cleanup. No

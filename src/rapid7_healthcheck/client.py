@@ -413,32 +413,34 @@ class HttpTransport:
         return float(2 ** attempt)
 
 
-# The v3 Console API dialect: results in {resources, page}, X-Api-Key or
-# HTTP Basic auth, errors as Rapid7ClientError.
+# The v3 Console API dialect: results in {resources, page}, HTTP Basic auth,
+# errors as Rapid7ClientError. The Security Console v3 API does NOT accept
+# X-Api-Key (that is the v4 Insight Platform mechanism); HTTP Basic is the
+# only supported v3 auth.
 V3_DIALECT = ApiDialect(
     resource_key="resources",
     page_meta_key="page",
     allowed_post_paths=_ALLOWED_POST_PATHS,
     error_cls=Rapid7ClientError,
-    auth_hint="R7_API_KEY and base_url",
+    auth_hint="R7_BASIC_USER / R7_BASIC_PASSWORD and base_url",
 )
 
 
 class Rapid7Client(HttpTransport):
     """Adapter for the v3 Security Console API (``/api/3/...``).
 
-    Wires :data:`V3_DIALECT` onto :class:`HttpTransport` and accepts the
-    two auth modes the Console API supports -- ``X-Api-Key`` header or HTTP
-    Basic. Adds no transport behaviour; everything but construction and the
-    v3-only ``connect()`` probe is inherited.
+    Wires :data:`V3_DIALECT` onto :class:`HttpTransport`. The Console API
+    authenticates with HTTP Basic only -- ``X-Api-Key`` is a v4 Insight
+    Platform mechanism the Console does not accept -- so ``basic_auth`` is
+    required. Adds no transport behaviour; everything but construction and
+    the v3-only ``connect()`` probe is inherited.
     """
 
     def __init__(
         self,
         *,
         base_url: str,
-        api_key: str | None = None,
-        basic_auth: tuple[str, str] | None = None,
+        basic_auth: tuple[str, str],
         verify_tls: bool = True,
         timeout_seconds: int = 60,
         max_retries: int = 3,
@@ -446,16 +448,12 @@ class Rapid7Client(HttpTransport):
         default_page_size: int = 250,
         session: requests.Session | None = None,
     ) -> None:
-        if (api_key is None) == (basic_auth is None):
-            raise ValueError(
-                "Rapid7Client requires exactly one of api_key or basic_auth"
-            )
+        if basic_auth is None:
+            raise ValueError("Rapid7Client requires basic_auth (user, password)")
         headers: dict[str, str] = {
             "Accept": "application/json",
             "User-Agent": f"rapid7-healthcheck/{__version__}",
         }
-        if api_key is not None:
-            headers["X-Api-Key"] = api_key
         super().__init__(
             base_url=base_url,
             headers=headers,

@@ -8,7 +8,8 @@
       1. Verifies Python >= 3.11 is on PATH.
       2. Creates (or reuses) a .venv virtual environment.
       3. Installs/upgrades the tool into the venv (editable, from this repo).
-      4. Bootstraps .env (prompts for the API key; secrets go ONLY to .env).
+      4. Bootstraps .env (prompts for the Security Console HTTP Basic
+         username/password; secrets go ONLY to .env).
       5. Bootstraps config.yaml from docs/examples/config.yaml (prompts for the
          console base_url).
       6. Runs `python -m rapid7_healthcheck --check-connection` to validate
@@ -92,17 +93,21 @@ $envPath = Join-Path $RepoRoot '.env'
 if (Test-Path $envPath) {
     Write-Ok ".env already exists -- leaving it untouched"
 } else {
-    $apiKey = Read-Host "Enter your Security Console API key (input hidden)" -AsSecureString
-    $plain  = [System.Net.NetworkCredential]::new('', $apiKey).Password
-    if ([string]::IsNullOrWhiteSpace($plain)) {
-        Write-Warn2 "No API key entered -- writing a template .env you must edit before running."
+    # Console v3 authenticates with HTTP Basic only (X-Api-Key is a v4 Insight
+    # Platform mechanism the Console rejects). Prompt for username + password.
+    $basicUser = Read-Host "Enter your Security Console username"
+    $basicPwSecure = Read-Host "Enter your Security Console password (input hidden)" -AsSecureString
+    $basicPw = [System.Net.NetworkCredential]::new('', $basicPwSecure).Password
+    if ([string]::IsNullOrWhiteSpace($basicUser) -or [string]::IsNullOrWhiteSpace($basicPw)) {
+        Write-Warn2 "Username or password blank -- writing a template .env you must edit before running."
         Copy-Item (Join-Path $RepoRoot '.env.example') $envPath
     } else {
-        # Write only the API key line; copy the rest of the template comments.
+        # Write only the credential lines; copy the rest of the template comments.
         $template = Get-Content (Join-Path $RepoRoot '.env.example')
-        $template = $template -replace '^R7_API_KEY=.*$', "R7_API_KEY=$plain"
+        $template = $template -replace '^R7_BASIC_USER=.*$', "R7_BASIC_USER=$basicUser"
+        $template = $template -replace '^R7_BASIC_PASSWORD=.*$', "R7_BASIC_PASSWORD=$basicPw"
         Set-Content -Path $envPath -Value $template -Encoding UTF8
-        Write-Ok "wrote .env (API key stored locally; not echoed)"
+        Write-Ok "wrote .env (credentials stored locally; not echoed)"
     }
 }
 

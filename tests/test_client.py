@@ -33,7 +33,7 @@ def session():
 def make_client(session, **overrides):
     kwargs = dict(
         base_url="https://us.api.insight.rapid7.com",
-        api_key="key",
+        basic_auth=("user", "pw"),
         verify_tls=True,
         timeout_seconds=5,
         max_retries=2,
@@ -43,12 +43,14 @@ def make_client(session, **overrides):
     return Rapid7Client(**kwargs)
 
 
-def test_get_sends_x_api_key_header(session):
+def test_get_sends_basic_auth(session):
     session.request.return_value = _resp(200, {"ok": True})
     c = make_client(session)
     c.get("/api/3/sites")
     args, kwargs = session.request.call_args
-    assert kwargs["headers"]["X-Api-Key"] == "key"
+    # Console v3 authenticates with HTTP Basic only -- no X-Api-Key header.
+    assert kwargs["auth"] == ("user", "pw")
+    assert "X-Api-Key" not in kwargs["headers"]
     assert kwargs["headers"]["Accept"] == "application/json"
     assert kwargs["url"] == "https://us.api.insight.rapid7.com/api/3/sites"
     assert kwargs["timeout"] == 5
@@ -148,7 +150,8 @@ def test_zero_pages_returns_empty(session):
 
 
 def test_client_uses_basic_auth_when_provided(session):
-    """basic_auth=(user, pw) sends auth=... and omits X-Api-Key."""
+    """basic_auth=(user, pw) sends auth=... and never an X-Api-Key header
+    (Console v3 does not accept X-Api-Key)."""
     session.request.return_value = _resp(200, {"ok": True})
     c = Rapid7Client(
         base_url="https://acme.hosted.rapid7.com",
@@ -164,28 +167,9 @@ def test_client_uses_basic_auth_when_provided(session):
     assert "X-Api-Key" not in kwargs["headers"]
 
 
-def test_client_passes_no_auth_kwarg_value_in_api_key_mode(session):
-    """In api_key mode, auth= is None (requests treats this as 'no auth')."""
-    session.request.return_value = _resp(200, {"ok": True})
-    c = make_client(session)
-    c.get("/api/3/sites")
-    _, kwargs = session.request.call_args
-    assert kwargs["auth"] is None
-    assert kwargs["headers"]["X-Api-Key"] == "key"
-
-
-def test_client_rejects_both_api_key_and_basic_auth():
-    with pytest.raises(ValueError, match="exactly one"):
-        Rapid7Client(
-            base_url="https://x",
-            api_key="k",
-            basic_auth=("u", "p"),
-        )
-
-
-def test_client_rejects_neither_api_key_nor_basic_auth():
-    with pytest.raises(ValueError, match="exactly one"):
-        Rapid7Client(base_url="https://x")
+def test_client_rejects_missing_basic_auth():
+    with pytest.raises(ValueError, match="basic_auth"):
+        Rapid7Client(base_url="https://x", basic_auth=None)  # type: ignore[arg-type]
 
 
 def test_client_error_carries_status_code_on_4xx(session):
@@ -249,7 +233,7 @@ def test_post_one_returns_first_page_response(monkeypatch):
         resp._content = b'{"resources":[{"id":1}],"page":{"totalResources":42,"size":10}}'
         return resp
 
-    client = Rapid7Client(base_url="https://example.com", api_key="k")
+    client = Rapid7Client(base_url="https://example.com", basic_auth=("user", "pw"))
     monkeypatch.setattr(client._session, "request", fake_request)
 
     body = client.post_one(
@@ -406,7 +390,7 @@ def test_client_default_timeout_is_60_seconds(session):
     """Default request timeout is 60s (was 30s in v0.2.7)."""
     c = Rapid7Client(
         base_url="https://example.test",
-        api_key="k",
+        basic_auth=("user", "pw"),
         session=session,
     )
     assert c._timeout == 60
@@ -416,7 +400,7 @@ def test_client_default_parallel_pages_is_one(session):
     """Default parallel_pages is 1 (sequential -- preserves today's behavior)."""
     c = Rapid7Client(
         base_url="https://example.test",
-        api_key="k",
+        basic_auth=("user", "pw"),
         session=session,
     )
     assert c._parallel_pages == 1
@@ -426,7 +410,7 @@ def test_client_default_page_size_is_250(session):
     """Default paginated page size is 250 (was 500 in v0.2.7)."""
     c = Rapid7Client(
         base_url="https://example.test",
-        api_key="k",
+        basic_auth=("user", "pw"),
         session=session,
     )
     assert c._default_page_size == 250
@@ -435,7 +419,7 @@ def test_client_default_page_size_is_250(session):
 def test_client_accepts_parallel_pages_kwarg(session):
     c = Rapid7Client(
         base_url="https://example.test",
-        api_key="k",
+        basic_auth=("user", "pw"),
         parallel_pages=6,
         session=session,
     )
@@ -446,7 +430,7 @@ def test_client_rejects_parallel_pages_zero(session):
     with pytest.raises(ValueError, match="parallel_pages"):
         Rapid7Client(
             base_url="https://example.test",
-            api_key="k",
+            basic_auth=("user", "pw"),
             parallel_pages=0,
             session=session,
         )
@@ -456,7 +440,7 @@ def test_client_rejects_parallel_pages_seventeen(session):
     with pytest.raises(ValueError, match="parallel_pages"):
         Rapid7Client(
             base_url="https://example.test",
-            api_key="k",
+            basic_auth=("user", "pw"),
             parallel_pages=17,
             session=session,
         )
@@ -466,7 +450,7 @@ def test_client_rejects_default_page_size_zero(session):
     with pytest.raises(ValueError, match="default_page_size"):
         Rapid7Client(
             base_url="https://example.test",
-            api_key="k",
+            basic_auth=("user", "pw"),
             default_page_size=0,
             session=session,
         )
@@ -476,7 +460,7 @@ def test_client_rejects_default_page_size_501(session):
     with pytest.raises(ValueError, match="default_page_size"):
         Rapid7Client(
             base_url="https://example.test",
-            api_key="k",
+            basic_auth=("user", "pw"),
             default_page_size=501,
             session=session,
         )
@@ -486,7 +470,7 @@ def test_client_accepts_parallel_pages_sixteen(session):
     """Inclusive upper bound -- 16 must be accepted."""
     c = Rapid7Client(
         base_url="https://example.test",
-        api_key="k",
+        basic_auth=("user", "pw"),
         parallel_pages=16,
         session=session,
     )
@@ -497,7 +481,7 @@ def test_client_accepts_default_page_size_500(session):
     """Inclusive upper bound -- 500 must be accepted."""
     c = Rapid7Client(
         base_url="https://example.test",
-        api_key="k",
+        basic_auth=("user", "pw"),
         default_page_size=500,
         session=session,
     )
@@ -638,7 +622,7 @@ def test_get_uses_per_call_timeout_when_provided(monkeypatch):
 
     c = Rapid7Client(
         base_url="https://r7.example",
-        api_key="k",
+        basic_auth=("user", "pw"),
         timeout_seconds=60,
         session=_FakeSession(),
     )
@@ -674,7 +658,7 @@ def test_paginate_propagates_timeout_to_every_page(monkeypatch):
 
     c = Rapid7Client(
         base_url="https://r7.example",
-        api_key="k",
+        basic_auth=("user", "pw"),
         timeout_seconds=60,
         parallel_pages=1,
         session=_FakeSession(),
@@ -710,7 +694,7 @@ def test_paginate_log_is_at_debug_level(caplog):
 
     c = Rapid7Client(
         base_url="https://r7.example",
-        api_key="k",
+        basic_auth=("user", "pw"),
         timeout_seconds=60,
         parallel_pages=2,
         session=_FakeSession(),
