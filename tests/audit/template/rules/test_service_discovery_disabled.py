@@ -13,7 +13,7 @@ def test_issue_31_asset_discovery_off_but_service_discovery_configured_passes(fa
     """
     fake_snapshot.set_templates_full([
         {
-            "id": "scada-audit",
+            "id": "scada",
             "name": "SCADA audit",
             "vulnerabilityEnabled": True,
             "discovery": {

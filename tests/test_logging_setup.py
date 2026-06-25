@@ -92,6 +92,46 @@ def test_auto_resolves_from_config_when_no_output():
     assert "reports" in s.replace("\\", "/")
 
 
+def test_stderr_suppresses_info_in_normal_mode(tmp_path, capfd):
+    """In a normal (non-verbose) run, INFO records must NOT reach stderr -- the
+    ProgressReporter owns the terminal, so per-check INFO chatter would clutter
+    it. INFO must still land in the log file. WARNING reaches both."""
+    import logging
+    from rapid7_healthcheck.__main__ import _setup_logging
+
+    log_path = tmp_path / "run.log"
+    _setup_logging(verbose=False, log_file=str(log_path))
+    capfd.readouterr()  # drain anything from setup
+
+    logger = logging.getLogger("rapid7_healthcheck")
+    logger.info("INFO_MARKER_should_not_hit_stderr")
+    logger.warning("WARN_MARKER_should_hit_stderr")
+
+    err = capfd.readouterr().err
+    assert "INFO_MARKER_should_not_hit_stderr" not in err
+    assert "WARN_MARKER_should_hit_stderr" in err
+
+    # File captured both (it stays at INFO).
+    contents = log_path.read_text(encoding="utf-8")
+    assert "INFO_MARKER_should_not_hit_stderr" in contents
+    assert "WARN_MARKER_should_hit_stderr" in contents
+
+
+def test_stderr_shows_info_in_verbose_mode(tmp_path, capfd):
+    """--verbose opens the stderr firehose to DEBUG/INFO for interactive
+    debugging -- the suppression only applies to normal mode."""
+    import logging
+    from rapid7_healthcheck.__main__ import _setup_logging
+
+    log_path = tmp_path / "run.log"
+    _setup_logging(verbose=True, log_file=str(log_path))
+    capfd.readouterr()
+
+    logging.getLogger("rapid7_healthcheck").info("VERBOSE_INFO_MARKER")
+    err = capfd.readouterr().err
+    assert "VERBOSE_INFO_MARKER" in err
+
+
 def test_setup_logging_degrades_gracefully_on_permission_error(monkeypatch, capfd):
     """If the log file can't be opened, log a warning and continue.
 

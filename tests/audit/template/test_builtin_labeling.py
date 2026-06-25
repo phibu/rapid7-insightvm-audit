@@ -22,14 +22,17 @@ def test_finding_on_builtin_template_is_labelled():
         Finding(
             severity="warn",
             message="Template 'Denial of service' has a problem.",
-            details={"template_id": "denial-of-service", "template_name": "Denial of service"},
+            details={"template_id": "dos-audit", "template_name": "Denial of service"},
         ),
     ])
     out = label_builtin_findings([rr])
     f = out[0].findings[0]
     assert f.details["builtin"] is True
-    assert "cloning" in f.message.lower()  # clone-and-rebind remediation appended
-    assert f.message.startswith("Template 'Denial of service' has a problem.")
+    # The remediation lives in details (rendered on its own line), NOT glued
+    # onto the message -- the message stays a clean single line for logs/CLI.
+    assert "cloning" in f.details["builtin_remediation"].lower()
+    assert "cloning" not in f.message.lower()
+    assert f.message == "Template 'Denial of service' has a problem."
 
 
 def test_finding_on_user_template_is_not_labelled():
@@ -56,20 +59,22 @@ def test_finding_without_template_id_is_untouched():
 
 
 def test_idempotent_when_already_labelled():
-    original_msg = (
-        "Template 'Exhaustive' has a problem. (Built-in template -- remediate "
-        "by cloning it, fixing the clone, and rebinding the affected site.)"
-    )
+    original_msg = "Template 'Exhaustive' has a problem."
     rr = _rule_result([
         Finding(
             severity="warn",
             message=original_msg,
-            details={"template_id": "exhaustive", "builtin": True},
+            details={
+                "template_id": "exhaustive-audit",
+                "builtin": True,
+                "builtin_remediation": "already set",
+            },
         ),
     ])
     out = label_builtin_findings([rr])
     f = out[0].findings[0]
     assert f.details["builtin"] is True
-    # Already-labelled finding passes through unchanged -- remediation not duplicated.
+    # Already-labelled finding passes through unchanged -- message never touched,
+    # remediation field not overwritten or duplicated.
     assert f.message == original_msg
-    assert f.message.lower().count("cloning") == 1
+    assert f.details["builtin_remediation"] == "already set"

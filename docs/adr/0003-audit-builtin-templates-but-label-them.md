@@ -11,7 +11,36 @@ The reasoning: *"can't edit it" is not "doesn't matter."* A misconfigured built-
 
 ## Detection (no API flag exists)
 
-The v3 `ScanTemplate` object has **no** `builtin` / `system` / `readOnly` field (verified against `docs/research/api-v3.json`) -- and an ID-**shape** heuristic does not work, because user-created templates also receive name-derived kebab-case slug IDs, indistinguishable in shape from built-in slugs (the spec types `id` as a slug string, example `full-audit-without-web-spider`). So detection is a **hardcoded frozenset of the documented built-in template IDs** (`is_builtin_template(t) = t["id"] in BUILTIN_TEMPLATE_IDS`), sourced from the Rapid7 scan-templates appendix (https://docs.rapid7.com/insightvm/scan-templates/). The documented built-in set (15): full audit (with/without web spider), exhaustive, discovery scan, discovery scan (aggressive), denial of service, internet DMZ audit, linux RPMs, microsoft hotfix, HIPAA compliance, PCI audit, penetration test, safe network audit, SCADA audit, Sarbanes-Oxley (SOX) compliance, web audit. **The exact API `id` slugs must be confirmed against a live console at implementation time** -- the doc-anchor slugs (`#internet-dmz-audit`, `#sarbanes-oxley-sox-compliance`) are display-name slugs and may differ from the API `id`.
+The v3 `ScanTemplate` object has **no** `builtin` / `system` / `readOnly` field (verified against `docs/research/api-v3.json`) -- and an ID-**shape** heuristic does not work, because user-created templates also receive name-derived kebab-case slug IDs, indistinguishable in shape from built-in slugs (the spec types `id` as a slug string, example `full-audit-without-web-spider`). So detection is a **hardcoded frozenset of the built-in template IDs** (`is_builtin_template(t) = t["id"] in BUILTIN_TEMPLATE_IDS`).
+
+The exact API `id` slugs were **confirmed against a live console** (`GET /api/3/scan_templates`); the doc-anchor slugs in the scan-templates appendix are display-name slugs that differ from the API `id` (e.g. *Internet audit* is `internet-audit`, not `internet-dmz-audit`; *SCADA* is `scada`, not `scada-audit`). The confirmed built-in set (22), API `id` -> display name:
+
+| API `id` | Display name |
+|---|---|
+| `dos-audit` | Denial of service |
+| `exhaustive-audit` | Exhaustive |
+| `full-audit-without-web-spider` | Full audit without Web Spider |
+| `full-audit` | Full audit |
+| `discovery` | Discovery scan |
+| `aggressive-discovery` | Discovery scan (aggressive) |
+| `fdcc-1_2_1_0` | FDCC |
+| `full-audit-enhanced-logging-without-web-spider` | Full Audit Enhanced Logging |
+| `hipaa-audit` | HIPAA compliance |
+| `internet-audit` | Internet audit |
+| `linux-rpm` | Linux RPMs |
+| `microsoft-hotfix` | Microsoft hotfix |
+| `pci-audit` | PCI audit |
+| `pci-internal-audit` | PCI Internal Audit |
+| `pentest-audit` | Penetration test |
+| `scada` | SCADA audit |
+| `network-audit` | Safe network audit |
+| `sox-audit` | Sarbanes-Oxley (SOX) compliance |
+| `usgcb-1_2_1_0` | USGCB |
+| `web-audit` | Web audit |
+| `disa` | DISA |
+| `cis` | CIS |
+
+(The labelling code reads the template's own `name` from the API for the user-visible message; the display-name column above is documentation only, not a lookup table in code.)
 
 ## Consequences
 

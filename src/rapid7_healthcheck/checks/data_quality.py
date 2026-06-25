@@ -135,16 +135,22 @@ class EmptySitesRule:
             count = snapshot.site_asset_count(site_id)
             if count == 0:
                 empty_sites.append(site)
-        findings: list[Finding] = []
-        if empty_sites:
-            findings.append(Finding(
+        # One finding per site, with the site name in the message, so each empty
+        # site is a distinct, directly-readable row (sites are bounded and few --
+        # unlike asset-count rules, no rollup is needed). Stable per-site
+        # signature: keyed on site id so the cross-run delta tracks individual
+        # sites appearing/clearing rather than a single aggregate count.
+        findings: list[Finding] = [
+            Finding(
                 severity="warn",
-                message=f"{len(empty_sites)} site(s) have zero assets",
+                message=f"Site '{s.get('name', f'id={s.get('id')}')}' has zero assets",
                 details={
-                    "total": len(empty_sites),
-                    "examples": [s.get("name", f"id={s.get('id')}") for s in empty_sites[:_EXAMPLES_LIMIT]],
+                    "site_id": s.get("id"),
+                    "site_name": s.get("name"),
                 },
-            ))
+            )
+            for s in empty_sites
+        ]
         return make_rule_result(
             rule_id=self.RULE_ID,
             rule_name=self.RULE_NAME,

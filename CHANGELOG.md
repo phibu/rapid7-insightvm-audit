@@ -7,6 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.3] - 2026-06-25
+
+Reporting and accuracy improvements: built-in scan templates are now visually
+distinguished in the report, the corrected built-in template id set, per-site
+"zero assets" findings, and a quieter terminal. No API calls changed; the
+read-only contract, config schema, CLI flags, and exit codes are unchanged.
+
+### Added
+
+- **Built-in scan-template findings are visually marked.** Findings raised
+  against a Rapid7 built-in (non-editable) template now carry a violet
+  `BUILT-IN` badge, a left-edge accent + faint row tint, and the clone-and-
+  rebind remediation on its own line (no longer glued onto the message). Works
+  across light / dark / system themes. The `details.builtin` flag was already
+  set since 1.1.0; this surfaces it.
+
+### Changed
+
+- **Corrected and expanded the built-in scan-template id set (#30).** The set
+  used to label findings was confirmed against a live console
+  (`GET /api/3/scan_templates`) and corrected: 8 ids were wrong guesses
+  (e.g. `exhaustive` -> `exhaustive-audit`, `denial-of-service` -> `dos-audit`,
+  `internet-dmz-audit` -> `internet-audit`, `scada-audit` -> `scada`) and the
+  set grew from 16 to 22 (added `fdcc-1_2_1_0`,
+  `full-audit-enhanced-logging-without-web-spider`, `pci-internal-audit`,
+  `usgcb-1_2_1_0`, `disa`, `cis`). Built-ins that were previously mislabelled
+  (audited but unlabelled) are now correctly badged. See [ADR-0003](docs/adr/0003-audit-builtin-templates-but-label-them.md)
+  for the full id -> display-name table.
+- **"Sites with zero assets" is now one finding per site.** The Data Quality
+  rule previously emitted a single rolled-up finding (`"4 site(s) have zero
+  assets"`) that required expanding *details* to see which sites. It now emits
+  one finding per empty site, naming the site directly in the message, with a
+  stable per-site signature keyed on site id.
+- **Built-in remediation moved out of the finding message.** The "Built-in
+  template -- remediate by cloning..." guidance is now stored in
+  `details.builtin_remediation` and rendered on its own line, so the log/CLI
+  message stays a clean single line.
+
+### Fixed
+
+- **Per-check INFO log lines no longer clutter the terminal.** In a normal
+  (non-`--verbose`) run, the stderr handler now shows only WARNING+ so the
+  progress display owns the terminal; INFO diagnostics (`running check: ...`,
+  etc.) still go to the log file. `--verbose` opens the full DEBUG firehose to
+  stderr as before.
+
+### Notes
+
+- The per-site empty-sites change and the built-in-remediation-out-of-message
+  change both shift finding signatures, so the **first run after upgrading
+  shows one-time cross-run delta churn** for those rules (old aggregate
+  "resolved", new findings "new"). Subsequent runs are stable. Same accepted
+  class of one-time churn noted for #29 / #32.
+
 ## [1.1.2] - 2026-06-25
 
 Removes the API-key authentication path for the Security Console (v3). The

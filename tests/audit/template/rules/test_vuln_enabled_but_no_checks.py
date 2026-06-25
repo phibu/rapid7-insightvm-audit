@@ -14,7 +14,7 @@ def test_issue_29_template_configured_via_disabled_and_individual_passes(fake_sn
     """
     fake_snapshot.set_templates_full([
         {
-            "id": "denial-of-service",
+            "id": "dos-audit",
             "name": "Denial of service",
             "vulnerabilityEnabled": True,
             "checks": {

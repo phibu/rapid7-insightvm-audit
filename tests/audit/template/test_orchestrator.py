@@ -244,7 +244,7 @@ def test_template_audit_labels_builtin_findings_end_to_end(empty_registry):
                 status="warn",
                 findings=[
                     Finding(severity="warn", message="Built-in problem.",
-                            details={"template_id": "exhaustive"}),
+                            details={"template_id": "exhaustive-audit"}),
                     Finding(severity="warn", message="User problem.",
                             details={"template_id": "acme-weekly"}),
                 ],
@@ -261,12 +261,12 @@ def test_template_audit_labels_builtin_findings_end_to_end(empty_registry):
 
     findings = result.rule_results[0].findings
     by_tid = {f.details["template_id"]: f for f in findings}
-    assert by_tid["exhaustive"].details["builtin"] is True
-    assert "cloning" in by_tid["exhaustive"].message.lower()
+    assert by_tid["exhaustive-audit"].details["builtin"] is True
+    assert "cloning" in by_tid["exhaustive-audit"].details["builtin_remediation"].lower()
     assert "builtin" not in by_tid["acme-weekly"].details
     # The flattened CheckResult.findings mirror carries the labelled copy too.
     flat = {f.details["template_id"]: f for f in result.findings}
-    assert flat["exhaustive"].details["builtin"] is True
+    assert flat["exhaustive-audit"].details["builtin"] is True
 
 
 def test_template_audit_skipped_when_check_disabled():

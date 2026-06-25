@@ -122,19 +122,30 @@ def _resolve_progress_enabled(*, progress: bool, no_progress: bool) -> bool | No
 
 
 def _setup_logging(verbose: bool, log_file: str | None, log_format: str = "plain") -> None:
-    level = logging.DEBUG if verbose else logging.INFO
-    handlers: list[logging.Handler] = [ProgressAwareStreamHandler(sys.stderr)]
+    # The terminal is owned by the ProgressReporter (UX status lines). So in a
+    # normal run the stderr handler shows only WARNING+ -- real problems that
+    # warrant interrupting the progress display -- and the per-check INFO chatter
+    # ("running check: ...") goes to the log file only. --verbose opens the
+    # stderr firehose to DEBUG for interactive debugging. The root level is the
+    # most permissive of the two sinks so the file still captures INFO.
+    stderr_level = logging.DEBUG if verbose else logging.WARNING
+    root_level = logging.DEBUG if verbose else logging.INFO
+
+    stderr_handler = ProgressAwareStreamHandler(sys.stderr)
+    stderr_handler.setLevel(stderr_level)
+    handlers: list[logging.Handler] = [stderr_handler]
     file_open_error: str | None = None
     if log_file:
         try:
             Path(log_file).parent.mkdir(parents=True, exist_ok=True)
             file_handler = FlushingFileHandler(log_file, encoding="utf-8")
             file_handler.setFormatter(make_file_formatter(log_format))
+            file_handler.setLevel(root_level)  # file captures INFO (or DEBUG when verbose)
             handlers.append(file_handler)
         except OSError as e:
             file_open_error = f"log file unavailable ({log_file}); continuing without file logging: {e}"
     logging.basicConfig(
-        level=level,
+        level=root_level,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
         handlers=handlers,
         force=True,

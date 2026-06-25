@@ -29,23 +29,27 @@ logger = logging.getLogger(__name__)
 
 _TEMPLATE_RULE_REGISTRY: dict[str, type[Rule]] = {}
 
-# Appended to the message of any finding raised against a built-in scan
-# template. Built-ins are not editable, so the remediation is indirect.
+# Clone-and-rebind guidance for findings raised against a built-in scan
+# template. Built-ins are not editable, so the remediation is indirect. Stored
+# as a separate ``details`` field (not concatenated into ``message``) so the
+# report can render it on its own line and the log/CLI message stays a clean
+# single line.
 _BUILTIN_REMEDIATION = (
-    " (Built-in template -- remediate by cloning it, fixing the clone, and "
-    "rebinding the affected site.)"
+    "Built-in template -- remediate by cloning it, fixing the clone, and "
+    "rebinding the affected site."
 )
 
 
 def _label_finding_if_builtin(finding: Finding) -> Finding:
-    """Stamp ``details['builtin']=True`` and append clone-and-rebind guidance
-    when a finding is about a built-in scan template.
+    """Stamp ``details['builtin']=True`` plus the clone-and-rebind guidance in
+    ``details['builtin_remediation']`` when a finding is about a built-in scan
+    template. ``message`` is left untouched -- the remediation renders on its own
+    line in the report from the details field.
 
     Detection keys off the ``template_id`` every template-rule finding carries
     (rollup/summary findings without one pass through untouched). Idempotent:
-    already-labelled findings are returned unchanged so re-application never
-    duplicates the remediation text. ``Finding`` is frozen, so a labelled copy
-    is built via ``dataclasses.replace``.
+    already-labelled findings are returned unchanged. ``Finding`` is frozen, so
+    a labelled copy is built via ``dataclasses.replace``.
     """
     details = finding.details or {}
     tid = details.get("template_id")
@@ -55,8 +59,7 @@ def _label_finding_if_builtin(finding: Finding) -> Finding:
         return finding  # already labelled -- idempotent
     return replace(
         finding,
-        message=finding.message + _BUILTIN_REMEDIATION,
-        details={**details, "builtin": True},
+        details={**details, "builtin": True, "builtin_remediation": _BUILTIN_REMEDIATION},
     )
 
 

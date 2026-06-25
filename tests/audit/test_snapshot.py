@@ -874,9 +874,11 @@ def test_config_driven_snapshot_sites_route_through_the_builder():
 
 def test_is_builtin_template_known_id():
     """A documented built-in slug is recognized as built-in."""
-    assert EnvSnapshot.is_builtin_template({"id": "denial-of-service"}) is True
+    assert EnvSnapshot.is_builtin_template({"id": "dos-audit"}) is True
     assert EnvSnapshot.is_builtin_template({"id": "full-audit-without-web-spider"}) is True
     assert EnvSnapshot.is_builtin_template({"id": "discovery"}) is True
+    # Policy-version-suffixed built-ins are recognised verbatim.
+    assert EnvSnapshot.is_builtin_template({"id": "usgcb-1_2_1_0"}) is True
 
 
 def test_is_builtin_template_user_id_not_builtin():

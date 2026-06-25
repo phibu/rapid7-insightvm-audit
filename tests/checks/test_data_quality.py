@@ -85,8 +85,38 @@ def test_empty_site_warns(fake_client, app_config):
     assert rr.summary["empty_sites_count"] == 1
     # card_summary populated (F1 sub2): 1 site examined, 1 empty.
     assert rr.card_summary == {"examined": 1, "passed": 0, "failed": 1}
+    # One finding per site, with the site name directly in the message (no
+    # expand-to-see-names rollup) and the id in details for a stable signature.
+    assert len(rr.findings) == 1
+    assert rr.findings[0].message == "Site 'Empty' has zero assets"
+    assert rr.findings[0].details["site_id"] == 1
+    assert rr.findings[0].details["site_name"] == "Empty"
     # Aggregate-style sibling rules leave card_summary=None (verified once here).
     assert _rule(result, "op.data_quality.missing_os").card_summary is None
+
+
+def test_empty_sites_one_finding_per_site(fake_client, app_config):
+    """Multiple empty sites produce one finding each (not a single rolled-up
+    message), each naming its site."""
+    cfg = _all_off_except(app_config, flag_empty_sites=True)
+    fake_client.set_paginate("/api/3/sites", [
+        {"id": 1, "name": "Alpha"},
+        {"id": 2, "name": "Bravo"},
+        {"id": 3, "name": "Charlie"},
+    ])
+    for sid in (1, 2, 3):
+        fake_client.set_get(f"/api/3/sites/{sid}/assets", {"resources": [], "page": {"totalResources": 0}})
+    result = DataQualityCheck().run(fake_client, cfg)
+    rr = _rule(result, "op.data_quality.empty_sites")
+    assert rr.summary["empty_sites_count"] == 3
+    assert rr.card_summary == {"examined": 3, "passed": 0, "failed": 3}
+    assert len(rr.findings) == 3
+    messages = {f.message for f in rr.findings}
+    assert messages == {
+        "Site 'Alpha' has zero assets",
+        "Site 'Bravo' has zero assets",
+        "Site 'Charlie' has zero assets",
+    }
 
 
 def test_missing_os_skipped_when_disabled(fake_client, app_config):

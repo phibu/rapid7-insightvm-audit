@@ -23,32 +23,35 @@ DEFAULT_AGENTS_TIMEOUT = 180
 # templates. The v3 `ScanTemplate` object carries NO built-in/system flag and
 # an id-*shape* test fails (user templates also get name-derived kebab slugs),
 # so a finding is labelled "built-in" iff its template id is in this set (see
-# docs/adr/0003-audit-builtin-templates-but-label-them.md). Sourced from the
-# Rapid7 scan-templates appendix:
-#   https://docs.rapid7.com/insightvm/scan-templates/
-# Only `full-audit-without-web-spider` and `discovery` are confirmed by the
-# committed v3 spec's id examples; the rest are the long-stable Nexpose/
-# InsightVM built-in slugs and MUST be confirmed against a live console
-# (GET /api/3/scan_templates) -- a refresh is a one-line edit here. Failure is
-# safe: an unrecognised built-in is audited *unlabelled* (degrades to
+# docs/adr/0003-audit-builtin-templates-but-label-them.md). Confirmed against a
+# live console (GET /api/3/scan_templates); a refresh is a one-line edit here.
+# Failure is safe: an unrecognised built-in is audited *unlabelled* (degrades to
 # pre-feature behaviour); a user template is never mislabelled as built-in.
+# Note: the `*-1_2_1_0` ids (fdcc / usgcb) carry the policy-version suffix the
+# API returns verbatim.
 BUILTIN_TEMPLATE_IDS = frozenset({
-    "full-audit",
+    "dos-audit",
+    "exhaustive-audit",
     "full-audit-without-web-spider",
-    "exhaustive",
+    "full-audit",
     "discovery",
     "aggressive-discovery",
-    "denial-of-service",
-    "internet-dmz-audit",
-    "linux-rpms",
+    "fdcc-1_2_1_0",
+    "full-audit-enhanced-logging-without-web-spider",
+    "hipaa-audit",
+    "internet-audit",
+    "linux-rpm",
     "microsoft-hotfix",
-    "hipaa",
     "pci-audit",
+    "pci-internal-audit",
     "pentest-audit",
-    "safe-network-audit",
-    "scada-audit",
+    "scada",
+    "network-audit",
     "sox-audit",
+    "usgcb-1_2_1_0",
     "web-audit",
+    "disa",
+    "cis",
 })
 
 

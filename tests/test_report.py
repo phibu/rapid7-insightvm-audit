@@ -138,6 +138,48 @@ def test_audit_section_renders_per_rule_table():
     assert "<script src=" not in html  # was: assert "<script" not in html
 
 
+def test_builtin_finding_renders_badge_row_and_remediation_line():
+    """A finding on a built-in scan template renders the BUILT-IN badge, the
+    builtin-finding row class (drives the violet accent/tint), and the
+    remediation on its own line. A user-template finding gets none of these.
+    Exercises the real labelling seam so the test tracks production output."""
+    from rapid7_healthcheck.audit.template import label_builtin_findings, flatten_findings
+
+    raw = [
+        Finding(severity="fail", message="Built-in template 'Full audit' is misconfigured.",
+                details={"template_id": "full-audit", "template_name": "Full audit"}),
+        Finding(severity="fail", message="User template 'Acme Weekly' is misconfigured.",
+                details={"template_id": "acme-weekly", "template_name": "Acme Weekly"}),
+    ]
+    rr = label_builtin_findings([
+        RuleResult(
+            rule_id="template.x", rule_name="Template Rule", description="d",
+            severity="fail", status="fail", findings=raw,
+            sources=["https://docs.rapid7.com/insightvm/scan-template-best-practices/"],
+        ),
+    ])
+    cr = CheckResult(
+        name="Template Configuration Audit", description="d", status="fail",
+        rule_results=rr, findings=flatten_findings(rr),
+        summary={"rules_total": 1, "rules_warn": 0, "rules_pass": 0,
+                 "rules_fail": 1, "rules_error": 0, "rules_skipped": 0},
+    )
+    html = render_report(_ctx([cr]))
+
+    # Built-in marker present.
+    assert 'class="badge builtin"' in html
+    assert "BUILT-IN" in html
+    assert 'class="builtin-finding"' in html
+    # Remediation rendered on its own line (own element), not glued to message.
+    assert 'class="builtin-remediation"' in html
+    assert "cloning" in html.lower()
+    # The clean message is untouched (remediation is NOT inside it).
+    assert "Built-in template 'Full audit' is misconfigured." in html
+    # Exactly one built-in row (the user-template finding is not marked).
+    assert html.count('class="builtin-finding"') == 1
+    assert html.count('class="badge builtin"') == 1
+
+
 def test_audit_section_shows_sampling_note():
     rr = [
         RuleResult(
