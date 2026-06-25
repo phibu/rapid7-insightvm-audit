@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-06-25
+
+Patch release: a Windows installer fix and a repo-wide source cleanup. No
+runtime behaviour change, no new or modified API calls, and no change to the
+frozen config schema or exit-code contract.
+
+### Fixed
+
+- **`install-healthcheck.ps1` failed to parse under Windows PowerShell 5.1.**
+  Em dashes in the script's comments and string literals, stored as UTF-8
+  without a BOM, were decoded by 5.1 as cp1252 (three bytes each), corrupting
+  string tokenization and surfacing as misleading "missing `)` / `}`" parse
+  errors. PowerShell 7 read the file as UTF-8 and ran it fine, masking the
+  break. Fixed by adding a UTF-8 BOM *and* replacing the em dashes with ASCII,
+  so the script parses cleanly under both PowerShell 5.1 and 7.
+
+### Added
+
+- **Corporate-proxy TLS support in the installer.** `install-healthcheck.ps1`
+  now installs `pip-system-certs` before the editable install, so `pip` and
+  `requests` trust the OS certificate store and setup completes behind the
+  TLS-inspecting proxies common around InsightVM consoles.
+
+### Changed
+
+- **Normalized all em/en dashes to ASCII across source, tests, and docs.** Non-
+  ASCII dashes in files stored without a BOM are mis-decoded by Windows
+  PowerShell 5.1 and other cp1252 readers (the same root cause as the installer
+  break); ASCII keeps the whole tree encoding-independent. Mechanical change
+  only -- no source logic, API verbs/paths, or test assertions changed.
+
+### Docs
+
+- **ADR-0006** records the decision to rewrite `agent_unauth_collision` to use
+  server-side agent-site membership (one `assets/search` call) instead of
+  sampled `/api/3/agents` iteration -- the same technique as ADR-0004. This is
+  a recorded decision only; the rule implementation is unchanged and the
+  rewrite has not shipped. CONTEXT.md gains the supporting domain glossary
+  (agent site, agent-site membership, server-side membership query, scan vs
+  report template, built-in template, the enable-minus-disable check model,
+  `HttpTransport` / `ApiDialect`, audit category, and the audit runner).
+
 ## [1.1.0] - 2026-06-24
 
 Issue batch: two false-positive fixes, a terminal-UX overhaul, three new
@@ -1660,7 +1702,9 @@ InsightVM environment.
 - CI on Python 3.11 and 3.12 (GitHub Actions).
 - 153 unit tests covering checks, rules, config, client, and report rendering.
 
-[Unreleased]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.2.9...HEAD
+[Unreleased]: https://github.com/phibu/rapid7-insightvm-audit/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/phibu/rapid7-insightvm-audit/compare/v1.1.0...v1.1.1
+[1.1.0]: https://github.com/phibu/rapid7-insightvm-audit/compare/v1.0.0...v1.1.0
 [0.2.9]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.2.8...v0.2.9
 [0.2.8]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.2.7...v0.2.8
 [0.2.7]: https://github.com/phibu/rapid7-insightvm-audit/compare/v0.2.6...v0.2.7
