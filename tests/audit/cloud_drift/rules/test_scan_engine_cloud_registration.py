@@ -76,7 +76,7 @@ def test_ignored_engine_skipped():
 
 def test_cloud_engine_without_last_seen_fails_unconditionally():
     """A cloud engine record with no last_seen has never contacted the
-    Insight Platform — that is a hard failure, distinct from a merely
+    Insight Platform -- that is a hard failure, distinct from a merely
     stale connection. It must be reported at "fail" severity regardless
     of the configured severity (mirrors the broken-sync hard-fail in
     console_asset_count_drift)."""
@@ -85,7 +85,7 @@ def test_cloud_engine_without_last_seen_fails_unconditionally():
         console_engines=[{"id": 1, "name": "engine-a"}],
         cloud_engines=[{"name": "engine-a", "last_seen": None}],
     )
-    # Configured severity is "info" — never-seen must still escalate to fail.
+    # Configured severity is "info" -- never-seen must still escalate to fail.
     result = rule.run(snap, "info", False, 500, {"last_seen_max_age_hours": 24})
     assert result.status == "fail"
     assert len(result.findings) == 1
@@ -95,7 +95,7 @@ def test_cloud_engine_without_last_seen_fails_unconditionally():
 
 def test_stale_engine_respects_configured_severity():
     """A merely-stale (but previously-seen) engine inherits the configured
-    severity — unlike the never-seen case it is not hard-coded to fail."""
+    severity -- unlike the never-seen case it is not hard-coded to fail."""
     rule = ScanEngineCloudRegistrationRule()
     snap = _snapshot(
         console_engines=[{"id": 1, "name": "engine-a"}],
@@ -231,8 +231,8 @@ def test_fallback_matches_when_name_differs_but_address_matches_host_name():
 
 
 def test_name_match_wins_when_both_would_match_different_cloud_entries():
-    """If two cloud entries exist — one matches by name, a different one
-    by address/host_name — the name match wins (it's the primary key)."""
+    """If two cloud entries exist -- one matches by name, a different one
+    by address/host_name -- the name match wins (it's the primary key)."""
     rule = ScanEngineCloudRegistrationRule()
     snap = _snapshot(
         console_engines=[{
@@ -248,7 +248,7 @@ def test_name_match_wins_when_both_would_match_different_cloud_entries():
         ],
     )
     result = rule.run(snap, "warn", False, 500, {"last_seen_max_age_hours": 24})
-    # Name match was fresh (0h ago) — should pass, not be flagged stale.
+    # Name match was fresh (0h ago) -- should pass, not be flagged stale.
     assert result.status == "pass"
 
 
@@ -268,7 +268,7 @@ def test_console_engine_with_no_name_falls_through_to_fallback():
 
 def test_neither_name_nor_address_matches_still_flags_missing():
     """When neither primary nor fallback matches, the engine stays flagged
-    as 'missing from cloud' — fallback is additive, never silently masks."""
+    as 'missing from cloud' -- fallback is additive, never silently masks."""
     rule = ScanEngineCloudRegistrationRule()
     snap = _snapshot(
         console_engines=[{"id": 1, "name": "engine-a", "address": "10.0.0.5"}],
@@ -327,7 +327,7 @@ def test_fallback_match_logs_info(caplog):
 def test_fallback_matches_when_host_name_has_trailing_dot():
     """A console engine whose address is an FQDN and a cloud engine whose
     host_name is the same FQDN with a trailing dot must still match via
-    the host_name fallback — not be reported as missing from cloud."""
+    the host_name fallback -- not be reported as missing from cloud."""
     rule = ScanEngineCloudRegistrationRule()
     snap = _snapshot(
         console_engines=[{"id": 1, "name": "renamed-on-console",
@@ -359,7 +359,7 @@ def test_fallback_matches_when_address_has_surrounding_whitespace():
 
 def test_null_named_engine_missing_from_cloud_fails_with_address_identifier():
     """A console engine with name=None and an address set, when no cloud
-    engine matches by host_name, is reported missing-from-cloud — and the
+    engine matches by host_name, is reported missing-from-cloud -- and the
     finding's identifier falls back to the address."""
     rule = ScanEngineCloudRegistrationRule()
     snap = _snapshot(

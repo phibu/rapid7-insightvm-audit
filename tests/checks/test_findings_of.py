@@ -1,4 +1,4 @@
-"""Tests for `findings_of` — the single iterator over a CheckResult's findings.
+"""Tests for `findings_of` -- the single iterator over a CheckResult's findings.
 
 Owns the one fragile invariant the render + delta paths kept hand-copying:
 walk `rule_results`' findings XOR the top-level `findings` mirror, never both
@@ -51,7 +51,7 @@ def test_yields_rule_findings_tagged_with_rule_id():
 
 def test_does_not_double_count_when_top_level_findings_mirror_rule_findings():
     """The load-bearing invariant: when rule_results exist, the top-level
-    `findings` mirror is IGNORED — yielding it too would double-count every
+    `findings` mirror is IGNORED -- yielding it too would double-count every
     finding in the delta-blob signature index."""
     rule_findings = [_finding("dup me")]
     check = CheckResult(
@@ -74,7 +74,7 @@ def test_does_not_double_count_when_top_level_findings_mirror_rule_findings():
 
     result = list(findings_of(check))
 
-    # Exactly one — not two.
+    # Exactly one -- not two.
     assert result == [("op.data_quality.missing_os", rule_findings[0])]
 
 
@@ -97,7 +97,7 @@ def test_legacy_check_without_rule_results_yields_top_level_tagged_with_name():
 
 def test_empty_rule_results_list_falls_back_to_top_level():
     """An empty (not None) rule_results list is falsy, so the legacy branch
-    applies — matches `if r.rule_results:` truthiness used at every call site."""
+    applies -- matches `if r.rule_results:` truthiness used at every call site."""
     f1 = _finding("only here")
     check = CheckResult(
         name="Edge",

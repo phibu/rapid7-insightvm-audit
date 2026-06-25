@@ -235,7 +235,7 @@ def test_assumed_scan_duration_floored_at_one_minute_when_zero(fake_snapshot):
 def test_assumed_report_duration_floored_at_one_minute_when_negative(fake_snapshot):
     """A negative assumed_report_duration_minutes would produce a negative
     timedelta. The scan-knob is held at its default 60 so this test isolates
-    the report guard — if a future regression breaks only that guard, the
+    the report guard -- if a future regression breaks only that guard, the
     scan window would not save us."""
     _overlap_fixture(fake_snapshot)
     r = ScanReportScheduleOverlapRule().run(

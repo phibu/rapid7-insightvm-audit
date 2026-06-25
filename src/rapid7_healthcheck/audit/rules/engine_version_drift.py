@@ -93,7 +93,7 @@ class EngineVersionDriftRule(AuditRule):
                     engine_details["engine_product_version"] = e_product
                     engine_details["console_product_version"] = console_product
                 elif e_product_raw is not None and not e_product:
-                    # API returned the field but with an empty value — the
+                    # API returned the field but with an empty value -- the
                     # engine isn't reporting a version, which is itself an
                     # operational signal worth surfacing at info severity.
                     engines_missing_product_version += 1

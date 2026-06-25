@@ -55,7 +55,7 @@ def test_absent_block_skipped(fake_snapshot):
 
 
 def test_unparseable_value_skips_template(fake_snapshot):
-    """A non-ISO-8601 value must never crash or false-flag — the template is
+    """A non-ISO-8601 value must never crash or false-flag -- the template is
     skipped (not examined)."""
     fake_snapshot.set_templates_full([
         _timeout({"id": "t5", "name": "Weird", "vulnerabilityEnabled": True},

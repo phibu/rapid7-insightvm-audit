@@ -17,7 +17,7 @@ class WebSpiderEnabledNoTargetsRule(AuditRule):
     description = (
         "Scan templates with web spider enabled but neither included paths, "
         "start paths, nor link discovery configured. The web scan runs but "
-        "has no surface to crawl — producing zero web findings while "
+        "has no surface to crawl -- producing zero web findings while "
         "appearing to be a configured web scan."
     )
     default_severity = "warn"
@@ -46,7 +46,7 @@ class WebSpiderEnabledNoTargetsRule(AuditRule):
                 severity=severity,
                 message=(
                     f"Template '{t.get('name')}' has web spider enabled but "
-                    f"no included paths, start paths, or link discovery — the "
+                    f"no included paths, start paths, or link discovery -- the "
                     f"web scan has no surface to crawl."
                 ),
                 details={

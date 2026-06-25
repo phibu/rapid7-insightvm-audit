@@ -288,7 +288,7 @@ def test_metrics_rollup_counts():
 
 
 def test_metrics_rollup_handles_check_without_rule_results():
-    """Operational checks (scan_engines etc.) have no rule_results — they
+    """Operational checks (scan_engines etc.) have no rule_results -- they
     contribute findings but not rule counts."""
     from rapid7_healthcheck.report import _metrics
     cr = CheckResult(
@@ -370,7 +370,7 @@ def test_report_renders_inventory_strip_when_totals_present():
         total_scans=987,
     )
     html = render_report(ctx)
-    # Match the rendered <section>, not the always-inlined CSS rule — mirrors
+    # Match the rendered <section>, not the always-inlined CSS rule -- mirrors
     # the rigor of the negative test below so a regression in the
     # {% if inventory_totals %} branch can't slip past.
     assert '<section class="inventory-totals"' in html

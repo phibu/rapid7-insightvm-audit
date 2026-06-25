@@ -1,8 +1,8 @@
-# Configuration Audit — Implementation Plan
+# Configuration Audit -- Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a fifth check category — `ConfigurationAuditCheck` — that audits an InsightVM environment against eight Rapid7-documented best-practice rules, integrated into the existing `rapid7_healthcheck` tool.
+**Goal:** Add a fifth check category -- `ConfigurationAuditCheck` -- that audits an InsightVM environment against eight Rapid7-documented best-practice rules, integrated into the existing `rapid7_healthcheck` tool.
 
 **Architecture:** A single new `Check` class wraps a small rule engine. Eight rules share a lazy-loaded `EnvSnapshot` (sites, scan templates, credentials, schedules), so per-rule API cost stays bounded. Each rule is its own file under `audit/rules/`, declares its Rapid7 source URLs, and emits findings via the existing `Finding` type. The HTML report grows a conditional per-rule sub-section when `CheckResult.rule_results` is set.
 
@@ -13,9 +13,9 @@
 ## File Map
 
 **Created (audit subsystem):**
-- `rapid7_healthcheck/audit/__init__.py` — `Rule` Protocol, `RuleResult` dataclass, `_RULE_REGISTRY`, `ConfigurationAuditCheck` class.
-- `rapid7_healthcheck/audit/snapshot.py` — `EnvSnapshot` (lazy data container).
-- `rapid7_healthcheck/audit/rules/__init__.py` — empty package marker.
+- `rapid7_healthcheck/audit/__init__.py` -- `Rule` Protocol, `RuleResult` dataclass, `_RULE_REGISTRY`, `ConfigurationAuditCheck` class.
+- `rapid7_healthcheck/audit/snapshot.py` -- `EnvSnapshot` (lazy data container).
+- `rapid7_healthcheck/audit/rules/__init__.py` -- empty package marker.
 - `rapid7_healthcheck/audit/rules/agent_unauth_collision.py`
 - `rapid7_healthcheck/audit/rules/site_vuln_template_no_creds.py`
 - `rapid7_healthcheck/audit/rules/credential_failure_in_recent_scans.py`
@@ -31,14 +31,14 @@
 - `tests/audit/rules/__init__.py`, plus eight `test_<rule_id>.py` files
 
 **Modified:**
-- `rapid7_healthcheck/config.py` — `AuditConfig`, `RuleConfig` dataclasses; extended root validation.
-- `rapid7_healthcheck/checks/__init__.py` — `CheckResult` gains `rule_results: list[RuleResult] | None = None`.
-- `rapid7_healthcheck/templates/report.html.j2` — conditional per-rule sub-section.
-- `rapid7_healthcheck/__main__.py` — `_REGISTRY` gains `configuration_audit: ConfigurationAuditCheck`.
-- `rapid7_healthcheck/report.py` — passes the new `rule_results` through to the template.
-- `tests/test_config.py`, `tests/test_main.py`, `tests/test_report.py` — extended.
-- `config.example.yaml` — adds the `audit:` block and the new `checks.configuration_audit` entry.
-- `README.md` — adds Configuration Audit overview, config reference, sources note.
+- `rapid7_healthcheck/config.py` -- `AuditConfig`, `RuleConfig` dataclasses; extended root validation.
+- `rapid7_healthcheck/checks/__init__.py` -- `CheckResult` gains `rule_results: list[RuleResult] | None = None`.
+- `rapid7_healthcheck/templates/report.html.j2` -- conditional per-rule sub-section.
+- `rapid7_healthcheck/__main__.py` -- `_REGISTRY` gains `configuration_audit: ConfigurationAuditCheck`.
+- `rapid7_healthcheck/report.py` -- passes the new `rule_results` through to the template.
+- `tests/test_config.py`, `tests/test_main.py`, `tests/test_report.py` -- extended.
+- `config.example.yaml` -- adds the `audit:` block and the new `checks.configuration_audit` entry.
+- `README.md` -- adds Configuration Audit overview, config reference, sources note.
 
 ---
 
@@ -51,7 +51,7 @@ The plan is sequenced so each task builds on previous ones and the test suite st
 3. `EnvSnapshot` (data layer)
 4. Test fixtures (`FakeSnapshot`)
 5. `CheckResult.rule_results` field + report renderer extension
-6–13. The eight rules (one per task)
+6-13. The eight rules (one per task)
 14. Orchestrator hookup + end-to-end test
 15. README + smoke verification
 
@@ -353,7 +353,7 @@ git -c user.email=Philipp@bchwld.de -c user.name=Philipp commit -m "feat(config)
 
 ---
 
-## Task 2: Audit primitives — `Rule`, `RuleResult`, `ConfigurationAuditCheck` skeleton
+## Task 2: Audit primitives -- `Rule`, `RuleResult`, `ConfigurationAuditCheck` skeleton
 
 **Files:**
 - Create: `rapid7_healthcheck/audit/__init__.py`
@@ -402,7 +402,7 @@ class Rule(Protocol):
 
     def run(
         self,
-        snapshot: Any,        # EnvSnapshot — late-bound to avoid circular import
+        snapshot: Any,        # EnvSnapshot -- late-bound to avoid circular import
         severity: Severity,
         full_scan: bool,
         sample_size: int,
@@ -510,7 +510,7 @@ class ConfigurationAuditCheck:
         )
 ```
 
-This file references `CheckResult.rule_results`, which doesn't exist yet — Task 3 adds it. We commit Task 2 + Task 3 together to avoid a broken intermediate state.
+This file references `CheckResult.rule_results`, which doesn't exist yet -- Task 3 adds it. We commit Task 2 + Task 3 together to avoid a broken intermediate state.
 
 - [ ] **Step 2: Defer commit until Task 3**
 
@@ -967,7 +967,7 @@ git -c user.email=Philipp@bchwld.de -c user.name=Philipp commit -m "test(audit):
 
 ---
 
-## Task 6: Report rendering — per-rule sub-section
+## Task 6: Report rendering -- per-rule sub-section
 
 **Files:**
 - Modify: `rapid7_healthcheck/templates/report.html.j2`
@@ -1156,7 +1156,7 @@ with:
     <div class="tiles">
 ```
 
-(Note the `{% elif r.summary %}` continuation — the existing summary-tile + findings-table block becomes the fallback for non-audit checks. Leave the rest of that block intact.)
+(Note the `{% elif r.summary %}` continuation -- the existing summary-tile + findings-table block becomes the fallback for non-audit checks. Leave the rest of that block intact.)
 
 - [ ] **Step 4: Update `_annotate_findings` to also annotate rule_results' findings**
 
@@ -1169,7 +1169,7 @@ def _annotate_findings(results: list[CheckResult]) -> None:
     `Finding` is `frozen=True`, so attribute assignment is normally blocked.
     `object.__setattr__` bypasses that to attach a `details_json` slot used by
     the Jinja template. We pre-serialize here (rather than in the template) so
-    autoescape treats the JSON as plain text — `<` characters in details would
+    autoescape treats the JSON as plain text -- `<` characters in details would
     otherwise break the HTML. The mutation is intentional and confined to the
     render path; downstream code does not rely on `Finding` immutability.
     """
@@ -1207,7 +1207,7 @@ git -c user.email=Philipp@bchwld.de -c user.name=Philipp commit -m "feat(report)
 
 ---
 
-## Task 7: Rule — `site_vuln_template_no_creds` (cheap, foundational)
+## Task 7: Rule -- `site_vuln_template_no_creds` (cheap, foundational)
 
 **Why first among rules:** simplest and exercises the full plumbing (snapshot → rule → registry → audit check). The other rules build on the same shape.
 
@@ -1412,7 +1412,7 @@ git -c user.email=Philipp@bchwld.de -c user.name=Philipp commit -m "feat(audit):
 
 ---
 
-## Task 8: Rule — `policy_and_vuln_in_same_template` (cheap)
+## Task 8: Rule -- `policy_and_vuln_in_same_template` (cheap)
 
 **Files:**
 - Create: `rapid7_healthcheck/audit/rules/policy_and_vuln_in_same_template.py`
@@ -1505,7 +1505,7 @@ class PolicyAndVulnInSameTemplateRule:
                     severity=severity,
                     message=(
                         f"Template '{tpl.get('name', tpl_id)}' has both Policy and Vulnerability "
-                        f"checks enabled — Rapid7 recommends separate templates"
+                        f"checks enabled -- Rapid7 recommends separate templates"
                     ),
                     details={"template_id": tpl_id, "sites_using": site_ids},
                 ))
@@ -1546,7 +1546,7 @@ git -c user.email=Philipp@bchwld.de -c user.name=Philipp commit -m "feat(audit):
 
 ---
 
-## Task 9: Rule — `store_invulnerable_results` (cheap)
+## Task 9: Rule -- `store_invulnerable_results` (cheap)
 
 **Files:**
 - Create: `rapid7_healthcheck/audit/rules/store_invulnerable_results.py`
@@ -1673,7 +1673,7 @@ class StoreInvulnerableResultsRule:
                     severity=severity,
                     message=(
                         f"Template '{tpl.get('name', tpl_id)}' has 'Store invulnerable results' "
-                        f"enabled — Rapid7 recommends disabling unless required by PCI auditor"
+                        f"enabled -- Rapid7 recommends disabling unless required by PCI auditor"
                     ),
                     details={"template_id": tpl_id, "sites_using": site_ids},
                 ))
@@ -1712,7 +1712,7 @@ git -c user.email=Philipp@bchwld.de -c user.name=Philipp commit -m "feat(audit):
 
 ---
 
-## Task 10: Rule — `single_engine_overload` (cheap, configurable threshold)
+## Task 10: Rule -- `single_engine_overload` (cheap, configurable threshold)
 
 **Files:**
 - Create: `rapid7_healthcheck/audit/rules/single_engine_overload.py`
@@ -1852,7 +1852,7 @@ git -c user.email=Philipp@bchwld.de -c user.name=Philipp commit -m "feat(audit):
 
 ---
 
-## Task 11: Rule — `discovery_template_on_prod_site` (cheap, heuristic)
+## Task 11: Rule -- `discovery_template_on_prod_site` (cheap, heuristic)
 
 **Files:**
 - Create: `rapid7_healthcheck/audit/rules/discovery_template_on_prod_site.py`
@@ -1953,7 +1953,7 @@ class DiscoveryTemplateOnProdSiteRule:
                 message=(
                     f"Site '{site.get('name', site_id)}' (importance: {importance}, "
                     f"{snapshot.site_asset_count(site_id)} assets) uses Discovery-only template "
-                    f"'{tpl.get('name', tpl_id)}' — no vulnerabilities will be reported"
+                    f"'{tpl.get('name', tpl_id)}' -- no vulnerabilities will be reported"
                 ),
                 details={"site_id": site_id, "template_id": tpl_id,
                          "importance": importance,
@@ -1988,7 +1988,7 @@ git -c user.email=Philipp@bchwld.de -c user.name=Philipp commit -m "feat(audit):
 
 ---
 
-## Task 12: Rule — `overlapping_scan_windows` (expensive)
+## Task 12: Rule -- `overlapping_scan_windows` (expensive)
 
 **Files:**
 - Create: `rapid7_healthcheck/audit/rules/overlapping_scan_windows.py`
@@ -2265,7 +2265,7 @@ git -c user.email=Philipp@bchwld.de -c user.name=Philipp commit -m "feat(audit):
 
 ---
 
-## Task 13: Rule — `credential_failure_in_recent_scans` (expensive)
+## Task 13: Rule -- `credential_failure_in_recent_scans` (expensive)
 
 **Files:**
 - Create: `rapid7_healthcheck/audit/rules/credential_failure_in_recent_scans.py`
@@ -2460,7 +2460,7 @@ git -c user.email=Philipp@bchwld.de -c user.name=Philipp commit -m "feat(audit):
 
 ---
 
-## Task 14: Rule — `agent_unauth_collision` (expensive, headline rule)
+## Task 14: Rule -- `agent_unauth_collision` (expensive, headline rule)
 
 **Files:**
 - Create: `rapid7_healthcheck/audit/rules/agent_unauth_collision.py`
@@ -2985,7 +2985,7 @@ Per-rule severity and enable/disable live in the `audit:` block of `config.yaml`
 See `config.example.yaml` for the full audit configuration block.
 ```
 
-Update the "What this tool does NOT do" section to reflect the new capability — remove any wording that suggests configuration auditing is out of scope (none should exist; the existing wording about license/build version stays).
+Update the "What this tool does NOT do" section to reflect the new capability -- remove any wording that suggests configuration auditing is out of scope (none should exist; the existing wording about license/build version stays).
 
 - [ ] **Step 4: Run final pytest + git status**
 

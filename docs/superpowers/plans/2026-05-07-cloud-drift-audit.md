@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a third audit category — Cloud Drift — that reconciles the on-prem Security Console (v3) with the InsightVM Cloud Integrations API (v4), shipping three v0 rules behind an opt-in `cloud_integration:` config block.
+**Goal:** Add a third audit category -- Cloud Drift -- that reconciles the on-prem Security Console (v3) with the InsightVM Cloud Integrations API (v4), shipping three v0 rules behind an opt-in `cloud_integration:` config block.
 
 **Architecture:** New `CloudClient` peer to `Rapid7Client` with its own minimal read-only allowlist (`GET` + `POST /v4/integration/assets` only). New `CloudDriftAuditCheck` orchestrator with its own `_CLOUD_RULE_REGISTRY`, sibling to `ConfigurationAuditCheck` and `UserPermissionAuditCheck`. New `CloudSnapshot` holds both clients for cross-referencing. Whole category produces a single `skipped` `CheckResult` when `cloud_integration` is absent or disabled.
 
@@ -64,7 +64,7 @@ def test_allowed_post_paths_is_assets_only():
 
 
 def test_post_to_disallowed_path_raises_before_network(client):
-    # /v4/integration/scan would START a scan — never permit.
+    # /v4/integration/scan would START a scan -- never permit.
     with pytest.raises(ReadOnlyViolationError) as exc:
         client.post("/v4/integration/scan", json_body={})
     assert "/v4/integration/scan" in str(exc.value)
@@ -143,7 +143,7 @@ class CloudClientError(Rapid7ClientError):
     exception type without code changes. Path extraction in
     `_extract_diagnostics` won't match v4 paths (its regex is
     `/api/3/...`-only); error_path on cloud-rule failures will be `None`,
-    which is acceptable — error_status_code carries the same diagnostic
+    which is acceptable -- error_status_code carries the same diagnostic
     weight.
     """
 
@@ -158,7 +158,7 @@ _ALLOWED_VERBS = frozenset({"GET", "POST"})
 # POST /v4/integration/scan/engine/{id}/configuration, DELETE on the
 # same) are deliberately omitted. POST /v4/integration/sites and
 # POST /v4/integration/vulnerabilities are read-safe but not needed
-# by v0 rules — re-add when a rule requires them.
+# by v0 rules -- re-add when a rule requires them.
 _ALLOWED_POST_PATHS = frozenset({"/v4/integration/assets"})
 
 
@@ -545,7 +545,7 @@ def test_request_sends_x_api_key_header():
 - [ ] **Step 2: Run tests**
 
 Run: `pytest tests/cloud_client/test_pagination.py -v`
-Expected: 5 passed (the implementation from Task 1 already supports this — these tests pin the v4 envelope contract).
+Expected: 5 passed (the implementation from Task 1 already supports this -- these tests pin the v4 envelope contract).
 
 - [ ] **Step 3: Commit**
 
@@ -773,7 +773,7 @@ return AppConfig(
 )
 ```
 
-(`cloud_drift` validator comes in Task 4 — for now `_build_app_config` accepts it as a known root key but reads nothing; add a placeholder that raises if present until Task 4 lands. Easiest approach: include `"cloud_drift"` in `expected_root` only in Task 4 to avoid a half-step. Reverse the change here — keep `expected_root` to just `+ "cloud_integration"` for now.)
+(`cloud_drift` validator comes in Task 4 -- for now `_build_app_config` accepts it as a known root key but reads nothing; add a placeholder that raises if present until Task 4 lands. Easiest approach: include `"cloud_drift"` in `expected_root` only in Task 4 to avoid a half-step. Reverse the change here -- keep `expected_root` to just `+ "cloud_integration"` for now.)
 
 **Corrected change for `_build_app_config`:**
 
@@ -942,7 +942,7 @@ def _build_cloud_drift_config(data: dict | None) -> CloudDriftConfig:
 
     Mirrors `_build_user_audit_config` rule-validation logic against
     `_VALID_CLOUD_DRIFT_RULE_IDS`. Has no top-level `enabled`/`full_scan`/
-    `sample_size` keys — sampling does not apply to cloud-drift rules
+    `sample_size` keys -- sampling does not apply to cloud-drift rules
     (they read aggregate counts) and the category-level enable lives in
     `checks.cloud_drift_audit` like every other check.
     """
@@ -1036,7 +1036,7 @@ git commit -m "feat(config): add cloud_drift rule config block"
 ## Task 5: CloudSnapshot with lazy v3+v4 accessors
 
 **Files:**
-- Create: `src/rapid7_healthcheck/audit/cloud_drift/__init__.py` (skeleton — orchestrator comes in Task 9, but the package needs to exist)
+- Create: `src/rapid7_healthcheck/audit/cloud_drift/__init__.py` (skeleton -- orchestrator comes in Task 9, but the package needs to exist)
 - Create: `src/rapid7_healthcheck/audit/cloud_drift/snapshot.py`
 - Create: `src/rapid7_healthcheck/audit/cloud_drift/rules/__init__.py` (empty)
 - Test: `tests/audit/cloud_drift/__init__.py` (empty), `tests/audit/cloud_drift/test_snapshot.py`
@@ -1152,7 +1152,7 @@ Sibling to ``rapid7_healthcheck.audit`` (Configuration Audit) and
 Reconciles the on-prem Security Console (v3) against the InsightVM
 Cloud Integrations API (v4).
 
-Disabled by default — the entire category self-skips when the
+Disabled by default -- the entire category self-skips when the
 ``cloud_integration`` config block is absent or has ``enabled: false``.
 """
 
@@ -1177,7 +1177,7 @@ def _format_threshold(dt: datetime) -> str:
     """Format a datetime as ``YYYY-MM-DDTHH:MM:SSZ`` for the v4 filter DSL.
 
     Naive datetimes are interpreted as UTC. Aware datetimes in non-UTC
-    zones are converted to UTC. Microseconds are dropped — v4's filter
+    zones are converted to UTC. Microseconds are dropped -- v4's filter
     parser accepts millisecond precision but the rules don't need it.
     """
     if dt.tzinfo is None:
@@ -1281,7 +1281,7 @@ Sibling to ``rapid7_healthcheck.audit`` (Configuration Audit) and
 Reconciles the on-prem Security Console (v3) against the InsightVM
 Cloud Integrations API (v4).
 
-Disabled by default — the entire category self-skips when the
+Disabled by default -- the entire category self-skips when the
 ``cloud_integration`` config block is absent or has ``enabled: false``.
 """
 
@@ -1425,7 +1425,7 @@ class ConsoleAssetCountDriftRule:
         "console-to-cloud sync keeps these within a small percentage; "
         "large divergence usually indicates broken connector configuration. "
         "If exactly one side reports 0 assets and the other reports any "
-        "non-zero count, the finding is upgraded to fail — that is a "
+        "non-zero count, the finding is upgraded to fail -- that is a "
         "broken sync, not a skew."
     )
     default_severity = "warn"
@@ -1441,7 +1441,7 @@ class ConsoleAssetCountDriftRule:
         drift_percent = 0.0
 
         if console_total == 0 and cloud_total == 0:
-            # No assets on either side — vacuously consistent.
+            # No assets on either side -- vacuously consistent.
             pass
         elif console_total == 0 or cloud_total == 0:
             findings.append(Finding(
@@ -1834,7 +1834,7 @@ def test_above_percent_threshold_warns():
 
 def test_above_count_threshold_warns():
     rule = StaleAssessmentCohortRule()
-    snap = _snapshot(total=10000, stale=600)  # 6% — under default percent threshold
+    snap = _snapshot(total=10000, stale=600)  # 6% -- under default percent threshold
     result = rule.run(
         snap, "warn", False, 500,
         {"stale_after_days": 30, "max_stale_percent": 10, "max_stale_count": 500},
@@ -1876,7 +1876,7 @@ def test_threshold_datetime_passed_to_snapshot():
     rule.run(snap, "warn", False, 500, {"stale_after_days": 30})
     args, kwargs = snap.cloud_assets_stale.call_args
     threshold = args[0] if args else kwargs["since"]
-    # threshold should be ~30 days ago, not "today" — sanity check the math
+    # threshold should be ~30 days ago, not "today" -- sanity check the math
     from datetime import datetime, timezone, timedelta
     expected = datetime.now(timezone.utc) - timedelta(days=30)
     assert abs((threshold - expected).total_seconds()) < 60
@@ -2159,7 +2159,7 @@ Sibling to ``rapid7_healthcheck.audit`` (Configuration Audit) and
 Reconciles the on-prem Security Console (v3) against the InsightVM
 Cloud Integrations API (v4).
 
-Disabled by default — the entire category self-skips when the
+Disabled by default -- the entire category self-skips when the
 ``cloud_integration`` config block is absent or has ``enabled: false``,
 or when the cloud client could not be constructed (e.g. missing key).
 """
@@ -2536,7 +2536,7 @@ After the existing `user_audit:` block in `docs/examples/config.yaml`, append:
 # ---------------------------------------------------------------------------
 # Cloud Drift Audit (optional). Reconciles the on-prem Security Console
 # with the Insight Platform Cloud Integrations API (v4). Disabled by
-# default — requires a separate Insight Platform API key.
+# default -- requires a separate Insight Platform API key.
 # ---------------------------------------------------------------------------
 cloud_integration:
   enabled: false
@@ -2630,10 +2630,10 @@ Locate the existing "User & Permission Audit" section in `README.md`. Append, af
 
 - [ ] **Step 2: Add a "Cloud Drift Audit dependencies" subsection in README's exit-code table area**
 
-No changes to the exit-code table — startup failures (missing key when enabled) already exit 3, which is documented. But add a one-liner near the exit-code table:
+No changes to the exit-code table -- startup failures (missing key when enabled) already exit 3, which is documented. But add a one-liner near the exit-code table:
 
 ```markdown
-> Cloud Drift Audit, when enabled, requires `R7_CLOUD_API_KEY` to be set; missing key exits with `3` (startup error). When disabled, the category is invisible — same behavior as a disabled check.
+> Cloud Drift Audit, when enabled, requires `R7_CLOUD_API_KEY` to be set; missing key exits with `3` (startup error). When disabled, the category is invisible -- same behavior as a disabled check.
 ```
 
 - [ ] **Step 3: Extend SECURITY.md's read-only contract section**
@@ -2684,7 +2684,7 @@ In the "API reference" section of `CLAUDE.md`, add:
 The v4 Cloud Integrations API spec is committed at [docs/research/api-v4.json](docs/research/api-v4.json).
 Cross-check v4 calls against this file the same way you cross-check v3.
 The v4 base path is `/vm/v4/integration/...` and the response envelope
-is `{data, metadata, links}` — note `data` (not `resources`) and
+is `{data, metadata, links}` -- note `data` (not `resources`) and
 `metadata.totalResources` (not `page.totalResources`).
 ```
 
@@ -2705,23 +2705,23 @@ git commit -m "docs(cloud-drift): README/SECURITY/CLAUDE updates for v4 client +
 ## Task 13: Backlog entry for source URLs
 
 **Files:**
-- Modify: `backlog.md` (gitignored — local file)
+- Modify: `backlog.md` (gitignored -- local file)
 
 - [ ] **Step 1: Append entry**
 
 Add a section to `backlog.md` for the next minor version (e.g. `0.5.1`):
 
 ```markdown
-## 0.5.1 — Cloud Drift follow-ups
+## 0.5.1 -- Cloud Drift follow-ups
 
-- minor — `audit/cloud_drift/rules/*.py`: every v0 rule ships with `sources = []`.
+- minor -- `audit/cloud_drift/rules/*.py`: every v0 rule ships with `sources = []`.
   Pick real Rapid7 doc URLs (cloud-console sync architecture, engine
   cloud registration guidance, assessment-staleness recommendations)
   and populate the lists. Surface in README rule table at the same time.
-- cleanup — `cloud_client.py`: cursor pagination support deferred from 0.5.0.
+- cleanup -- `cloud_client.py`: cursor pagination support deferred from 0.5.0.
   Current rules read totalResources only, so cursor isn't needed; revisit
   when a future rule iterates the asset list.
-- minor — `audit/cloud_drift/rules/scan_engine_cloud_registration.py`:
+- minor -- `audit/cloud_drift/rules/scan_engine_cloud_registration.py`:
   matching engines by name only is the conservative v0 cross-key. If
   real-world data shows name divergence between v3 and v4, add fallback
   to host_name == address.
@@ -2766,7 +2766,7 @@ Expected: prints `OK`.
 
 - **Server-side delta** via `comparisonTime` / `currentTime`. Spec §"Non-goals". Existing client-side state-blob delta is sufficient.
 - **Vulnerability-definition reconciliation** between v3 and v4. Low signal-to-noise.
-- **Migrating existing rules to v4.** Spec rejected this — most existing rules cannot be ported because v4 lacks the underlying data (templates, schedules, credentials, engine pools, users, roles).
+- **Migrating existing rules to v4.** Spec rejected this -- most existing rules cannot be ported because v4 lacks the underlying data (templates, schedules, credentials, engine pools, users, roles).
 - **Cursor pagination on CloudClient.** No v0 rule needs it; deferred to backlog.
 - **Source URL backfill.** Deferred to backlog (Task 13) so a real implementation pass can pick the right Rapid7 doc URLs against the live docs site.
 

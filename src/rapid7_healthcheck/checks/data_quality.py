@@ -36,11 +36,11 @@ def _example_hostnames(assets: list[dict]) -> list[str]:
 
 def _oversize_skip_rule(rule, total_assets: int, threshold: int, *, kind: str) -> RuleResult:
     """Build a skipped RuleResult explaining why duplicate detection was bypassed
-    at this inventory size. The skipped status is honest — at this scale we
+    at this inventory size. The skipped status is honest -- at this scale we
     cannot detect duplicates at all via v3 (no group-by), so reporting "pass"
     would imply we checked and found nothing.
 
-    `rule` is a DuplicateHostnamesRule or DuplicateIpsRule instance — used only
+    `rule` is a DuplicateHostnamesRule or DuplicateIpsRule instance -- used only
     to read RULE_ID / RULE_NAME / DESCRIPTION / SOURCES. `kind` is "hostname"
     or "ip" and is interpolated into the user-visible reason.
     """
@@ -163,7 +163,7 @@ class StaleAssetsRule:
     RULE_NAME = "Long-stale assets"
     DESCRIPTION = (
         "Assets whose last scan is older than the data-quality threshold. "
-        "Distinct from Asset Coverage's never-scanned signal — this flags "
+        "Distinct from Asset Coverage's never-scanned signal -- this flags "
         "asset records whose data is so old it's likely unreliable."
     )
     DEFAULT_SEVERITY = "warn"
@@ -221,7 +221,7 @@ def _collect_duplicate_groups(client, t) -> tuple[list[dict], list[dict]]:
     Returns ``(host_groups, ip_groups)`` where each list element is a dict with
     ``key``, ``ids``, ``count`` keys. Groups with count <= 1 are dropped.
     Either list may be empty if the corresponding flag (``flag_duplicate_hostnames``
-    / ``flag_duplicate_ips``) is False — the caller still receives an empty list,
+    / ``flag_duplicate_ips``) is False -- the caller still receives an empty list,
     not None.
     """
     by_host: dict[str, list[dict]] = defaultdict(list)
@@ -455,7 +455,7 @@ class DataQualityCheck:
         rule_results.append(safe_run_rule(empty_sites, lambda: empty_sites.run(snapshot, t)))
         rule_results.append(safe_run_rule(stale, lambda: stale.run(client, t)))
 
-        # Duplicate detection — single paginate, two rules. On large consoles
+        # Duplicate detection -- single paginate, two rules. On large consoles
         # the paginate is infeasible (v3 has no group-by, ~45s/page on 500k
         # assets), so peek totalResources first and skip with a Console-UI
         # pointer above the configured ceiling.

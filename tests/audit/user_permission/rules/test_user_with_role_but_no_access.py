@@ -25,7 +25,7 @@ def test_pass_when_user_has_explicit_site_access(fake_user_snapshot):
 
 
 def test_pass_when_user_has_all_sites(fake_user_snapshot):
-    """Wildcard role.allSites means access — not a candidate at all."""
+    """Wildcard role.allSites means access -- not a candidate at all."""
     fake_user_snapshot.set_users([_user(1, "alice", all_sites=True)])
     r = UserWithRoleButNoAccessRule().run(fake_user_snapshot, "info", False, 500, {})
     assert r.status == "pass"

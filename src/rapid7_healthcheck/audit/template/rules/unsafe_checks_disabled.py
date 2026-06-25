@@ -13,7 +13,7 @@ class UnsafeChecksDisabledRule(AuditRule):
     description = (
         "Vulnerability-enabled templates with `checks.unsafe` explicitly set "
         "to false. Unsafe checks (denial-of-service probes, crash-the-service "
-        "exploits) are disabled by default for production safety — this rule "
+        "exploits) are disabled by default for production safety -- this rule "
         "is awareness-only and emits info findings so the operator knows "
         "which templates skip the unsafe class. Per the project convention, "
         "info findings do not escalate check status."
@@ -37,7 +37,7 @@ class UnsafeChecksDisabledRule(AuditRule):
                     severity=severity,
                     message=(
                         f"Template '{t.get('name')}' has unsafe vulnerability "
-                        f"checks disabled (informational — this is often "
+                        f"checks disabled (informational -- this is often "
                         f"intentional for production safety)."
                     ),
                     details={

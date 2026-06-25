@@ -49,7 +49,7 @@ def test_old_shape_console_examined_but_unsafe_not_evaluated(fake_snapshot):
     template.vulnerabilityChecks.enabled (handled by
     EnvSnapshot.template_vuln_enabled()). The modern `checks.unsafe`
     sub-field lives at `vulnerabilityChecks.unsafe` on the same console.
-    This rule reads modern-shape `checks.unsafe` only — on older shapes,
+    This rule reads modern-shape `checks.unsafe` only -- on older shapes,
     the template is correctly examined but never flagged. Documents the
     known limitation.
     """

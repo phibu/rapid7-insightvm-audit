@@ -1,8 +1,8 @@
-# Data Quality: Skip Duplicate Detection on Large Inventories — Implementation Plan
+# Data Quality: Skip Duplicate Detection on Large Inventories -- Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a configurable size ceiling (`duplicate_detection_max_assets`, default 50000) above which Data Quality's duplicate-hostname/IP rules are skipped with a finding pointing to the Security Console UI — preventing 12+ hour scans on 500k-asset consoles where the v3 API has no group-by.
+**Goal:** Add a configurable size ceiling (`duplicate_detection_max_assets`, default 50000) above which Data Quality's duplicate-hostname/IP rules are skipped with a finding pointing to the Security Console UI -- preventing 12+ hour scans on 500k-asset consoles where the v3 API has no group-by.
 
 **Architecture:** Single new threshold on `DataQualityThresholds`. New helpers `_peek_total_assets` (one-shot `GET /api/3/assets?page=0&size=1`) and `_oversize_skip_rule` (build a `pass`-status `RuleResult` containing one `info` finding) live in `data_quality.py`. `DataQualityCheck.run` branches before `_collect_duplicate_groups` is called. No HTTP-client changes. Read-only contract preserved.
 
@@ -18,7 +18,7 @@
 |---|---|
 | `src/rapid7_healthcheck/config.py` | Add `duplicate_detection_max_assets: int = 50000` to `DataQualityThresholds`; extend `_build_thresholds` to validate it (allow `>= 0`). |
 | `src/rapid7_healthcheck/checks/data_quality.py` | Add `_peek_total_assets`, `_oversize_skip_rule`; modify `DataQualityCheck.run` duplicate-detection branch. |
-| `tests/conftest.py` | No change — default `_default_config` does not need to set the new field; the dataclass default of `50000` applies. |
+| `tests/conftest.py` | No change -- default `_default_config` does not need to set the new field; the dataclass default of `50000` applies. |
 | `tests/checks/test_data_quality.py` | New tests for skip path, run path, threshold-zero, peek failure, both-flags-off. |
 | `tests/test_config.py` | Default value, negative rejected, non-int rejected, zero accepted. |
 | `docs/examples/config.yaml` | Add the new key with explanatory comment under `thresholds.data_quality:`. |
@@ -36,7 +36,7 @@
 
 ### Step 1: Write failing tests
 
-- [ ] Add these tests to `tests/test_config.py` (or whichever existing test class covers `data_quality` thresholds — append at end of file if no class exists):
+- [ ] Add these tests to `tests/test_config.py` (or whichever existing test class covers `data_quality` thresholds -- append at end of file if no class exists):
 
 ```python
 def test_data_quality_default_duplicate_detection_max_assets(tmp_path):
@@ -126,12 +126,12 @@ thresholds:
 """
 ```
 
-(If `tests/test_config.py` already has a different helper for the same job, use that one and adapt the new tests to match — do not duplicate.)
+(If `tests/test_config.py` already has a different helper for the same job, use that one and adapt the new tests to match -- do not duplicate.)
 
 ### Step 2: Run tests to verify they fail
 
 - [ ] Run: `pytest tests/test_config.py -v -k duplicate_detection`
-- [ ] Expected: 4 FAIL — `AttributeError: 'DataQualityThresholds' object has no attribute 'duplicate_detection_max_assets'` (default test) or `ConfigError: ... unknown key(s): ['duplicate_detection_max_assets']` (other tests).
+- [ ] Expected: 4 FAIL -- `AttributeError: 'DataQualityThresholds' object has no attribute 'duplicate_detection_max_assets'` (default test) or `ConfigError: ... unknown key(s): ['duplicate_detection_max_assets']` (other tests).
 
 ### Step 3: Add the field to `DataQualityThresholds`
 
@@ -205,7 +205,7 @@ class DataQualityThresholds:
     )
 ```
 
-- [ ] Verify `replace` is already imported at the top of `config.py` (it is — line 5 imports `replace` from `dataclasses`). No new import needed.
+- [ ] Verify `replace` is already imported at the top of `config.py` (it is -- line 5 imports `replace` from `dataclasses`). No new import needed.
 
 ### Step 5: Run tests to verify they pass
 
@@ -236,7 +236,7 @@ git commit -m "feat(config): add data_quality.duplicate_detection_max_assets thr
 
 ### Step 1: Write failing tests
 
-- [ ] Append these tests to `tests/checks/test_data_quality.py`. The file already imports `DataQualityCheck` and `DataQualityThresholds` and defines `_all_off_except` and `_rule` helpers — reuse them.
+- [ ] Append these tests to `tests/checks/test_data_quality.py`. The file already imports `DataQualityCheck` and `DataQualityThresholds` and defines `_all_off_except` and `_rule` helpers -- reuse them.
 
 ```python
 def test_duplicate_detection_skipped_when_total_exceeds_threshold(fake_client, app_config):
@@ -310,7 +310,7 @@ def test_duplicate_detection_threshold_zero_always_skips(fake_client, app_config
         "/api/3/assets",
         {"resources": [], "page": {"totalResources": 5, "size": 1}},
     )
-    # No paginate registered — would raise if called.
+    # No paginate registered -- would raise if called.
 
     result = DataQualityCheck().run(fake_client, cfg)
 
@@ -363,7 +363,7 @@ def test_duplicate_detection_skipped_when_both_flags_off_does_not_peek(fake_clie
         flag_duplicate_ips=False,
         duplicate_detection_max_assets=50000,
     )
-    # No GET /api/3/assets registered — if called, fake_client raises.
+    # No GET /api/3/assets registered -- if called, fake_client raises.
 
     result = DataQualityCheck().run(fake_client, cfg)
 
@@ -374,12 +374,12 @@ def test_duplicate_detection_skipped_when_both_flags_off_does_not_peek(fake_clie
     assert not any(c[0] == "get" and c[1] == "/api/3/assets" for c in fake_client.calls)
 ```
 
-- [ ] Note on `_all_off_except`: it currently builds `DataQualityThresholds(**base)` with a fixed key set. After Task 1, the dataclass has the new `duplicate_detection_max_assets` field with default `50000`. The helper still works without modification because the new field has a default. **However**, the new tests pass `duplicate_detection_max_assets=...` as a kwarg — this requires `_all_off_except` to forward it through `base.update(kwargs)`. Since `_all_off_except` already does `base.update(kwargs)` and then `DataQualityThresholds(**base)`, the new kwarg is forwarded transparently and the dataclass accepts it. **No change to `_all_off_except` is needed.**
+- [ ] Note on `_all_off_except`: it currently builds `DataQualityThresholds(**base)` with a fixed key set. After Task 1, the dataclass has the new `duplicate_detection_max_assets` field with default `50000`. The helper still works without modification because the new field has a default. **However**, the new tests pass `duplicate_detection_max_assets=...` as a kwarg -- this requires `_all_off_except` to forward it through `base.update(kwargs)`. Since `_all_off_except` already does `base.update(kwargs)` and then `DataQualityThresholds(**base)`, the new kwarg is forwarded transparently and the dataclass accepts it. **No change to `_all_off_except` is needed.**
 
 ### Step 2: Run tests to verify they fail
 
 - [ ] Run: `pytest tests/checks/test_data_quality.py -v -k "duplicate_detection"`
-- [ ] Expected: 5 FAIL — most likely `AssertionError: unexpected GET /api/3/assets` (production code doesn't call the peek yet) or assertions on `pass`+info-finding shape that current code doesn't produce.
+- [ ] Expected: 5 FAIL -- most likely `AssertionError: unexpected GET /api/3/assets` (production code doesn't call the peek yet) or assertions on `pass`+info-finding shape that current code doesn't produce.
 
 ### Step 3: Add the two helpers near the top of `data_quality.py`
 
@@ -402,7 +402,7 @@ def _oversize_skip_rule(rule, total_assets: int, threshold: int, *, kind: str) -
     """Build a pass-status RuleResult with a single info finding explaining
     why duplicate detection was skipped at this inventory size.
 
-    `rule` is a DuplicateHostnamesRule or DuplicateIpsRule instance — used only
+    `rule` is a DuplicateHostnamesRule or DuplicateIpsRule instance -- used only
     to read RULE_ID / RULE_NAME / DESCRIPTION / SOURCES. `kind` is "hostname"
     or "ip" and is interpolated into the user-visible message.
     """
@@ -436,10 +436,10 @@ def _oversize_skip_rule(rule, total_assets: int, threshold: int, *, kind: str) -
 
 ### Step 4: Modify `DataQualityCheck.run`'s duplicate-detection branch
 
-- [ ] In `src/rapid7_healthcheck/checks/data_quality.py`, locate `DataQualityCheck.run` (around lines 310-360). Find the existing block starting at the comment `# Duplicate detection — single paginate, two rules.` (around line 326). Replace the whole block from that comment through the end of the `try/except/else` (down to `rule_results.append(safe_run_rule(ip_rule, lambda: ip_rule.run(ip_groups, t)))`) with this:
+- [ ] In `src/rapid7_healthcheck/checks/data_quality.py`, locate `DataQualityCheck.run` (around lines 310-360). Find the existing block starting at the comment `# Duplicate detection -- single paginate, two rules.` (around line 326). Replace the whole block from that comment through the end of the `try/except/else` (down to `rule_results.append(safe_run_rule(ip_rule, lambda: ip_rule.run(ip_groups, t)))`) with this:
 
 ```python
-        # Duplicate detection — single paginate, two rules. On large consoles
+        # Duplicate detection -- single paginate, two rules. On large consoles
         # the paginate is infeasible (v3 has no group-by, ~45s/page on 500k
         # assets), so peek totalResources first and skip with a Console-UI
         # pointer above the configured ceiling.
@@ -558,7 +558,7 @@ git commit -m "feat(data_quality): skip duplicate detection above duplicate_dete
 | `data_quality.duplicate_detection_max_assets` | `50000` | Skip duplicate hostname/IP detection when total assets exceed this. The v3 API has no group-by; on large consoles (500k+ assets, ~45s/page) full pagination is infeasible. Above the ceiling, both rules emit an info finding pointing to Security Console → Assets. Set to `0` to always skip. |
 ```
 
-(Match the exact column count and formatting of the table — if the table has a different shape, adapt the row to match.)
+(Match the exact column count and formatting of the table -- if the table has a different shape, adapt the row to match.)
 
 ### Step 3: Update `README.md` Data Quality section
 
@@ -614,17 +614,17 @@ git commit -m "docs: document data_quality.duplicate_detection_max_assets thresh
 ## Self-Review Notes
 
 **Spec coverage:**
-- ✅ New threshold `duplicate_detection_max_assets` (default 50000) — Task 1.
-- ✅ `0` as "always skip" sentinel — Task 1 + Task 2 + Task 3.
-- ✅ Negative rejected — Task 1.
-- ✅ `_peek_total_assets` helper — Task 2 Step 3.
-- ✅ `_oversize_skip_rule` helper, both threshold>0 and threshold=0 messages — Task 2 Step 3.
-- ✅ Branch order in `run`: both flags off → existing skip; peek raises → error rules; total > cap or cap == 0 → oversize skip; else → existing path — Task 2 Step 4.
-- ✅ Pass status with info finding (not skipped status) — Task 2 helper uses `make_rule_result` which derives `pass` from a single `info` finding.
-- ✅ Read-only safety: only adds a `GET` call. — Task 2.
-- ✅ Tests for all five branches — Task 2 Step 1.
-- ✅ Config validator tests (default, zero, negative, non-int) — Task 1 Step 1.
-- ✅ Example config + README + CHANGELOG — Task 3.
+- ✅ New threshold `duplicate_detection_max_assets` (default 50000) -- Task 1.
+- ✅ `0` as "always skip" sentinel -- Task 1 + Task 2 + Task 3.
+- ✅ Negative rejected -- Task 1.
+- ✅ `_peek_total_assets` helper -- Task 2 Step 3.
+- ✅ `_oversize_skip_rule` helper, both threshold>0 and threshold=0 messages -- Task 2 Step 3.
+- ✅ Branch order in `run`: both flags off → existing skip; peek raises → error rules; total > cap or cap == 0 → oversize skip; else → existing path -- Task 2 Step 4.
+- ✅ Pass status with info finding (not skipped status) -- Task 2 helper uses `make_rule_result` which derives `pass` from a single `info` finding.
+- ✅ Read-only safety: only adds a `GET` call. -- Task 2.
+- ✅ Tests for all five branches -- Task 2 Step 1.
+- ✅ Config validator tests (default, zero, negative, non-int) -- Task 1 Step 1.
+- ✅ Example config + README + CHANGELOG -- Task 3.
 
 **Type consistency:**
 - `cap` (local in `run`) is `int` (from `t.duplicate_detection_max_assets`).

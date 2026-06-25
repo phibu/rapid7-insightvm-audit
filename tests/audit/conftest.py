@@ -22,7 +22,7 @@ class FakeSnapshot:
         self._agents: list[dict] = []
         self._agents_total: int = 0
         self._agents_unavailable: bool = False
-        # Agent fleet — sampled accessor (independent of full set above)
+        # Agent fleet -- sampled accessor (independent of full set above)
         self._agents_sampled: list[dict] = []
         self._agents_sampled_total: int = 0
         self._agents_sampled_unavailable: bool = False
@@ -162,14 +162,14 @@ class FakeSnapshot:
         return self._site_included_targets[site_id]
 
     def prefetch_site_schedules(self, site_ids: list[int]) -> None:
-        """No-op in tests — FakeSnapshot data is pre-registered, so the
+        """No-op in tests -- FakeSnapshot data is pre-registered, so the
         per-site caches the real prefetch warms are already populated.
         Present so rules that call it don't hit the unregistered-method
         AssertionError."""
         return None
 
     def prefetch_site_included_targets(self, site_ids: list[int]) -> None:
-        """No-op in tests — see prefetch_site_schedules."""
+        """No-op in tests -- see prefetch_site_schedules."""
         return None
 
     def site_asset_count(self, site_id: int) -> int:

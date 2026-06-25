@@ -6,7 +6,7 @@ Rule-layer helpers (they interpret credential JSON; they do not fetch). Used by
 The **dedup key** identifies "the same credential" without ever touching a
 secret: on GET, Rapid7 does not return credential passwords (they are
 write-only), and keying on a secret would be a leak regardless. We key on the
-non-secret identity — service type, username, domain, and host/port
+non-secret identity -- service type, username, domain, and host/port
 restriction. See CONTEXT.md and issue #33.
 """
 from __future__ import annotations

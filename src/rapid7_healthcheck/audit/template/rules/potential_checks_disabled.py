@@ -13,7 +13,7 @@ class PotentialChecksDisabledRule(AuditRule):
     description = (
         "Vulnerability-enabled templates with `checks.potential` explicitly set "
         "to false. Potential checks fill the gap when authenticated information "
-        "is missing or version banners are ambiguous — disabling them hides "
+        "is missing or version banners are ambiguous -- disabling them hides "
         "roughly 30% of findings on a typical environment. Missing key means "
         "the platform default (enabled) applies and is not flagged."
     )
@@ -36,7 +36,7 @@ class PotentialChecksDisabledRule(AuditRule):
                     severity=severity,
                     message=(
                         f"Template '{t.get('name')}' has potential vulnerability "
-                        f"checks disabled — hides roughly 30% of findings."
+                        f"checks disabled -- hides roughly 30% of findings."
                     ),
                     details={
                         "template_id": t.get("id"),

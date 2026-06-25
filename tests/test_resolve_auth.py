@@ -1,10 +1,10 @@
-"""Unit tests for ``_resolve_auth_or_none`` — the startup helper that turns a
+"""Unit tests for ``_resolve_auth_or_none`` -- the startup helper that turns a
 ``Rapid7Config`` plus the environment into the ``(api_key, basic_auth)`` pair
 the client constructor takes, or a startup-error string.
 
 Mirrors ``_build_cloud_client_or_none``: reads the environment inside and
 returns ``(value, error_or_None)``. These exercise the resolver directly,
-without spinning up ``run()`` — the env-var-missing branches are unit-tested
+without spinning up ``run()`` -- the env-var-missing branches are unit-tested
 here rather than only end-to-end.
 """
 from __future__ import annotations

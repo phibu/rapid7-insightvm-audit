@@ -1,4 +1,4 @@
-"""Tests for EnvSnapshot.all_included_targets() — used by op.asset_coverage.agent_only_assets."""
+"""Tests for EnvSnapshot.all_included_targets() -- used by op.asset_coverage.agent_only_assets."""
 from __future__ import annotations
 
 from ipaddress import ip_network
@@ -64,7 +64,7 @@ def test_all_included_targets_handles_ip_ranges():
 
 
 def test_all_included_targets_skips_invalid_entries():
-    """Malformed targets must not crash the rule — log and skip."""
+    """Malformed targets must not crash the rule -- log and skip."""
     sites = [{"id": 1}]
     targets = {1: ["not-an-ip", "10.0.0.0/24"]}
     snap = _snap(sites, targets)
@@ -98,7 +98,7 @@ def test_all_included_targets_contains_helper():
 
 def test_all_included_targets_oversized_range_records_endpoints_only():
     """Ranges larger than the cap (1024) record only the two endpoint IPs,
-    not the full expansion — bounded-memory fallback."""
+    not the full expansion -- bounded-memory fallback."""
     sites = [{"id": 1}]
     # /16 has 65536 addresses; far above range_cap=1024.
     targets = {1: ["10.0.0.0-10.0.255.255"]}

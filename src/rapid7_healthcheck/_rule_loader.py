@@ -1,16 +1,16 @@
-"""Side-effect rule importer — turns a ``rules/`` package into a populated
+"""Side-effect rule importer -- turns a ``rules/`` package into a populated
 registry without a hand-maintained import list.
 
 Each audit category registers its rules via an ``@register*`` decorator that
 fires at *module import time*. Historically every category's ``__init__`` carried
-an explicit "import every rule module" block so those decorators ran — a third,
+an explicit "import every rule module" block so those decorators ran -- a third,
 silent-on-omission place to register a rule (forget the import and the rule just
 isn't there, with no error). ``load_rules`` replaces those blocks: it walks the
 package and imports each module, so the directory is the single source of truth.
 
 Module order is alphabetical (``sorted``), so registry insertion order is
 deterministic across machines and runs. Only the cosmetic footer run-hash
-depends on that order — the cross-run delta is signature-keyed in
+depends on that order -- the cross-run delta is signature-keyed in
 ``state_engine.compute`` (it diffs ``{signature: finding}`` sets, never by
 position), so ordering never affects delta correctness. See CONTEXT.md
 ("Rule registration").

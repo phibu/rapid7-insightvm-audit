@@ -12,7 +12,7 @@ class PolicyEnabledButNoPoliciesSelectedRule(AuditRule):
     description = (
         "Templates with `policyEnabled: true` but an empty `policy.enabled` "
         "list (or no `policy` block at all). The policy engine runs and "
-        "produces no policy findings — the same silent-coverage-gap shape as "
+        "produces no policy findings -- the same silent-coverage-gap shape as "
         "vuln-enabled-with-no-checks but for the policy vertical."
     )
     default_severity = "fail"
@@ -35,7 +35,7 @@ class PolicyEnabledButNoPoliciesSelectedRule(AuditRule):
                     severity=severity,
                     message=(
                         f"Template '{t.get('name')}' has the policy engine "
-                        f"enabled but no policies selected — the scan will "
+                        f"enabled but no policies selected -- the scan will "
                         f"produce no policy findings."
                     ),
                     details={

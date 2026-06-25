@@ -133,11 +133,11 @@ def test_rule_exception_isolated(monkeypatch):
 
 def test_info_log_when_cloud_enabled_but_no_rules_configured(caplog):
     """The orchestrator must log a single INFO line when cloud_integration
-    is enabled but cloud_drift.rules is empty — every rule falls through
+    is enabled but cloud_drift.rules is empty -- every rule falls through
     the rule_cfg-is-None branch and is silently skipped, which produces a
     deceptively green report. The log line is the only operator signal."""
     cfg = _config(cloud_enabled=True)
-    # Force rules empty (AppConfig is frozen — use dataclasses.replace):
+    # Force rules empty (AppConfig is frozen -- use dataclasses.replace):
     cfg = dataclasses.replace(cfg, cloud_drift=CloudDriftConfig(rules={}))
     cloud_client = MagicMock()
 

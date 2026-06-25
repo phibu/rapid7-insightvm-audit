@@ -28,7 +28,7 @@ class TelnetRegexInvalidRule(AuditRule):
         "Templates where one or more telnet prompt-matching regex fields "
         "contain a value that fails Python re.compile(). At scan time the "
         "scanner will silently degrade and the telnet login flow will not "
-        "match prompts — producing no telnet findings without surfacing the "
+        "match prompts -- producing no telnet findings without surfacing the "
         "regex error in the console UI."
     )
     default_severity = "warn"
@@ -67,7 +67,7 @@ class TelnetRegexInvalidRule(AuditRule):
                 severity=severity,
                 message=(
                     f"Template '{t.get('name')}' has {len(broken)} telnet "
-                    f"regex field(s) that fail to compile — scan-time telnet "
+                    f"regex field(s) that fail to compile -- scan-time telnet "
                     f"prompt matching will silently fail."
                 ),
                 details={

@@ -57,7 +57,7 @@ def test_finding_without_template_id_is_untouched():
 
 def test_idempotent_when_already_labelled():
     original_msg = (
-        "Template 'Exhaustive' has a problem. (Built-in template — remediate "
+        "Template 'Exhaustive' has a problem. (Built-in template -- remediate "
         "by cloning it, fixing the clone, and rebinding the affected site.)"
     )
     rr = _rule_result([
@@ -70,6 +70,6 @@ def test_idempotent_when_already_labelled():
     out = label_builtin_findings([rr])
     f = out[0].findings[0]
     assert f.details["builtin"] is True
-    # Already-labelled finding passes through unchanged — remediation not duplicated.
+    # Already-labelled finding passes through unchanged -- remediation not duplicated.
     assert f.message == original_msg
     assert f.message.lower().count("cloning") == 1

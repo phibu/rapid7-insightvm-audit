@@ -38,7 +38,7 @@ def test_explicit_true_compliant(fake_snapshot):
 
 def test_scoped_to_vuln_enabled_only(fake_snapshot):
     """enableWindowsServices enables remote-registry checks DURING vuln
-    assessment — a discovery-only template has no vuln checks to bypass-registry
+    assessment -- a discovery-only template has no vuln checks to bypass-registry
     for, so it is NOT examined (gate = vuln_enabled only, not discoveryOnly)."""
     fake_snapshot.set_templates_full([
         {"id": "t4", "name": "DiscoOnly", "discoveryOnly": True,

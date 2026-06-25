@@ -75,7 +75,7 @@ def test_compute_delta_severity_changed():
 
 
 def test_compute_delta_host_mismatch_returns_none():
-    """Filename collision protection — different consoles should not produce a delta."""
+    """Filename collision protection -- different consoles should not produce a delta."""
     from rapid7_healthcheck.state_engine import compute as _compute_delta
     prior = _state([_check("Audit", [_rule("r1", "fail", [_f("a")])])], host="us.api")
     cur = _state([_check("Audit", [_rule("r1", "fail", [_f("a")])])], host="eu.api")
@@ -106,7 +106,7 @@ def test_compute_delta_only_fail_severity_counts_as_new_fail():
     cur = _state([_check("Audit", [_rule("r1", "warn", [_f("a", severity="warn")])])])
     delta = _compute_delta(prior=prior, current=cur)
     assert len(delta["new_fails"]) == 0
-    # But it should still show up in 'new_findings' if we expose that — for
+    # But it should still show up in 'new_findings' if we expose that -- for
     # Phase 1 we expose only resolved/new_fails/severity_changed, and the
     # new warn is correctly absent from all three.
     assert len(delta["resolved"]) == 0
@@ -114,7 +114,7 @@ def test_compute_delta_only_fail_severity_counts_as_new_fail():
 
 
 # ---------------------------------------------------------------------------
-# _load_prior_state — I/O tests
+# _load_prior_state -- I/O tests
 # ---------------------------------------------------------------------------
 
 
@@ -147,7 +147,7 @@ def test_load_prior_state_picks_most_recent(tmp_path):
     from rapid7_healthcheck.state_engine import load_prior as _load_prior_state
     # mtimes are relative to now so both files stay inside the 30-day window
     # regardless of the wall-clock date the suite runs on (the staleness filter
-    # is what this test exercises — newer must win, and neither may be culled).
+    # is what this test exercises -- newer must win, and neither may be culled).
     now = datetime.now(timezone.utc)
     older = tmp_path / "r-older.html"
     newer = tmp_path / "r-newer.html"
@@ -167,7 +167,7 @@ def test_load_prior_state_picks_most_recent(tmp_path):
 
 def test_load_prior_state_excludes_self(tmp_path):
     """The current run's path must be excluded so we don't compare to ourselves
-    (relevant if same minute write — defensive)."""
+    (relevant if same minute write -- defensive)."""
     from rapid7_healthcheck.state_engine import load_prior as _load_prior_state
     self_path = tmp_path / "r-2026-04-29_1200.html"
     _write_report_with_blob(self_path, _state([], host="h"))
@@ -270,7 +270,7 @@ def test_compute_delta_operational_check_new_fail():
 
 
 # ---------------------------------------------------------------------------
-# extract_blob_from_html — the single HTML adapter at the prior-state seam.
+# extract_blob_from_html -- the single HTML adapter at the prior-state seam.
 # Tested directly (no file I/O, no rendering) now that it is its own function.
 # ---------------------------------------------------------------------------
 
@@ -300,7 +300,7 @@ def test_extract_blob_from_html_bad_json_returns_none():
 def test_project_serialize_extract_compute_in_memory():
     """The full cross-run pipeline with the HTML embed as the only adapter:
     project a run, embed+extract its blob, then diff a second projection
-    against it — no rendering, no disk, no _load_prior_state."""
+    against it -- no rendering, no disk, no _load_prior_state."""
     from rapid7_healthcheck.checks import CheckResult, Finding
     from rapid7_healthcheck.state_engine import (
         compute,

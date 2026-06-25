@@ -52,7 +52,7 @@ class DiscoveryRetryLimitHighRule(AuditRule):
                 severity=severity,
                 message=(
                     f"Template '{t.get('name')}' has retryLimit={value}, above "
-                    f"the recommended maximum of {max_retry_limit} — retries "
+                    f"the recommended maximum of {max_retry_limit} -- retries "
                     f"apply per dead port and inflate scan time on modern nets."
                 ),
                 details={

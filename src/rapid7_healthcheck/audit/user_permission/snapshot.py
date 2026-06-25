@@ -1,17 +1,17 @@
 """User & Permission audit data container.
 
 `UserSnapshot` is the narrow, lazy-loading data container the User &
-Permission audit reads through — peer to `EnvSnapshot` (configuration /
+Permission audit reads through -- peer to `EnvSnapshot` (configuration /
 template data) and `CloudSnapshot` (cross-API cloud-drift data), and the
 third adapter at the `AuditCategory.build_snapshot` seam.
 
 It holds only the user / RBAC slice. Unlike `EnvSnapshot`, it honours no
 sampling (`full_scan` / `sample_size`): every user accessor paginates the
-full population by design — a sampled user count would be misleading — so
+full population by design -- a sampled user count would be misleading -- so
 the snapshot needs nothing but the v3 client. See CONTEXT.md "UserSnapshot".
 
 Read-only contract: every accessor issues GETs only (`/api/3/users` and
-friends). No verb here may become PUT/PATCH/DELETE — this module is on the
+friends). No verb here may become PUT/PATCH/DELETE -- this module is on the
 pre-commit read-only grep target (see CLAUDE.md).
 """
 
@@ -45,7 +45,7 @@ class UserSnapshot:
     def users(self) -> list[dict]:
         """All users from /api/3/users (Global Administrator only).
 
-        Traps 404 — some heavily restricted custom roles do not expose the
+        Traps 404 -- some heavily restricted custom roles do not expose the
         users endpoint. On 404 we set `users_endpoints_unavailable` so the
         whole user-audit category can self-skip honestly rather than fail.
         Other errors propagate.
@@ -55,7 +55,7 @@ class UserSnapshot:
                 self._users = list(self._client.paginate("/api/3/users"))
             except Rapid7ClientError as e:
                 if e.status_code == 404:
-                    logger.info("users endpoint not available — user audit will skip")
+                    logger.info("users endpoint not available -- user audit will skip")
                     self._users = []
                     self._users_endpoints_unavailable = True
                 else:
@@ -63,7 +63,7 @@ class UserSnapshot:
         return self._users
 
     def is_users_endpoints_unavailable(self) -> bool:
-        """True if /api/3/users returned 404 — pure read of the cached flag.
+        """True if /api/3/users returned 404 -- pure read of the cached flag.
         Callers should invoke `users()` first to prime the flag.
         """
         return self._users_endpoints_unavailable
@@ -72,7 +72,7 @@ class UserSnapshot:
         """Configured authentication sources (LDAP, SAML, Kerberos, normal).
 
         Used to detect SSO configuration. Each entry has an `external` flag
-        — `external: true` indicates a configured SSO source. Traps 404
+        -- `external: true` indicates a configured SSO source. Traps 404
         identically to `users()`: missing endpoint means we can't reason
         about SSO at all.
         """
@@ -92,9 +92,9 @@ class UserSnapshot:
         """Tri-state 2FA status for a user.
 
         Returns:
-            True  — 2FA is configured (the endpoint returned a non-empty key).
-            False — 2FA is NOT configured (the endpoint returned, but no key).
-            None  — endpoint unavailable on this console (404). Caller should
+            True  -- 2FA is configured (the endpoint returned a non-empty key).
+            False -- 2FA is NOT configured (the endpoint returned, but no key).
+            None  -- endpoint unavailable on this console (404). Caller should
                     treat None as "cannot audit MFA on this console" and skip
                     the rule, not as a finding.
         """

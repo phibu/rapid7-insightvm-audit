@@ -30,7 +30,7 @@ class StaleAssessmentCohortRule(AuditRule):
     )
     default_severity = "warn"
     expensive = False
-    # Tuple, not list — class-level mutable defaults are a footgun even
+    # Tuple, not list -- class-level mutable defaults are a footgun even
     # when nothing currently mutates them.
     sources: tuple[str, ...] = (
         "https://docs.rapid7.com/insightvm/scan-template-best-practices/",

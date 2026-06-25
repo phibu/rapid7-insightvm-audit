@@ -8,12 +8,12 @@ logger = logging.getLogger(__name__)
 def _coerce_positive_int(value, *, name: str, default: int) -> int:
     """Return value as a positive int; fall back to ``default`` on bad input.
 
-    Rejects ``True``/``False`` (bool is an int subclass — accepting it is
+    Rejects ``True``/``False`` (bool is an int subclass -- accepting it is
     almost always a user typo). Rejects floats with a fractional part
     (``0.5`` silently truncating to ``0`` would set the threshold equal
     to ``now()`` and flag every engine as stale). Rejects zero and
     negatives. Anything rejected logs a warning and falls back to
-    ``default`` rather than raising — rule loaders that aren't validated
+    ``default`` rather than raising -- rule loaders that aren't validated
     upstream shouldn't take down the whole audit on one typo.
     """
     if isinstance(value, bool):
@@ -37,10 +37,10 @@ def _coerce_positive_int(value, *, name: str, default: int) -> int:
 def _coerce_positive_float(value, *, name: str, default: float) -> float:
     """Return value as a positive float; fall back to ``default`` on bad input.
 
-    Rejects ``True``/``False`` (bool is an int subclass — almost always a
+    Rejects ``True``/``False`` (bool is an int subclass -- almost always a
     typo), non-numeric strings, ``NaN``/``inf``, and values <= 0 (a
     percentage threshold of 0 or below fires on any stale asset at all).
-    Anything rejected logs a warning and falls back rather than raising —
+    Anything rejected logs a warning and falls back rather than raising --
     one config typo must not take down the whole audit.
     """
     if isinstance(value, bool):
@@ -63,7 +63,7 @@ def _coerce_positive_float(value, *, name: str, default: float) -> float:
 def _coerce_optional_positive_int(value, *, name: str) -> int | None:
     """Return value as a positive int, or ``None`` if unset/invalid.
 
-    Unlike ``_coerce_positive_int`` there is no default — an absent or
+    Unlike ``_coerce_positive_int`` there is no default -- an absent or
     invalid ``max_stale_count`` simply disables the count-based trigger.
     Rejects bool, non-numeric input, fractional floats, and values <= 0.
     """

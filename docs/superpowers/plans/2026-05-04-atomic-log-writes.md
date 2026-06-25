@@ -4,7 +4,7 @@
 
 **Goal:** Make the `--log-file <path>` log live-tailable during long-running audits by flushing every record to disk on emit, and add per-HTTP-request visibility (DEBUG for success, WARNING for non-retried errors) so users can see exactly which API call a hung run is on.
 
-**Architecture:** One tiny new module (`_log.py`) holds a `FlushingFileHandler` subclass; `__main__.py` swaps it in for `logging.FileHandler` in `_setup_logging`. `client.py`'s `_request()` is the single chokepoint for HTTP I/O — augment its existing log lines (one already exists at line 198) with a `→`/`←`/`✗`/retry vocabulary plus a sanitized querystring helper.
+**Architecture:** One tiny new module (`_log.py`) holds a `FlushingFileHandler` subclass; `__main__.py` swaps it in for `logging.FileHandler` in `_setup_logging`. `client.py`'s `_request()` is the single chokepoint for HTTP I/O -- augment its existing log lines (one already exists at line 198) with a `→`/`←`/`✗`/retry vocabulary plus a sanitized querystring helper.
 
 **Tech Stack:** Python 3.11+ stdlib `logging`, `requests` (for the HTTP layer this wraps), pytest with `caplog` fixture.
 
@@ -15,7 +15,7 @@
 - [ ] **Step 0.1: Confirm baseline tests pass before any edits**
 
 Run: `pytest -v 2>&1 | tail -3`
-Expected: 376 passed (or higher if more landed since 2026-05-04). If anything is red on `main`, stop and surface — don't layer changes on a broken baseline.
+Expected: 376 passed (or higher if more landed since 2026-05-04). If anything is red on `main`, stop and surface -- don't layer changes on a broken baseline.
 
 - [ ] **Step 0.2: Read-only invariant baseline**
 
@@ -24,7 +24,7 @@ Expected: no matches. Establishes the line we must not cross. (This entire plan 
 
 ---
 
-## Task 1: `FlushingFileHandler` — failing test first
+## Task 1: `FlushingFileHandler` -- failing test first
 
 **Files:**
 - Test: `tests/test_log_flush.py` (NEW)
@@ -44,7 +44,7 @@ from rapid7_healthcheck._log import FlushingFileHandler
 
 def test_flushing_file_handler_writes_to_disk_on_each_emit(tmp_path: Path):
     """A record logged via FlushingFileHandler must be readable from disk
-    immediately, before the handler is closed — proves we're flushing."""
+    immediately, before the handler is closed -- proves we're flushing."""
     log_path = tmp_path / "live.log"
     handler = FlushingFileHandler(str(log_path), encoding="utf-8")
     handler.setFormatter(logging.Formatter("%(message)s"))
@@ -78,7 +78,7 @@ Expected: `ModuleNotFoundError: No module named 'rapid7_healthcheck._log'` (coll
 
 ---
 
-## Task 2: `FlushingFileHandler` — implementation
+## Task 2: `FlushingFileHandler` -- implementation
 
 **Files:**
 - Create: `src/rapid7_healthcheck/_log.py`
@@ -91,7 +91,7 @@ Create `src/rapid7_healthcheck/_log.py` with the following contents (verbatim):
 """Logging helpers internal to rapid7_healthcheck.
 
 Public surface:
-    FlushingFileHandler — drop-in for logging.FileHandler that flushes the
+    FlushingFileHandler -- drop-in for logging.FileHandler that flushes the
         underlying stream after every emit, so a tailed log file shows live
         progress during long-running audits.
 """
@@ -175,7 +175,7 @@ def test_setup_logging_no_file_handler_when_log_file_none(tmp_path):
 - [ ] **Step 3.2: Run the two new tests, expect FAIL**
 
 Run: `pytest tests/test_log_flush.py::test_setup_logging_uses_flushing_file_handler_when_log_file_set -v`
-Expected: FAIL — `_setup_logging` currently uses `logging.FileHandler`, not our subclass; the `isinstance(...,  FlushingFileHandler)` assertion fails.
+Expected: FAIL -- `_setup_logging` currently uses `logging.FileHandler`, not our subclass; the `isinstance(...,  FlushingFileHandler)` assertion fails.
 
 - [ ] **Step 3.3: Swap `FileHandler` → `FlushingFileHandler` in `_setup_logging`**
 
@@ -197,7 +197,7 @@ Then add the import at the top of the file. Find the existing import block (the 
 from rapid7_healthcheck._log import FlushingFileHandler
 ```
 
-(If the import order in the file groups stdlib + third-party + local, place this in the local-imports group near the other `from rapid7_healthcheck.*` imports — read the surrounding 5 lines to find the right block.)
+(If the import order in the file groups stdlib + third-party + local, place this in the local-imports group near the other `from rapid7_healthcheck.*` imports -- read the surrounding 5 lines to find the right block.)
 
 - [ ] **Step 3.4: Re-run the two integration tests, expect PASS**
 
@@ -224,7 +224,7 @@ git commit -m "feat(log): use FlushingFileHandler in _setup_logging when --log-f
 - Modify: `src/rapid7_healthcheck/client.py`
 - Test: `tests/test_client.py`
 
-This task adds a private helper `_summarize_params` that formats a params dict into a sanitized, length-capped querystring suitable for log lines. It's a pure function with no side effects — easy to TDD.
+This task adds a private helper `_summarize_params` that formats a params dict into a sanitized, length-capped querystring suitable for log lines. It's a pure function with no side effects -- easy to TDD.
 
 - [ ] **Step 4.1: Append failing tests to `tests/test_client.py`**
 
@@ -298,7 +298,7 @@ def _summarize_params(params: dict | None) -> str:
 
     Sanitizer: any key whose lowercased name contains one of
     {"key", "token", "secret", "password", "auth"} has its value replaced
-    with "***" — defense-in-depth against a future endpoint accidentally
+    with "***" -- defense-in-depth against a future endpoint accidentally
     accepting a credential as a query param.
 
     Output is capped at 200 chars to keep log lines scannable; if the cap
@@ -338,7 +338,7 @@ git commit -m "feat(client): add _summarize_params helper for sanitized log outp
 
 ---
 
-## Task 5: HTTP request logging — augment `_request()`
+## Task 5: HTTP request logging -- augment `_request()`
 
 **Files:**
 - Modify: `src/rapid7_healthcheck/client.py`
@@ -349,7 +349,7 @@ The `_request()` method in `client.py` (around line 161) is the chokepoint. Toda
 - Add a `→` DEBUG line BEFORE each request attempt (with sanitized querystring).
 - Replace the existing line-198 success log with a `←` DEBUG line that includes the body length and uses the glyph for tail-readability.
 - Add a `retry N/M` DEBUG line on each retry path (currently silent).
-- Add a `✗` WARNING line on non-retried error responses (4xx/5xx that becomes a `Rapid7ClientError`) — currently the client raises silently and the upstream check logs `logger.exception`, but the user tailing the file sees nothing at the boundary.
+- Add a `✗` WARNING line on non-retried error responses (4xx/5xx that becomes a `Rapid7ClientError`) -- currently the client raises silently and the upstream check logs `logger.exception`, but the user tailing the file sees nothing at the boundary.
 
 - [ ] **Step 5.1: Append the failing tests to `tests/test_client.py`**
 
@@ -363,7 +363,7 @@ import pytest
 def _make_client_with_mock_session(mocker_or_responses):
     """Helper to construct a Rapid7Client whose session is mocked.
     Tests should adapt this to whatever mocking pattern test_client.py
-    already uses — see existing tests for the canonical setup."""
+    already uses -- see existing tests for the canonical setup."""
     # Implementation note: the surrounding test file should already have
     # a fixture or helper that builds a client with a mocked session
     # (responses library, requests-mock, or unittest.mock). Reuse that.
@@ -443,7 +443,7 @@ def test_retry_path_emits_debug_line(caplog):
     assert "/api/3/flaky" in retry_lines[0].getMessage()
 ```
 
-**IMPORTANT — read existing tests first.** The four tests above describe their assertions but leave the test setup as a comment. The `tests/test_client.py` file already has a working pattern for building a `Rapid7Client` with a mocked session and stubbing responses. Before you can make these tests runnable, OPEN `tests/test_client.py` and find an existing test that successfully exercises `client.get(...)`. Mirror its setup pattern (likely `responses`, `requests-mock`, or `unittest.mock`) and fill in the comment-only sections of the new tests with the exact same scaffolding. Do not reinvent the mocking strategy.
+**IMPORTANT -- read existing tests first.** The four tests above describe their assertions but leave the test setup as a comment. The `tests/test_client.py` file already has a working pattern for building a `Rapid7Client` with a mocked session and stubbing responses. Before you can make these tests runnable, OPEN `tests/test_client.py` and find an existing test that successfully exercises `client.get(...)`. Mirror its setup pattern (likely `responses`, `requests-mock`, or `unittest.mock`) and fill in the comment-only sections of the new tests with the exact same scaffolding. Do not reinvent the mocking strategy.
 
 - [ ] **Step 5.2: Run the new tests, expect FAIL**
 
@@ -476,9 +476,9 @@ In `src/rapid7_healthcheck/client.py`, find `_request()` (currently around line 
                 logger.debug("✗ %s %s network error: %s", method, path, e)
 ```
 
-(Glyph added for visual consistency. Still DEBUG — network errors that DO retry shouldn't be WARN.)
+(Glyph added for visual consistency. Still DEBUG -- network errors that DO retry shouldn't be WARN.)
 
-**Add a retry log line on the retry-status path** — find the block (around line 216):
+**Add a retry log line on the retry-status path** -- find the block (around line 216):
 
 ```python
             if resp.status_code in _RETRY_STATUS:
@@ -499,9 +499,9 @@ Insert directly after the `delay = self._retry_delay(resp, attempt)` line:
                 )
 ```
 
-(Note `attempt + 1` — the `attempt` variable is 0-indexed; humans want 1-indexed.)
+(Note `attempt + 1` -- the `attempt` variable is 0-indexed; humans want 1-indexed.)
 
-**Add a WARNING log on the non-retried error path** — find (around line 226):
+**Add a WARNING log on the non-retried error path** -- find (around line 226):
 
 ```python
             if resp.status_code >= 400:
@@ -522,7 +522,7 @@ Insert directly BEFORE the `raise`:
 
 (The 1500-char snippet stays in the exception message; the WARNING line gets a tighter 200-char cap so tailed output stays scannable.)
 
-**Also add WARNING for the auth-failure path** — find (line 211):
+**Also add WARNING for the auth-failure path** -- find (line 211):
 
 ```python
             if resp.status_code in (401, 403):
@@ -545,12 +545,12 @@ Insert directly BEFORE the `raise`:
 - [ ] **Step 5.4: Re-run the four new tests, expect PASS**
 
 Run: `pytest tests/test_client.py -k "arrow_debug or sanitized_querystring or x_warning or retry_path" -v`
-Expected: all 4 PASS. If a test fails because the test scaffolding (mock setup) is wrong, that's a Step 5.1 bug — fix the scaffolding to match the existing test pattern.
+Expected: all 4 PASS. If a test fails because the test scaffolding (mock setup) is wrong, that's a Step 5.1 bug -- fix the scaffolding to match the existing test pattern.
 
 - [ ] **Step 5.5: Run all client tests + full suite to catch regressions**
 
 Run: `pytest tests/test_client.py -v`
-Expected: all green. Existing client tests should not break — we only changed log-line text and added new lines.
+Expected: all green. Existing client tests should not break -- we only changed log-line text and added new lines.
 
 Run: `pytest -v 2>&1 | tail -5`
 Expected: full suite green.
@@ -637,13 +637,13 @@ Expected: no matches. (This change adds no HTTP verbs.)
 Run: `python -c "from rapid7_healthcheck._log import FlushingFileHandler; from rapid7_healthcheck.client import _summarize_params; print('OK')"`
 Expected: prints `OK` with no errors.
 
-- [ ] **Step 7.4: Manual smoke (OPTIONAL — only if a real Rapid7 environment is available)**
+- [ ] **Step 7.4: Manual smoke (OPTIONAL -- only if a real Rapid7 environment is available)**
 
 If you have an `R7_API_KEY` set and a `config.yaml` configured, run:
 ```
 python -m rapid7_healthcheck --verbose --log-file /tmp/r7-smoke.log --output /tmp/r7-smoke.html
 ```
-In a second terminal, `tail -f /tmp/r7-smoke.log`. You should see `→ GET /api/3/...` and `← GET /api/3/... 200 in Nms` lines streaming in real time as the audit runs. If the log file appears empty until the run completes, flushing is broken — investigate.
+In a second terminal, `tail -f /tmp/r7-smoke.log`. You should see `→ GET /api/3/...` and `← GET /api/3/... 200 in Nms` lines streaming in real time as the audit runs. If the log file appears empty until the run completes, flushing is broken -- investigate.
 
 If you don't have a real environment, skip this step.
 
@@ -657,9 +657,9 @@ Expected: working tree clean; 6 new commits on the branch (Tasks 1+2, 3, 4, 5, 6
 ## Notes for the implementer
 
 - **The existing log line at line 198 of `client.py` is being REPLACED**, not deleted. The new `←` line carries the same information in a slightly different format. Don't accidentally end up with both.
-- **`force=True` is already in `_setup_logging`** at the existing `logging.basicConfig(...)` call. Don't add it again — the spec mentioned "verify it's there"; this plan confirms it is, no edit needed.
+- **`force=True` is already in `_setup_logging`** at the existing `logging.basicConfig(...)` call. Don't add it again -- the spec mentioned "verify it's there"; this plan confirms it is, no edit needed.
 - **The four HTTP-log tests in Task 5 have placeholder mock-setup comments.** You MUST read the existing `tests/test_client.py` to find the canonical mocking pattern (responses, requests-mock, or `unittest.mock.Mock` patching `_session.request`) and fill those sections in. Do not write new mocks from scratch when the file already has a working pattern.
 - **The `→`, `←`, `✗` glyphs are intentional UTF-8.** The file handler already uses `encoding="utf-8"`; don't change that.
-- **No CLI knob for flush behavior** — decision was made in brainstorming Q3. Don't add one even if it seems "more flexible." The whole point of the file is being tail-able.
-- **Sanitizer scope** — the redaction is defense-in-depth for query params only. We do NOT log request headers (where the actual API key lives), and we do NOT log request bodies (the search endpoint's filter criteria don't carry credentials). If you find yourself adding a body or header logging path, STOP and surface — that needs separate threat-model review.
+- **No CLI knob for flush behavior** -- decision was made in brainstorming Q3. Don't add one even if it seems "more flexible." The whole point of the file is being tail-able.
+- **Sanitizer scope** -- the redaction is defense-in-depth for query params only. We do NOT log request headers (where the actual API key lives), and we do NOT log request bodies (the search endpoint's filter criteria don't carry credentials). If you find yourself adding a body or header logging path, STOP and surface -- that needs separate threat-model review.
 - **Avoid scope creep.** The spec's "Out of scope" section is binding: no rule-level DEBUG logging, no JSON output, no log rotation, no full-body logging, no per-rule context tags. If you find yourself wanting any of these, stop and surface.

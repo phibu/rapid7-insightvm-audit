@@ -7,7 +7,7 @@ four: enabled-skip envelope, per-rule enable/skip cards, progress step/done,
 per-rule timing, exception trapping, status rollup, ``rules_*`` summary counts.
 
 ``AuditRunner`` owns that loop once. It learns the per-category differences from
-an injected ``AuditCategory`` descriptor — the same shape as ``HttpTransport``
+an injected ``AuditCategory`` descriptor -- the same shape as ``HttpTransport``
 learning per-API differences from an ``ApiDialect`` (see CONTEXT.md). The four
 ``Check`` classes become thin suppliers: they build an ``AuditCategory`` and
 delegate to the runner.
@@ -66,7 +66,7 @@ class AuditCategory:
 
     ``registry`` is held by reference, so rule modules registered as a package
     side effect after the descriptor is built are still seen at ``run`` time.
-    Rule-id order follows the registry's insertion order, unchanged — the
+    Rule-id order follows the registry's insertion order, unchanged -- the
     cross-run delta-blob signatures depend on it.
     """
     name: str
@@ -86,7 +86,7 @@ class AuditRunner:
 
     Stateless; a single shared instance is fine. ``gate``, ``build_snapshot``,
     and ``prime`` may perform I/O and are **not** wrapped in the per-rule
-    exception guard — a failure there propagates to ``__main__``'s per-check
+    exception guard -- a failure there propagates to ``__main__``'s per-check
     isolation, exactly as a snapshot-construction failure does today. Only
     individual rule ``run`` calls are trapped into ``status="error"``
     ``RuleResult``s so one bad rule never aborts the category.

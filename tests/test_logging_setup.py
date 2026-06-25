@@ -20,7 +20,7 @@ def _strip_flushing_file_handlers_after_test():
     test stays on root and may fire on subsequent tests, writing through a file
     descriptor whose underlying tmp_path has already been torn down. No flake
     has been observed in practice (deterministic ordering, no xdist), but this
-    is the surgical fix for the leak. Conservative isinstance() filter only —
+    is the surgical fix for the leak. Conservative isinstance() filter only --
     leaves caplog's own root-logger handler and any default StreamHandler
     untouched.
     """
@@ -97,7 +97,7 @@ def test_setup_logging_degrades_gracefully_on_permission_error(monkeypatch, capf
 
     Uses capfd (file-descriptor capture on stderr) rather than caplog because
     _setup_logging calls basicConfig(force=True) which tears down any existing
-    root-logger handlers — including caplog's. The warning still reaches stderr
+    root-logger handlers -- including caplog's. The warning still reaches stderr
     via the new StreamHandler installed by basicConfig, so capfd sees it.
     """
     from rapid7_healthcheck.__main__ import _setup_logging
@@ -129,7 +129,7 @@ def test_setup_logging_creates_parent_dir_when_missing(tmp_path, caplog):
         _setup_logging(verbose=False, log_file=str(log_path))
 
     assert log_path.parent.exists(), "expected parent dir to be auto-created"
-    # No warning about log file unavailability — directory was created cleanly.
+    # No warning about log file unavailability -- directory was created cleanly.
     assert not any(
         "could not open log file" in r.message.lower() or "log file unavailable" in r.message.lower()
         for r in caplog.records

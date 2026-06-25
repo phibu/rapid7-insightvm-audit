@@ -16,17 +16,17 @@
 
 **Files modified:**
 
-- `src/rapid7_healthcheck/audit/snapshot.py` — add `_agent_count_cache` attribute and `agent_count()` accessor; refactor existing head fetches in `agents()` and `agent_asset_ids_sampled()` is **out of scope** for this change (kept duplicated to minimize blast radius — see "Out of scope" below). The new accessor performs its own head request that primes `_agents_unavailable`, sharing only the unavailable-flag mutation with the existing accessors.
-- `src/rapid7_healthcheck/audit/rules/agent_unauth_collision.py` — reorder `is_agents_unavailable()` priming to use the new `agent_count()` call; insert oversize-skip branch between the 404 branch and the main loop.
-- `docs/examples/config.yaml` — document the new `audit.rules.agent_unauth_collision.knobs.max_agents` default.
-- `tests/audit/rules/test_agent_unauth_collision.py` — extend with seven oversize-related tests.
-- `tests/audit/test_snapshot_agents.py` — extend with three `agent_count()` tests.
+- `src/rapid7_healthcheck/audit/snapshot.py` -- add `_agent_count_cache` attribute and `agent_count()` accessor; refactor existing head fetches in `agents()` and `agent_asset_ids_sampled()` is **out of scope** for this change (kept duplicated to minimize blast radius -- see "Out of scope" below). The new accessor performs its own head request that primes `_agents_unavailable`, sharing only the unavailable-flag mutation with the existing accessors.
+- `src/rapid7_healthcheck/audit/rules/agent_unauth_collision.py` -- reorder `is_agents_unavailable()` priming to use the new `agent_count()` call; insert oversize-skip branch between the 404 branch and the main loop.
+- `docs/examples/config.yaml` -- document the new `audit.rules.agent_unauth_collision.knobs.max_agents` default.
+- `tests/audit/rules/test_agent_unauth_collision.py` -- extend with seven oversize-related tests.
+- `tests/audit/test_snapshot_agents.py` -- extend with three `agent_count()` tests.
 
 **No new files.**
 
 **Layer boundaries (do not violate):** All changes are inside the audit subsystem (snapshot accessor + one rule). No HTTP code touched (the `client.get` / `client.paginate` calls are reused exactly as-is). No new module issues HTTP. The read-only verb allowlist in `client.py` is unaffected.
 
-**Refactor scope decision (deviation from spec):** The spec proposed factoring the duplicated `_head_agents()` helper out of the existing `agents()` / `agent_asset_ids_sampled()` accessors so all three consumers share one private helper. **The plan keeps the helper-extraction out of scope** because (a) it touches code paths covered by many existing tests and would balloon the diff, (b) the new `agent_count()` accessor caches its own result so the second fetch is free anyway, and (c) the spec's stated benefit ("one head request shared across all three accessors") is preserved by the cache-on-first-call pattern — whichever accessor primes the cache first wins, and `agent_count()` is fast enough that it doesn't matter which. If the duplication becomes painful later, extract then. Self-review confirms this preserves all spec semantics.
+**Refactor scope decision (deviation from spec):** The spec proposed factoring the duplicated `_head_agents()` helper out of the existing `agents()` / `agent_asset_ids_sampled()` accessors so all three consumers share one private helper. **The plan keeps the helper-extraction out of scope** because (a) it touches code paths covered by many existing tests and would balloon the diff, (b) the new `agent_count()` accessor caches its own result so the second fetch is free anyway, and (c) the spec's stated benefit ("one head request shared across all three accessors") is preserved by the cache-on-first-call pattern -- whichever accessor primes the cache first wins, and `agent_count()` is fast enough that it doesn't matter which. If the duplication becomes painful later, extract then. Self-review confirms this preserves all spec semantics.
 
 ---
 
@@ -40,7 +40,7 @@ Tiny mechanical change. No test on its own; cache attribute is exercised in Task
 
 - [ ] **Step 1: Edit `__init__` to add the new cache attribute**
 
-Edit `src/rapid7_healthcheck/audit/snapshot.py`. Find the existing block at lines 136–139:
+Edit `src/rapid7_healthcheck/audit/snapshot.py`. Find the existing block at lines 136-139:
 
 ```python
         self._agents_cache: tuple[list[dict], int] | None = None
@@ -149,7 +149,7 @@ def test_agent_count_is_cached():
 - [ ] **Step 3: Run the new tests to verify they fail**
 
 Run: `pytest tests/audit/test_snapshot_agents.py -v -k agent_count`
-Expected: FAIL — `AttributeError: 'EnvSnapshot' object has no attribute 'agent_count'`.
+Expected: FAIL -- `AttributeError: 'EnvSnapshot' object has no attribute 'agent_count'`.
 
 - [ ] **Step 4: Implement `agent_count()`**
 
@@ -417,11 +417,11 @@ def test_below_cap_runs_main_loop_unchanged():
 
 Run: `pytest tests/audit/rules/test_agent_unauth_collision.py -v -k "oversize or cap or zero or 404_path or below_cap"`
 
-Expected: most FAIL with `AttributeError: '_FakeSnapshot' object has no attribute 'agent_count'` or with assertions failing because the rule doesn't check `agent_count()` yet. (The existing fake snapshots used by other tests in this file may not implement `agent_count` either, but those tests don't trigger the new code path so they're unaffected — see Step 4 below.)
+Expected: most FAIL with `AttributeError: '_FakeSnapshot' object has no attribute 'agent_count'` or with assertions failing because the rule doesn't check `agent_count()` yet. (The existing fake snapshots used by other tests in this file may not implement `agent_count` either, but those tests don't trigger the new code path so they're unaffected -- see Step 4 below.)
 
 - [ ] **Step 3: Reorder the rule's run() prologue**
 
-Edit `src/rapid7_healthcheck/audit/rules/agent_unauth_collision.py`. Find the existing block at lines 35–63:
+Edit `src/rapid7_healthcheck/audit/rules/agent_unauth_collision.py`. Find the existing block at lines 35-63:
 
 ```python
     def run(self, snapshot, severity, full_scan, sample_size, rule_config) -> RuleResult:
@@ -537,7 +537,7 @@ The diff is: (a) moved `agent_asset_ids()` call from line 36 down past the new b
 
 Run: `pytest tests/audit/rules/test_agent_unauth_collision.py -v`
 
-Expected: All tests PASS — both the new ones and the existing ones.
+Expected: All tests PASS -- both the new ones and the existing ones.
 
 > **Watch out:** the existing tests in this file built fake snapshots that don't have an `agent_count` method. Because we moved `agent_asset_ids()` later but added `agent_count()` first, every existing test will now fail with `AttributeError: '_FakeSnapshot' object has no attribute 'agent_count'` unless the existing fakes already happen to be class-based with all snapshot methods.
 >
@@ -564,7 +564,7 @@ git commit -m "feat(audit): add max_agents inventory ceiling to agent_unauth_col
 - [ ] **Step 1: Find the existing `audit.rules.agent_unauth_collision` block**
 
 Run: `grep -n "agent_unauth_collision" docs/examples/config.yaml`
-Expected: at least one line number — the rule's `enabled` / `severity` block under `audit.rules`.
+Expected: at least one line number -- the rule's `enabled` / `severity` block under `audit.rules`.
 
 - [ ] **Step 2: Add the documented knob**
 
@@ -614,7 +614,7 @@ git commit -m "docs(config): document audit.rules.agent_unauth_collision.knobs.m
 - [ ] **Step 1: Run the full test suite**
 
 Run: `pytest -v`
-Expected: All tests PASS, including the 7 new rule tests and 3 new snapshot tests from Tasks 2–3.
+Expected: All tests PASS, including the 7 new rule tests and 3 new snapshot tests from Tasks 2-3.
 
 - [ ] **Step 2: Read-only invariant check (non-negotiable)**
 
@@ -682,8 +682,8 @@ Expected: 4 commits (Tasks 2, 3, 4, 5-step-5).
 
 ## Out of scope (explicitly NOT in this plan)
 
-- **Refactoring `agents()` and `agent_asset_ids_sampled()` to share a `_head_agents()` helper.** The spec proposed this; the plan defers it because the duplication is small (3 lines × 2 sites) and the new accessor's cache makes the supposed benefit moot. If this becomes painful later, extract then. Self-review confirms this preserves all spec semantics — every accessor still primes `_agents_unavailable` correctly, and consumers see a unified view via `is_agents_unavailable()`.
-- **Per-knob schema validation in `_build_audit_config`.** Spec explicitly calls this a deliberate non-goal — match the existing knobs convention.
+- **Refactoring `agents()` and `agent_asset_ids_sampled()` to share a `_head_agents()` helper.** The spec proposed this; the plan defers it because the duplication is small (3 lines × 2 sites) and the new accessor's cache makes the supposed benefit moot. If this becomes painful later, extract then. Self-review confirms this preserves all spec semantics -- every accessor still primes `_agents_unavailable` correctly, and consumers see a unified view via `is_agents_unavailable()`.
+- **Per-knob schema validation in `_build_audit_config`.** Spec explicitly calls this a deliberate non-goal -- match the existing knobs convention.
 - **CLI flag.** Per-environment policy, not a per-run choice.
 - **Other agent-consuming rules.** `insight_agent_deployed` and `insight_agent_version_currency` use `snapshot.agents()` (sample-aware) and don't have the cliff.
 
@@ -693,20 +693,20 @@ Expected: 4 commits (Tasks 2, 3, 4, 5-step-5).
 
 **Spec coverage:**
 
-- §"Decisions / 1: knob path" — Task 4 (config docs), Task 3 (rule reads `rule_config.knobs.get("max_agents", 50000)`). ✓
-- §"Decisions / 2: default 50000" — Task 3 (default literal), Task 4 (example config). ✓
-- §"Decisions / 3: cap check in rule" — Task 3 (rule branch); Task 2 adds the `agent_count()` accessor the rule consumes. ✓
-- §"Decisions / 4: skip-finding shape" — Task 3 (Finding with structured details). ✓
-- §"Decisions / 5: 0-disables sentinel" — Task 3 (strict `>` operator); explicit test in `test_max_agents_zero_always_skips` and edge case `test_max_agents_zero_with_empty_fleet_runs`. ✓
-- §"Behavior matrix / 404 path wins" — Task 3 (404 branch precedes oversize branch); explicit test `test_404_path_wins_over_oversize_path`. ✓
-- §"Architecture / agent_count()" — Task 2. ✓
-- §"Architecture / new ordering (1. agent_count, 2. is_unavailable, 3. cap, 4. agent_asset_ids)" — Task 3 Step 3 shows the exact reorder. ✓
-- §"Config validation: deliberately none" — plan does not add any. ✓
-- §"Testing / rule tests (7 cases)" — Task 3 Step 1 has all 7. ✓
-- §"Testing / snapshot tests (3 cases)" — Task 2 Step 2 has all 3. ✓
-- §"Out of scope items" — preserved in plan's "Out of scope" section. ✓
-- §"CHANGELOG entry" — Task 5 Step 4. ✓
-- §"Read-only safety" — Task 5 Step 2 verifies. ✓
+- §"Decisions / 1: knob path" -- Task 4 (config docs), Task 3 (rule reads `rule_config.knobs.get("max_agents", 50000)`). ✓
+- §"Decisions / 2: default 50000" -- Task 3 (default literal), Task 4 (example config). ✓
+- §"Decisions / 3: cap check in rule" -- Task 3 (rule branch); Task 2 adds the `agent_count()` accessor the rule consumes. ✓
+- §"Decisions / 4: skip-finding shape" -- Task 3 (Finding with structured details). ✓
+- §"Decisions / 5: 0-disables sentinel" -- Task 3 (strict `>` operator); explicit test in `test_max_agents_zero_always_skips` and edge case `test_max_agents_zero_with_empty_fleet_runs`. ✓
+- §"Behavior matrix / 404 path wins" -- Task 3 (404 branch precedes oversize branch); explicit test `test_404_path_wins_over_oversize_path`. ✓
+- §"Architecture / agent_count()" -- Task 2. ✓
+- §"Architecture / new ordering (1. agent_count, 2. is_unavailable, 3. cap, 4. agent_asset_ids)" -- Task 3 Step 3 shows the exact reorder. ✓
+- §"Config validation: deliberately none" -- plan does not add any. ✓
+- §"Testing / rule tests (7 cases)" -- Task 3 Step 1 has all 7. ✓
+- §"Testing / snapshot tests (3 cases)" -- Task 2 Step 2 has all 3. ✓
+- §"Out of scope items" -- preserved in plan's "Out of scope" section. ✓
+- §"CHANGELOG entry" -- Task 5 Step 4. ✓
+- §"Read-only safety" -- Task 5 Step 2 verifies. ✓
 
 One spec deviation, documented: the spec proposed factoring `_head_agents()` out of the existing accessors; the plan keeps them duplicated. Documented in "File Structure" and "Out of scope" with rationale.
 
@@ -714,16 +714,16 @@ One spec deviation, documented: the spec proposed factoring `_head_agents()` out
 
 **Type/signature consistency:**
 
-- `agent_count() -> int` — Task 2 defines, Task 3 calls. ✓
-- `_agent_count_cache: int | None` — Task 1 declares, Task 2 reads/writes. ✓
-- `rule_config.knobs.get("max_agents", 50000)` — Task 3 only. ✓
-- Finding `details` keys: `inventory_oversize`, `agent_count`, `max_agents_cap` — match across rule code (Task 3 Step 3) and tests (Task 3 Step 1). ✓
-- Summary keys: `agent_count`, `max_agents_cap` — match across rule code, tests, and self-review. ✓
+- `agent_count() -> int` -- Task 2 defines, Task 3 calls. ✓
+- `_agent_count_cache: int | None` -- Task 1 declares, Task 2 reads/writes. ✓
+- `rule_config.knobs.get("max_agents", 50000)` -- Task 3 only. ✓
+- Finding `details` keys: `inventory_oversize`, `agent_count`, `max_agents_cap` -- match across rule code (Task 3 Step 3) and tests (Task 3 Step 1). ✓
+- Summary keys: `agent_count`, `max_agents_cap` -- match across rule code, tests, and self-review. ✓
 
 Plan complete and saved to `docs/superpowers/plans/2026-05-06-agent-inventory-ceiling.md`. Two execution options:
 
-**1. Subagent-Driven (recommended)** — I dispatch a fresh subagent per task, review between tasks, fast iteration.
+**1. Subagent-Driven (recommended)** -- I dispatch a fresh subagent per task, review between tasks, fast iteration.
 
-**2. Inline Execution** — Execute tasks in this session using executing-plans, batch execution with checkpoints.
+**2. Inline Execution** -- Execute tasks in this session using executing-plans, batch execution with checkpoints.
 
 Which approach?

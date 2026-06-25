@@ -21,11 +21,11 @@ def _has_no_check_configuration(template: dict) -> bool:
     ``ScanTemplateVulnerabilityChecks`` schema): the effective check set is
     enabled categories/types, minus their disabled lists, plus
     ``individual.enabled``. Crucially the **baseline is unknown** from the
-    template JSON — an empty ``categories.enabled`` does NOT mean "no
+    template JSON -- an empty ``categories.enabled`` does NOT mean "no
     categories"; the common pattern is "all on by default, a few disabled".
 
     So we cannot prove "this template produces zero findings". We can only
-    prove the weaker "nobody configured any checks" — when EVERY enable/disable
+    prove the weaker "nobody configured any checks" -- when EVERY enable/disable
     list is empty:
 
       - ``categories.enabled`` / ``categories.disabled``
@@ -53,11 +53,11 @@ class VulnEnabledButNoChecksRule(AuditRule):
     rule_name = "Vulnerability Scan Enabled With No Check Configuration"
     description = (
         "Scan templates with vulnerability assessment enabled but no check "
-        "configuration present — every enable AND disable list (categories, "
+        "configuration present -- every enable AND disable list (categories, "
         "types, individual) is empty. Such a template looks unconfigured: "
         "nobody selected or curated any checks. This is a warning, not a hard "
         "fail, because Rapid7's enable-minus-disable inclusion model means the "
-        "true baseline of checks is not knowable from the template object — we "
+        "true baseline of checks is not knowable from the template object -- we "
         "can flag 'no check configuration present', not 'will produce no "
         "findings'."
     )
@@ -80,7 +80,7 @@ class VulnEnabledButNoChecksRule(AuditRule):
                 severity=severity,
                 message=(
                     f"Template '{t.get('name')}' has vulnerability scanning "
-                    f"enabled but no check configuration is present — no check "
+                    f"enabled but no check configuration is present -- no check "
                     f"categories, types, or individual checks are selected or "
                     f"curated."
                 ),

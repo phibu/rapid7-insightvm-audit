@@ -71,7 +71,7 @@ def test_warn_when_hostname_scope_overlaps(fake_snapshot):
     fake_snapshot.set_site_schedules(2, [{"id": 20, "enabled": True,
                                           "start": _iso(base + timedelta(minutes=30)),
                                           "duration": "PT1H", "repeat": None}])
-    # Same host, different case — should match case-insensitively.
+    # Same host, different case -- should match case-insensitively.
     fake_snapshot.set_site_included_targets(1, [{"address": "db01.corp.example.com"}])
     fake_snapshot.set_site_included_targets(2, [{"address": "DB01.corp.example.com"}])
     r = OverlappingScanWindowsRule().run(fake_snapshot, "warn", False, 500, {})

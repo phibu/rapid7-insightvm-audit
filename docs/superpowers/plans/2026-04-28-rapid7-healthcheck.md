@@ -1,4 +1,4 @@
-# Rapid7 InsightVM Health Check — Implementation Plan
+# Rapid7 InsightVM Health Check -- Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -14,22 +14,22 @@
 
 **Created:**
 - `pyproject.toml`, `requirements.txt`, `requirements-dev.txt`, `.gitignore`, `.env.example`, `config.example.yaml`, `README.md`
-- `rapid7_healthcheck/__init__.py` — `__version__`
-- `rapid7_healthcheck/__main__.py` — CLI entry, orchestrator, exit codes
-- `rapid7_healthcheck/config.py` — dataclasses + YAML loader + validation
-- `rapid7_healthcheck/client.py` — `Rapid7Client`, errors, pagination, retry
-- `rapid7_healthcheck/report.py` — Jinja2 renderer, file writer
-- `rapid7_healthcheck/templates/report.html.j2` — single self-contained HTML template
-- `rapid7_healthcheck/checks/__init__.py` — `Finding`, `CheckResult`, `Check` protocol, status rollup helper
+- `rapid7_healthcheck/__init__.py` -- `__version__`
+- `rapid7_healthcheck/__main__.py` -- CLI entry, orchestrator, exit codes
+- `rapid7_healthcheck/config.py` -- dataclasses + YAML loader + validation
+- `rapid7_healthcheck/client.py` -- `Rapid7Client`, errors, pagination, retry
+- `rapid7_healthcheck/report.py` -- Jinja2 renderer, file writer
+- `rapid7_healthcheck/templates/report.html.j2` -- single self-contained HTML template
+- `rapid7_healthcheck/checks/__init__.py` -- `Finding`, `CheckResult`, `Check` protocol, status rollup helper
 - `rapid7_healthcheck/checks/scan_engines.py`
 - `rapid7_healthcheck/checks/scan_activity.py`
 - `rapid7_healthcheck/checks/asset_coverage.py`
 - `rapid7_healthcheck/checks/data_quality.py`
-- `tests/conftest.py` — `FakeRapid7Client`, sample fixture builders
+- `tests/conftest.py` -- `FakeRapid7Client`, sample fixture builders
 - `tests/test_config.py`
 - `tests/test_client.py`
 - `tests/test_report.py`
-- `tests/test_main.py` — orchestrator/exit codes
+- `tests/test_main.py` -- orchestrator/exit codes
 - `tests/checks/test_scan_engines.py`
 - `tests/checks/test_scan_activity.py`
 - `tests/checks/test_asset_coverage.py`
@@ -1616,7 +1616,7 @@ def _asset(host: str, asset_id: int = 1) -> dict:
 
 def test_all_assets_fresh(fake_client, app_config):
     fake_client.set_paginate_post("/api/3/assets/search", [])
-    # second call (unscanned) — same path, but we'll re-set after first iteration via call hook
+    # second call (unscanned) -- same path, but we'll re-set after first iteration via call hook
     # The check makes both calls in sequence; FakeRapid7Client serves the same list both times.
     # For this test we want an empty list both times.
     result = AssetCoverageCheck().run(fake_client, app_config)
@@ -2734,7 +2734,7 @@ Expected: exit code 3, log message about missing `R7_API_KEY`. No report written
 Create `tmp_config.yaml` (copy of `config.example.yaml` with all four `checks:` flags set to `false`), then:
 
 Run: `R7_API_KEY=dummy python -m rapid7_healthcheck --config tmp_config.yaml --output /tmp/r7.html` (Windows: `set R7_API_KEY=dummy && python -m rapid7_healthcheck --config tmp_config.yaml --output %TEMP%\r7.html`)
-Expected: exit code 3 (real connect to `us.api.insight.rapid7.com` will fail with `dummy` key — that's fine; the goal here is to confirm the startup path runs end-to-end).
+Expected: exit code 3 (real connect to `us.api.insight.rapid7.com` will fail with `dummy` key -- that's fine; the goal here is to confirm the startup path runs end-to-end).
 
 To get a successful end-to-end smoke test: temporarily replace `Rapid7Client` import in a throwaway script, OR run with a real key against the real environment. The unit tests already cover the success path with mocks, so this manual step is optional.
 
@@ -2772,7 +2772,7 @@ Read-only health check for a Rapid7 InsightVM environment. Calls the Insight Pla
    # edit .env and set R7_API_KEY=<your key>
 
    cp config.example.yaml config.yaml
-   # edit config.yaml — at minimum set rapid7.base_url to the right region
+   # edit config.yaml -- at minimum set rapid7.base_url to the right region
    ```
 
    US data centres: `https://us.api.insight.rapid7.com`, `https://us2.api.insight.rapid7.com`, `https://us3.api.insight.rapid7.com`. Pick the one that matches your account.
@@ -2785,10 +2785,10 @@ python -m rapid7_healthcheck
 
 Optional flags:
 
-- `--config <path>` — config file (default `./config.yaml`)
-- `--output <path>` — write the report to a specific path (overrides the configured filename pattern)
-- `--verbose` — DEBUG logging
-- `--log-file <path>` — also write logs to a file
+- `--config <path>` -- config file (default `./config.yaml`)
+- `--output <path>` -- write the report to a specific path (overrides the configured filename pattern)
+- `--verbose` -- DEBUG logging
+- `--log-file <path>` -- also write logs to a file
 
 The CLI prints the absolute path of the written report on success.
 
@@ -2796,10 +2796,10 @@ The CLI prints the absolute path of the written report on success.
 
 | Code | Meaning |
 |------|---------|
-| 0 | Healthy — all checks pass |
-| 1 | Warnings — at least one `warn`, no `fail`/`error` |
-| 2 | Action required — at least one `fail` or `error` |
-| 3 | Startup failure — bad config, missing API key, auth failed, network unreachable |
+| 0 | Healthy -- all checks pass |
+| 1 | Warnings -- at least one `warn`, no `fail`/`error` |
+| 2 | Action required -- at least one `fail` or `error` |
+| 3 | Startup failure -- bad config, missing API key, auth failed, network unreachable |
 | 4 | Internal error in the tool |
 
 ## Scheduling
@@ -2822,15 +2822,15 @@ Register-ScheduledTask -TaskName "Rapid7 HealthCheck" -Action $action -Trigger $
 
 All thresholds live in `config.yaml` under `thresholds:`. Every report footer prints the thresholds applied so it's obvious what to tune.
 
-- `scan_engines.last_contact_warn_hours` / `last_contact_fail_hours` — how long without engine contact before warn/fail.
-- `scan_activity.recent_window_days` — what counts as "recent".
-- `scan_activity.site_no_scan_days` — when no scan in this window becomes a fail.
-- `scan_activity.stuck_scan_hours` — a running scan older than this is flagged as stuck.
-- `asset_coverage.stale_asset_days` — assets not scanned in this window are stale.
-- `asset_coverage.flag_unscanned_assets` — also list assets that have never been scanned.
-- `data_quality.flag_missing_os` / `flag_empty_sites` — toggle data quality sub-checks.
+- `scan_engines.last_contact_warn_hours` / `last_contact_fail_hours` -- how long without engine contact before warn/fail.
+- `scan_activity.recent_window_days` -- what counts as "recent".
+- `scan_activity.site_no_scan_days` -- when no scan in this window becomes a fail.
+- `scan_activity.stuck_scan_hours` -- a running scan older than this is flagged as stuck.
+- `asset_coverage.stale_asset_days` -- assets not scanned in this window are stale.
+- `asset_coverage.flag_unscanned_assets` -- also list assets that have never been scanned.
+- `data_quality.flag_missing_os` / `flag_empty_sites` -- toggle data quality sub-checks.
 
-You can also disable an entire check by setting its toggle in `checks:` to `false` — it appears in the report as `SKIPPED`.
+You can also disable an entire check by setting its toggle in `checks:` to `false` -- it appears in the report as `SKIPPED`.
 
 ## Troubleshooting
 
@@ -2860,7 +2860,7 @@ git add README.md
 git commit -m "docs: add README"
 ```
 
-- [ ] **Step 6: Final check — full suite green and clean working tree**
+- [ ] **Step 6: Final check -- full suite green and clean working tree**
 
 Run: `pytest -v && git status`
 Expected: all tests pass; `git status` reports a clean tree.
@@ -2869,10 +2869,10 @@ Expected: all tests pass; `git status` reports a clean tree.
 
 ## Self-review
 
-**Spec coverage:** every spec section has at least one task — §3 inputs/outputs/exit codes (Task 11), §4 architecture (Tasks 3–11), §5 config (Task 2), §6 client (Task 4), §7 each check (Tasks 6–9), §8 report (Task 10), §9 logging (Task 11), §10 errors (Tasks 4 + 11), §11 layout (Task 1), §12 deps (Task 1), §13 tests (every implementation task), §14 README (Task 12).
+**Spec coverage:** every spec section has at least one task -- §3 inputs/outputs/exit codes (Task 11), §4 architecture (Tasks 3-11), §5 config (Task 2), §6 client (Task 4), §7 each check (Tasks 6-9), §8 report (Task 10), §9 logging (Task 11), §10 errors (Tasks 4 + 11), §11 layout (Task 1), §12 deps (Task 1), §13 tests (every implementation task), §14 README (Task 12).
 
 **Placeholder scan:** no TODO/TBD strings in the plan. Every code step has complete code. Tests use real assertions, not pseudo-code.
 
-**Type consistency:** `Finding` and `CheckResult` defined once in Task 3 and used unchanged in Tasks 6–11. `Rapid7Client` method names (`get`, `post`, `paginate`, `paginate_post`, `connect`) match between Task 4 (definition) and Task 5 (`FakeRapid7Client`) and Tasks 6–9 (consumers). `AppConfig`/`Thresholds` field names match between Task 2 (definition), Task 5 (fixture), and Tasks 6–9 (consumers). Exit-code constants (`EXIT_HEALTHY` etc.) are defined and used only in Task 11.
+**Type consistency:** `Finding` and `CheckResult` defined once in Task 3 and used unchanged in Tasks 6-11. `Rapid7Client` method names (`get`, `post`, `paginate`, `paginate_post`, `connect`) match between Task 4 (definition) and Task 5 (`FakeRapid7Client`) and Tasks 6-9 (consumers). `AppConfig`/`Thresholds` field names match between Task 2 (definition), Task 5 (fixture), and Tasks 6-9 (consumers). Exit-code constants (`EXIT_HEALTHY` etc.) are defined and used only in Task 11.
 
 **Note on integration test:** the spec mentions an optional integration test (§13). It's not in the plan because it requires real credentials; the README explains how to invoke a real run end-to-end manually. If you want one wired up later, it's a 20-line addition in `tests/test_integration.py` that skips unless `R7_API_KEY` and `R7_BASE_URL` are set. Flagging here so it's not lost.

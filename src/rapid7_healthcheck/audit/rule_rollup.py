@@ -6,13 +6,13 @@ status and the card summary); ``rollup_status`` / ``flatten_findings`` /
 ``rule_summary`` turn a ``list[RuleResult]`` into the fields of a
 ``CheckResult``. The build is the per-rule mirror of the per-check rollups, so
 it lives alongside them rather than in the op-only ``_op_rule`` module where it
-started — both verticals share it now: the operational checks call
+started -- both verticals share it now: the operational checks call
 ``make_rule_result`` directly, the audit rules reach it through
 ``AuditRule.result`` (see CONTEXT.md "AuditRule"). ``_op_rule`` re-exports
 ``make_rule_result`` so its existing call sites are unchanged.
 
 Both runners assemble their ``CheckResult`` from the same three rollups.
-``AuditRunner`` and ``OpCheckRunner`` keep their own loops (they differ — one
+``AuditRunner`` and ``OpCheckRunner`` keep their own loops (they differ -- one
 drives a registry, the other a single ``produce_rule_results`` callable), but
 the terminal rollup is identical, so it lives here once. Previously these were
 three byte-identical pairs (``_rollup_audit_status``/``rollup_check_status``,
@@ -20,8 +20,8 @@ three byte-identical pairs (``_rollup_audit_status``/``rollup_check_status``,
 kept in sync by hand.
 
 This module imports only ``RuleResult`` (from ``audit``) and ``Finding``/
-``Severity``/``Status`` (from ``checks``) — the same import directions both
-runners already use — so it introduces no new package cycle.
+``Severity``/``Status`` (from ``checks``) -- the same import directions both
+runners already use -- so it introduces no new package cycle.
 """
 from __future__ import annotations
 
@@ -53,9 +53,9 @@ def make_rule_result(
     an ``info``-only finding set stays ``pass`` (info never escalates). This is
     the one owner of the findings -> RuleResult build, shared by both the
     operational checks (which call it directly) and the audit rules (which reach
-    it through ``AuditRule.result`` — see CONTEXT.md "AuditRule").
+    it through ``AuditRule.result`` -- see CONTEXT.md "AuditRule").
 
-    `default_severity` is the RuleResult's own severity tag — for op-checks it is
+    `default_severity` is the RuleResult's own severity tag -- for op-checks it is
     the rule's fixed tag; for audit rules ``AuditRule.result`` passes the
     config-overridden run-time severity here (the two diverge under an override
     and the field feeds the state blob).
@@ -101,8 +101,8 @@ def make_rule_result(
 def worst_status(items: Iterable[Any]) -> Status:
     """The single owner of the status precedence ``fail/error > warn > pass``.
 
-    Reduce any iterable of status-carrying items — anything with a ``.status``
-    field, i.e. both ``RuleResult`` and ``CheckResult`` — to the worst status:
+    Reduce any iterable of status-carrying items -- anything with a ``.status``
+    field, i.e. both ``RuleResult`` and ``CheckResult`` -- to the worst status:
     ``fail`` if any item is ``fail`` or ``error``, else ``warn`` if any is
     ``warn``, else ``pass``. ``skipped`` is neither, so it falls through to
     ``pass`` (a self-skipped check or rule never escalates the run).
@@ -120,7 +120,7 @@ def worst_status(items: Iterable[Any]) -> Status:
 
 
 # The check-level application of the same reduction: a check's
-# ``list[RuleResult]`` -> the check's status. A bare alias, not a second body —
+# ``list[RuleResult]`` -> the check's status. A bare alias, not a second body --
 # a check is ``fail`` if any rule failed/errored, ``warn`` if any warned, else
 # ``pass``, which is exactly ``worst_status``. Kept as a domain-named entry point
 # the two runners (and the ``rollup_check_status`` op-side alias) import.
@@ -128,7 +128,7 @@ rollup_status = worst_status
 
 
 def flatten_findings(rule_results: list[RuleResult]) -> list[Finding]:
-    """The top-level ``CheckResult.findings`` mirror — every rule's findings,
+    """The top-level ``CheckResult.findings`` mirror -- every rule's findings,
     flattened. Indexing both this and ``rule_results`` double-counts a finding
     in the delta-blob signature index; see ``checks.findings_of``.
     """

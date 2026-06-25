@@ -15,7 +15,7 @@ class WindowsServicesDisabledRule(AuditRule):
         "false or absent (the API/UI default is unchecked/false). When an "
         "organization blocks remote registry access, this option lets the "
         "scan temporarily enable Windows services to complete a remote-"
-        "registry scan — Rapid7 recommends enabling it for Windows assets. "
+        "registry scan -- Rapid7 recommends enabling it for Windows assets. "
         "This rule is INFO and UNSCOPED: it cannot tell from the template "
         "alone whether the bound sites contain Windows assets, so it flags "
         "every vuln-enabled template with the setting off and asks the "
@@ -49,7 +49,7 @@ class WindowsServicesDisabledRule(AuditRule):
                     f"Template '{t.get('name')}' does not enable Windows "
                     f"services during scans"
                     + ("" if value is False else " (field absent, default is off)")
-                    + " — if this template scans Windows assets behind blocked "
+                    + " -- if this template scans Windows assets behind blocked "
                     "remote-registry, authenticated checks may be bypassed. "
                     "Verify the bound sites are non-Windows or enable it."
                 ),

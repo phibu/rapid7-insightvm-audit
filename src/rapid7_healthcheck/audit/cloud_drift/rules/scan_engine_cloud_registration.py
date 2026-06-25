@@ -18,7 +18,7 @@ def _parse_iso(value: str | None) -> datetime | None:
     if not value:
         return None
     # v4 emits "YYYY-MM-DDTHH:MM:SSZ"; fromisoformat in Python 3.11 accepts
-    # "+00:00" but not bare "Z" — handle both via the standard replace trick.
+    # "+00:00" but not bare "Z" -- handle both via the standard replace trick.
     # If a future v4 response ever omits the offset entirely, treat the
     # naive result as UTC so the downstream `last_seen < threshold`
     # comparison cannot raise TypeError on a tz mismatch.
@@ -65,7 +65,7 @@ class ScanEngineCloudRegistrationRule(AuditRule):
     )
     default_severity = "warn"
     expensive = False
-    # Tuple, not list — class-level mutable defaults are a footgun even
+    # Tuple, not list -- class-level mutable defaults are a footgun even
     # when nothing currently mutates them.
     sources: tuple[str, ...] = (
         "https://docs.rapid7.com/insightvm/working-with-scan-engines/",
@@ -94,7 +94,7 @@ class ScanEngineCloudRegistrationRule(AuditRule):
             if existing is None:
                 cloud_by_name[name] = e
                 continue
-            # Compare last_seen — newer wins. Unparseable / None loses.
+            # Compare last_seen -- newer wins. Unparseable / None loses.
             new_seen = _parse_iso(e.get("last_seen"))
             existing_seen = _parse_iso(existing.get("last_seen"))
             if new_seen is not None and (existing_seen is None or new_seen > existing_seen):
@@ -129,12 +129,12 @@ class ScanEngineCloudRegistrationRule(AuditRule):
             name = engine.get("name")
             address = engine.get("address")
             # The `ignore_engines` list is name-based; null-named engines
-            # are filtered here (legacy behavior — engines without a name
+            # are filtered here (legacy behavior -- engines without a name
             # can't be referenced in config).
             if name and name in ignore:
                 continue
             if not name and not address:
-                # Engine record has no key at all — can't match either way.
+                # Engine record has no key at all -- can't match either way.
                 continue
             engines_examined += 1
 
@@ -183,7 +183,7 @@ class ScanEngineCloudRegistrationRule(AuditRule):
                 # when not (fallback match path).
                 display_name = name or cloud.get("name") or "<unnamed>"
                 # A missing/unparseable last_seen means the engine has NEVER
-                # contacted the Insight Platform — a hard failure, distinct
+                # contacted the Insight Platform -- a hard failure, distinct
                 # from a merely stale connection. Hard-code "fail" for it
                 # (mirrors the broken-sync hard-fail in
                 # console_asset_count_drift); a previously-seen but stale

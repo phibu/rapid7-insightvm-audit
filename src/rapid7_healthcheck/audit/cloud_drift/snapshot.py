@@ -11,7 +11,7 @@ def _format_threshold(dt: datetime) -> str:
     """Format a datetime as ``YYYY-MM-DDTHH:MM:SSZ`` for the v4 filter DSL.
 
     Naive datetimes are interpreted as UTC. Aware datetimes in non-UTC
-    zones are converted to UTC. Microseconds are dropped — v4's filter
+    zones are converted to UTC. Microseconds are dropped -- v4's filter
     parser accepts millisecond precision but the rules don't need it.
     """
     if dt.tzinfo is None:
@@ -65,7 +65,7 @@ class CloudSnapshot:
         form as ``last_assessed_for_vulnerabilities >= '2025-09-13T00:02:01Z'``
         (see ``docs/research/api-v4.json``). The POST example on the
         endpoint shows an unquoted form (``last_scan_end > 2019-09-04...``)
-        but the schema description is authoritative for *this* field — the
+        but the schema description is authoritative for *this* field -- the
         pinning test ``test_cloud_assets_stale_uses_filter_dsl_with_iso_threshold``
         locks the exact body shape so a future regression is loud.
         """
@@ -87,7 +87,7 @@ class CloudSnapshot:
         if self._console_engines is None:
             # Use paginate() defensively. Per the v3 OpenAPI spec
             # (docs/research/api-v3.json), /api/3/scan_engines is not
-            # paginated — it returns the full collection in one response,
+            # paginated -- it returns the full collection in one response,
             # and paginate()'s page-0 fast path handles that correctly
             # (no `page.totalPages` => stop after page 0). If Rapid7 ever
             # paginates this endpoint, this call site is already correct;

@@ -26,7 +26,7 @@ class WebSpiderCredentialsMissingRule(AuditRule):
         "Templates with web spider enabled bound to sites that have no "
         "HTTP-form or HTTP-headers credential configured. Unauthenticated "
         "web scans typically cover ~5x less surface area than authenticated "
-        "scans because the spider cannot cross login boundaries — most "
+        "scans because the spider cannot cross login boundaries -- most "
         "application-layer vulnerabilities sit behind auth."
     )
     default_severity = "warn"
@@ -78,7 +78,7 @@ class WebSpiderCredentialsMissingRule(AuditRule):
                 message=(
                     f"Template '{t.get('name')}' has web spider enabled and "
                     f"is bound to {len(bound)} site(s), none of which have "
-                    f"HTTP-form or HTTP-headers credentials configured — the "
+                    f"HTTP-form or HTTP-headers credentials configured -- the "
                     f"web scan will not cross authentication boundaries."
                 ),
                 details={

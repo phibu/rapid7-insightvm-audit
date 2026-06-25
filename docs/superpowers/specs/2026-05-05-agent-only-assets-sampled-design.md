@@ -1,4 +1,4 @@
-# R4 `agent_only_assets` — sampled, unconditional
+# R4 `agent_only_assets` -- sampled, unconditional
 
 **Date:** 2026-05-05
 **Target version:** 0.2.9
@@ -37,11 +37,11 @@ on every run.
 
 ## Non-goals
 
-- R3 (`dead_asset_groups`) — separate backlog item.
+- R3 (`dead_asset_groups`) -- separate backlog item.
 - Other operational checks (`scan_engines.py`, `scan_activity.py`,
   `data_quality.py`).
 - A parallel-GET helper in `client.py`. Sequential is fast enough for
-  sample_size=100 (~5–20s); parallelization is a separable improvement
+  sample_size=100 (~5-20s); parallelization is a separable improvement
   if a future use case demands it.
 - Changing `EnvSnapshot.agent_asset_ids()`. The full-set accessor is
   still needed by the audit rule `agent_unauth_collision`.
@@ -62,7 +62,7 @@ on every run.
 
 ## Approach
 
-### New snapshot accessor — `agent_asset_ids_sampled()`
+### New snapshot accessor -- `agent_asset_ids_sampled()`
 
 Add to `src/rapid7_healthcheck/audit/snapshot.py`:
 
@@ -76,7 +76,7 @@ def agent_asset_ids_sampled(self) -> tuple[list[int], int]:
 
     Cheap by design: paginates /api/3/agents only until sample_size IDs
     are collected (≈ ceil(sample_size/100) page fetches). Independent of
-    full_scan — always samples.
+    full_scan -- always samples.
 
     Returns ([], 0) cleanly when /api/3/agents is unavailable, sets the
     same _agents_unavailable flag agent_inventory() and agent_asset_ids()
@@ -122,12 +122,12 @@ Modify `_agent_only_assets` in `src/rapid7_healthcheck/checks/asset_coverage.py`
    `Rapid7ClientError`, log a warning, and `continue` (existing
    behavior). Track `fetched_count` separately from `len(sample_ids)`.
 6. Build findings:
-   - **Index 0** — a single summary finding (always present when the
+   - **Index 0** -- a single summary finding (always present when the
      rule produced data) describing the sample, the outsider count, the
      percentage, and the linear extrapolation.
-   - **Indices 1..min(len(outsiders), 500)** — one `warn` finding per
+   - **Indices 1..min(len(outsiders), 500)** -- one `warn` finding per
      sampled outsider, same wording as today.
-   - **Last** — truncation rollup `+ N more asset(s)` if outsiders
+   - **Last** -- truncation rollup `+ N more asset(s)` if outsiders
      exceed `_PER_ITEM_FINDING_CAP = 500`. Unchanged.
 7. Construct the `RuleResult` with the new summary, `sampled=True`, and
    a populated `sample_info`.
@@ -143,7 +143,7 @@ Replace the existing description with:
 >
 > **Sampled.** Inspects up to `audit.sample_size` agents (default 100)
 > drawn in API default order from `/api/3/agents`. Result is a
-> directional estimate, not a complete inventory — for environments
+> directional estimate, not a complete inventory -- for environments
 > with hundreds of thousands of agents, full enumeration is
 > intentionally avoided. Increase `audit.sample_size` for a tighter
 > estimate at the cost of more API calls."
@@ -178,7 +178,7 @@ Using `fetched_count` (not `len(sample_ids)`) as the denominator avoids
 biasing the estimate downward when some per-asset GETs return 404.
 
 The previous summary key `agent_only_count` is removed (intentional
-break — flagged in CHANGELOG).
+break -- flagged in CHANGELOG).
 
 `sampled = True` (always, in the new design).
 
@@ -254,10 +254,10 @@ asset_coverage.run()
 
 | Population | sample_size | API calls (R4) | Wall time (rough) |
 |---|---|---|---|
-| 500,000 | 100 (default) | 102 | 5–20s |
-| 500,000 | 1,000         | 1,011 | 1–4 min |
-| 50,000  | 100           | 102 | 5–20s |
-| 100     | 100           | 102 | 5–20s |
+| 500,000 | 100 (default) | 102 | 5-20s |
+| 500,000 | 1,000         | 1,011 | 1-4 min |
+| 50,000  | 100           | 102 | 5-20s |
+| 100     | 100           | 102 | 5-20s |
 | 0       | 100           | 1 (head only) | <1s |
 
 Compared to today's behavior on 500k agents with `full_scan=true` (≈
@@ -334,8 +334,8 @@ Any test asserting "R4 returns `skipped` when `audit.full_scan=false`."
 
 | Risk | Likelihood | Mitigation |
 |---|---|---|
-| Delta blob marks R4 as "Changed" on first upgrade run for every existing user. | Certain (intentional — wording, summary keys, severity-of-findings all change). | CHANGELOG entry calls it out. |
-| `audit_cfg` → `audit_settings` rename leaks to other check methods. | Low — only `_agent_only_assets` consumes it; other rule methods do not take this parameter. | Confirm by grep before commit; rename only on this method's signature. |
+| Delta blob marks R4 as "Changed" on first upgrade run for every existing user. | Certain (intentional -- wording, summary keys, severity-of-findings all change). | CHANGELOG entry calls it out. |
+| `audit_cfg` → `audit_settings` rename leaks to other check methods. | Low -- only `_agent_only_assets` consumes it; other rule methods do not take this parameter. | Confirm by grep before commit; rename only on this method's signature. |
 | Rule produces an `error` status when fleet is unexpectedly empty mid-run. | Low. | Empty-fleet path returns `pass` with an info finding, exercised by `test_agent_only_empty_fleet`. |
 | `agent_inventory()` and `agent_asset_ids_sampled()` confusion (both return tuples). | Low. | Distinct names, distinct cache slots, distinct docstrings. |
 

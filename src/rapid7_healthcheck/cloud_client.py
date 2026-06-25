@@ -31,7 +31,7 @@ class CloudClientError(Rapid7ClientError):
 # POST /v4/integration/scan/engine/{id}/configuration, DELETE on the
 # same) are deliberately omitted. POST /v4/integration/sites and
 # POST /v4/integration/vulnerabilities are read-safe but not needed
-# by v0 rules — re-add when a rule requires them.
+# by v0 rules -- re-add when a rule requires them.
 #
 # Stays a named module-level constant so the pre-commit read-only grep
 # and the static read-only tests can find it; it feeds V4_DIALECT below.

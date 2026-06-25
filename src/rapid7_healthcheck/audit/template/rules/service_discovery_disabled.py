@@ -25,7 +25,7 @@ def _protocol_scans_nothing(proto: dict | None) -> bool:
     scans.
 
     A protocol with **no** ``ports`` key (absent block, or block present but
-    ``ports`` omitted) returns ``False`` — Rapid7 applies the ``"well-known"``
+    ``ports`` omitted) returns ``False`` -- Rapid7 applies the ``"well-known"``
     default server-side, so an unset value means default scanning, not
     disabled. Flagging the absent case would reintroduce the #31 false
     positive (ADR-0001 skip-absent norm: only flag absent when the API
@@ -45,13 +45,13 @@ class ServiceDiscoveryDisabledRule(AuditRule):
     rule_name = "Vulnerability Template With Service Discovery Disabled"
     description = (
         "Vulnerability-enabled scan templates where BOTH TCP and UDP service "
-        "discovery scan no ports — the scanner cannot identify listening "
+        "discovery scan no ports -- the scanner cannot identify listening "
         "services and most service-bound vulnerability checks degrade or are "
         "skipped, silently reducing coverage even when checks are enabled. "
         "Service discovery defaults to the 'well-known' port set, so this is "
         "rare and indicates a deliberately blanked port configuration. Asset "
         "discovery (host-liveness packets) is a separate phase and is NOT "
-        "examined here — its being off is a valid configuration."
+        "examined here -- its being off is a valid configuration."
     )
     default_severity = "warn"
     expensive = False
@@ -77,7 +77,7 @@ class ServiceDiscoveryDisabledRule(AuditRule):
                 message=(
                     f"Template '{t.get('name')}' has vulnerability scanning "
                     f"enabled but both TCP and UDP service discovery scan no "
-                    f"ports — service-bound checks will degrade or be skipped."
+                    f"ports -- service-bound checks will degrade or be skipped."
                 ),
                 details={
                     "template_id": t.get("id"),

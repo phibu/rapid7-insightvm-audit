@@ -47,7 +47,7 @@ def test_old_shape_console_examined_but_potential_not_evaluated(fake_snapshot):
     template.vulnerabilityChecks.enabled (handled by
     EnvSnapshot.template_vuln_enabled()). The modern `checks.potential`
     sub-field lives at `vulnerabilityChecks.potential` on the same console.
-    This rule reads modern-shape `checks.potential` only — on older shapes,
+    This rule reads modern-shape `checks.potential` only -- on older shapes,
     the template is correctly examined but never flagged. Documents the
     known limitation.
     """

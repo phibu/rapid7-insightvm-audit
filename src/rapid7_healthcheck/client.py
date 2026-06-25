@@ -23,7 +23,7 @@ class Rapid7ClientError(Exception):
     responses with unparseable bodies, and for read-only invariant
     violations raised before any HTTP call. Callers branching on HTTP
     status MUST inspect `status_code` rather than substring-matching the
-    error message — message text includes the request path and up to
+    error message -- message text includes the request path and up to
     1500 chars of response body, so substring matching is brittle.
     """
 
@@ -70,7 +70,7 @@ def _summarize_params(params: dict | None) -> str:
 
     Sanitizer: any key whose lowercased name contains one of
     {"key", "token", "secret", "password", "auth"} has its value replaced
-    with "***" — defense-in-depth against a future endpoint accidentally
+    with "***" -- defense-in-depth against a future endpoint accidentally
     accepting a credential as a query param.
 
     Output is capped at 200 chars to keep log lines scannable; if the cap
@@ -97,7 +97,7 @@ class ApiDialect:
 
     The transport owns everything identical across the Console API (v3)
     and the Cloud Integrations API (v4). A dialect carries the only things
-    that differ — pure data, no behaviour:
+    that differ -- pure data, no behaviour:
 
     - ``resource_key`` / ``page_meta_key``: the response-envelope keys.
       v3 wraps results in ``{resources, page}``; v4 in ``{data, metadata}``.
@@ -107,7 +107,7 @@ class ApiDialect:
     - ``auth_hint``: the tail of the 401/403 message naming the relevant
       credential env var.
 
-    It is the adapter at the transport's seam — two dialects (v3 and v4)
+    It is the adapter at the transport's seam -- two dialects (v3 and v4)
     justify the seam; a fake dialect drives the transport's own tests.
     """
 
@@ -180,7 +180,7 @@ class HttpTransport:
         callers that fan out independent GETs themselves (e.g. the
         snapshot's per-site batch prefetch) so they reuse the same
         operator-tuned concurrency as `paginate()` instead of hardcoding
-        a worker count. Always in [1, 16] — validated in `__init__`.
+        a worker count. Always in [1, 16] -- validated in `__init__`.
         """
         return self._parallel_pages
 
@@ -219,7 +219,7 @@ class HttpTransport:
     ) -> dict:
         """Issue a single POST to a search endpoint and return the parsed response.
 
-        This does not iterate pages — useful when the caller only needs the
+        This does not iterate pages -- useful when the caller only needs the
         total-resources count and the first page of resources (e.g. for
         count-with-examples summaries). The path must be in the dialect's
         read-only POST allowlist.
@@ -256,7 +256,7 @@ class HttpTransport:
         if total_pages <= 1:
             return
 
-        # Sequential fast path — preserve today's behavior bit-for-bit
+        # Sequential fast path -- preserve today's behavior bit-for-bit
         # when caller hasn't opted into parallelism.
         if parallel_pages <= 1:
             for page_num in range(1, total_pages):
@@ -300,7 +300,7 @@ class HttpTransport:
                         # First exception wins; remaining in-flight futures are
                         # cancelled by the except-BaseException block below.
                         # Simultaneous failures lose their second exception by
-                        # design — one 5xx is enough to abort an audit.
+                        # design -- one 5xx is enough to abort an audit.
                         results[fut_to_page[fut]] = fut.result()
 
                     for page_num in batch:
@@ -428,7 +428,7 @@ class Rapid7Client(HttpTransport):
     """Adapter for the v3 Security Console API (``/api/3/...``).
 
     Wires :data:`V3_DIALECT` onto :class:`HttpTransport` and accepts the
-    two auth modes the Console API supports — ``X-Api-Key`` header or HTTP
+    two auth modes the Console API supports -- ``X-Api-Key`` header or HTTP
     Basic. Adds no transport behaviour; everything but construction and the
     v3-only ``connect()`` probe is inherited.
     """

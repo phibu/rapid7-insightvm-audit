@@ -24,7 +24,7 @@ def _strip_flushing_file_handlers_after_test():
 
 def test_flushing_file_handler_writes_to_disk_on_each_emit(tmp_path: Path):
     """A record logged via FlushingFileHandler must be readable from disk
-    immediately, before the handler is closed — proves we're flushing."""
+    immediately, before the handler is closed -- proves we're flushing."""
     log_path = tmp_path / "live.log"
     handler = FlushingFileHandler(str(log_path), encoding="utf-8")
     handler.setFormatter(logging.Formatter("%(message)s"))

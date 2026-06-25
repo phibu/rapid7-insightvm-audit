@@ -1,4 +1,4 @@
-"""Tests for load_rules — the side-effect importer that populates a rule
+"""Tests for load_rules -- the side-effect importer that populates a rule
 registry by walking a rules/ package (replacing hand-maintained import lists).
 
 load_rules works by importing each module so its @register decorator fires.
@@ -54,7 +54,7 @@ def test_load_rules_imports_every_module_so_each_decorator_fires(tmp_path, monke
 
 def test_load_rules_imports_in_sorted_order(tmp_path):
     """Modules import in deterministic alphabetical order so registry insertion
-    order — and thus the cosmetic footer run-hash — is stable across machines.
+    order -- and thus the cosmetic footer run-hash -- is stable across machines.
     (Delta correctness is signature-keyed and order-free.)"""
     order: list[str] = []
     fake_reg_mod = type(sys)("fake_order_mod")
@@ -76,7 +76,7 @@ def test_load_rules_imports_in_sorted_order(tmp_path):
 def test_real_audit_rules_package_is_fully_registered_at_import():
     """End-to-end: importing the audit package (which now calls load_rules)
     leaves the configuration-audit registry populated with every rule module's
-    rule_id — proving load_rules replaces the hand-maintained import block."""
+    rule_id -- proving load_rules replaces the hand-maintained import block."""
     import importlib
     import pkgutil
 

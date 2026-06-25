@@ -34,7 +34,7 @@ jobs:
           # of security-and-quality. The "quality" suite flags style-level
           # notes (unused imports, ineffectual statements) which are false
           # positives against the @register self-registration pattern in
-          # __main__.py and the audit rule modules — the imports run for
+          # __main__.py and the audit rule modules -- the imports run for
           # their side effects, by design (see CLAUDE.md).
           queries: security-extended
 

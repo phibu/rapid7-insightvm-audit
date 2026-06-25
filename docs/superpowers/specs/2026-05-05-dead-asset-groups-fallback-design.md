@@ -10,7 +10,7 @@
 `int(g.get("assets") or 0) == 0` ([asset_coverage.py:265](../../src/rapid7_healthcheck/checks/asset_coverage.py#L265)).
 On consoles where the `/api/3/asset_groups` listing endpoint omits the inline
 `assets` count for dynamic groups, this collapses *missing-count* into the
-*zero-members* bucket and produces false-positive findings — alive groups
+*zero-members* bucket and produces false-positive findings -- alive groups
 get flagged as dead.
 
 ## Goal
@@ -23,7 +23,7 @@ the rule cheap on consoles where the listing already populates the count
 ## Non-goals
 
 - Re-architecting the asset-coverage check.
-- The 0.2.9 cleanup item (`_capped_findings_with_rollup` helper) — tracked
+- The 0.2.9 cleanup item (`_capped_findings_with_rollup` helper) -- tracked
   separately in the backlog.
 - Replacing the inline count entirely. Trust the listing when it reports
   a count; only fall back when it does not.
@@ -37,7 +37,7 @@ the rule cheap on consoles where the listing already populates the count
 { "links": [...], "resources": [<int asset_id>, ...] }
 ```
 
-Per `docs/research/api-v3.json`, the endpoint is **not paginated** — there is
+Per `docs/research/api-v3.json`, the endpoint is **not paginated** -- there is
 no `Page` envelope, no `size`/`page` query parameters, no `totalResources`
 field. The membership count is `len(response["resources"])`. The original
 backlog item suggested `?size=1` + `page.totalResources`; that suggestion
@@ -120,7 +120,7 @@ dead = zero_inline + fallback_dead
 ```
 
 The existing `_PER_ITEM_FINDING_CAP = 500` truncation behavior on the
-*output* finding list is preserved as-is — it is independent from the new
+*output* finding list is preserved as-is -- it is independent from the new
 fallback cap on the *input* candidate list.
 
 ### 3. New config knob
@@ -180,10 +180,10 @@ Tail finding when cap is reached:
    skipped (cap=<K>). Raise dead_groups_fallback_cap to inspect more."`
 
 Summary fields on the rule's `RuleResult.summary`:
-- `dead_groups_count` (existing) — total groups flagged dead (zero-inline
+- `dead_groups_count` (existing) -- total groups flagged dead (zero-inline
   + fallback-resolved zero).
 - `total_groups` (existing).
-- `groups_with_missing_count` (new) — `len(missing_inline)`.
+- `groups_with_missing_count` (new) -- `len(missing_inline)`.
 - `fallback_calls_made` (new).
 - `fallback_cap_reached` (new, bool).
 - `fallback_errors` (new).
@@ -216,7 +216,7 @@ findings (errors, cap-reached) won't promote a clean run above `pass`.
 
 `tests/audit/conftest.py`:
 - Extend `FakeSnapshot` with an `asset_group_member_count` stub if any
-  audit-rule test transitively needs it. Likely not — this accessor is
+  audit-rule test transitively needs it. Likely not -- this accessor is
   only consumed by the op-check `_dead_asset_groups`.
 
 ### 6. Read-only safety check
@@ -229,18 +229,18 @@ Before commit:
 
 ## Files touched
 
-- `src/rapid7_healthcheck/audit/snapshot.py` — new accessor + cache.
-- `src/rapid7_healthcheck/checks/asset_coverage.py` — `_dead_asset_groups`
+- `src/rapid7_healthcheck/audit/snapshot.py` -- new accessor + cache.
+- `src/rapid7_healthcheck/checks/asset_coverage.py` -- `_dead_asset_groups`
   rewrite, new threshold consumed.
-- `src/rapid7_healthcheck/config.py` — new threshold field + validation.
-- `docs/examples/config.yaml` — new knob with comment.
-- `src/rapid7_healthcheck/templates/report.html.j2` — thresholds table
+- `src/rapid7_healthcheck/config.py` -- new threshold field + validation.
+- `docs/examples/config.yaml` -- new knob with comment.
+- `src/rapid7_healthcheck/templates/report.html.j2` -- thresholds table
   entry.
-- `tests/audit/test_snapshot.py` — new accessor tests.
-- `tests/checks/test_asset_coverage.py` — new + updated rule tests.
-- `tests/audit/conftest.py` — FakeSnapshot stub if needed.
-- `CHANGELOG.md` — `[Unreleased]` entry under the next minor.
-- `backlog.md` — remove the 0.2.9 important item.
+- `tests/audit/test_snapshot.py` -- new accessor tests.
+- `tests/checks/test_asset_coverage.py` -- new + updated rule tests.
+- `tests/audit/conftest.py` -- FakeSnapshot stub if needed.
+- `CHANGELOG.md` -- `[Unreleased]` entry under the next minor.
+- `backlog.md` -- remove the 0.2.9 important item.
 
 ## Risks
 

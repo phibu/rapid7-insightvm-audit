@@ -75,7 +75,7 @@ def test_rules_only_path_builds_rules():
 
 def test_required_gate_catches_keys_the_dataclass_would_default():
     """The load-bearing case: `BodySpec.required` must reject a missing key even
-    when the body dataclass *gives it a default* — otherwise `_from_dict`'s
+    when the body dataclass *gives it a default* -- otherwise `_from_dict`'s
     MISSING-derivation wouldn't catch it and the block would silently validate.
 
     Uses `TemplateAuditConfig`, whose `sample_size` carries a default (500), so

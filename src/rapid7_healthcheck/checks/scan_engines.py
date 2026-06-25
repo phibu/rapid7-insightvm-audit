@@ -82,7 +82,7 @@ class EngineBadStatusRule:
     RULE_NAME = "Engines in non-active state"
     DESCRIPTION = (
         "Scan engines whose status is 'incompatible-version', 'not-responding', "
-        "'pending-authorization', or 'unknown' — console cannot reliably use them "
+        "'pending-authorization', or 'unknown' -- console cannot reliably use them "
         "for scans. Severity per finding: incompatible-version and not-responding "
         "are fail; pending-authorization and unknown are warn."
     )
@@ -99,7 +99,7 @@ class EngineBadStatusRule:
             name = _engine_name(engine)
             findings.append(Finding(
                 severity=bad.severity,
-                message=f"Engine '{name}' status is '{status}' — {bad.reason}",
+                message=f"Engine '{name}' status is '{status}' -- {bad.reason}",
                 details={"id": engine.get("id"), "status": status},
             ))
         return make_rule_result(
@@ -172,7 +172,7 @@ class EngineMissingLastRefreshRule:
     RULE_ID = "op.scan_engines.missing_last_refresh"
     RULE_NAME = "Engines missing lastRefreshedDate"
     DESCRIPTION = (
-        "Engines that report no lastRefreshedDate at all — usually a freshly "
+        "Engines that report no lastRefreshedDate at all -- usually a freshly "
         "paired engine that has not yet completed a refresh. The console-local "
         "Scan Engine (detected by loopback address or the default name "
         "'Local scan engine') is excluded because it never reports a "
@@ -275,7 +275,7 @@ def _compute_engine_count_summary(engines: list[dict], rule_results: list[RuleRe
     """Derive per-engine worst-severity counts from rule-emitted findings.
 
     Walks every rule's findings, extracts the engine_id from finding.details
-    (via the "id" key — all four engine rule classes write engine_id under
+    (via the "id" key -- all four engine rule classes write engine_id under
     "id"), and tracks the worst severity seen per engine. Engines that
     appear in no finding are healthy.
     """
@@ -311,7 +311,7 @@ class ScanEnginesCheck:
         client: Any,
         config: AppConfig,
         *,
-        snapshot: "EnvSnapshot | None" = None,  # noqa: F821 — forward-ref string only
+        snapshot: "EnvSnapshot | None" = None,  # noqa: F821 -- forward-ref string only
         **_kwargs: object,
     ) -> CheckResult:
         if snapshot is None:
@@ -320,7 +320,7 @@ class ScanEnginesCheck:
 
         # The /api/3/scan_engines fetch is shared by all four rules. Memoize
         # it behind a closure so it is attempted once but resolved *inside*
-        # each rule's safe_run_rule wrapper — a single failed GET surfaces as
+        # each rule's safe_run_rule wrapper -- a single failed GET surfaces as
         # four isolated error rule cards instead of collapsing the check. The
         # closure is created once per run() and captured by both produce and
         # summary_extra, so the engine count summary sees exactly what the
@@ -344,7 +344,7 @@ class ScanEnginesCheck:
 
             # Pool-mediated pairing index for the unpaired rule. If pools
             # cannot be fetched (e.g. 404 swallowed inside the snapshot, or a
-            # transient error here), fall back to an empty index — the rule
+            # transient error here), fall back to an empty index -- the rule
             # then reverts to its pre-pool-aware behavior (direct
             # ScanEngine.sites only), which is the 0.6.5 baseline and the
             # desired fallback when no pool signal is available.
@@ -370,7 +370,7 @@ class ScanEnginesCheck:
             ]
 
         def summary_extra(rule_results: list[RuleResult]) -> dict:
-            # If the shared fetch failed, engines are unknown — fall back to an
+            # If the shared fetch failed, engines are unknown -- fall back to an
             # empty list for the count summary rather than re-raising.
             engines_for_summary = (
                 _fetch_cache.get("value", []) if "exc" not in _fetch_cache else []

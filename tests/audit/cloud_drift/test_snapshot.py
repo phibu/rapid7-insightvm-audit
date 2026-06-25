@@ -89,7 +89,7 @@ def test_console_engines_paginates_v3():
 def test_console_engines_handles_multi_page_response():
     # Regression: rules cross-reference console_engines() with the v4
     # cloud_engines() list. If the v3 side silently truncated to one
-    # page, every engine past page 1 would appear "missing from cloud" —
+    # page, every engine past page 1 would appear "missing from cloud" --
     # false positives that scale with deployment size.
     v3 = MagicMock()
     v3.paginate.return_value = iter([

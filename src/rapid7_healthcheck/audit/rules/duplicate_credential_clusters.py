@@ -19,9 +19,9 @@ class DuplicateCredentialClustersRule(AuditRule):
     rule_id = "duplicate_credential_clusters"
     rule_name = "Duplicate Credential Clusters"
     description = (
-        "Groups credentials (site-specific and shared) by identity — service "
+        "Groups credentials (site-specific and shared) by identity -- service "
         "type, username, domain, host and port restriction; never the secret, "
-        "which the API does not return — and reports clusters of two or more "
+        "which the API does not return -- and reports clusters of two or more "
         "that look like the same account configured more than once. Duplicates "
         "drift apart on rotation and multiply maintenance. Informational by "
         "default; a cluster escalates to a warning only when its members "
@@ -73,7 +73,7 @@ class DuplicateCredentialClustersRule(AuditRule):
             clusters += 1
             names = {m["name"] for m in members}
             # Members disagree (uncoordinated copies) when they don't share one
-            # name — a rotation/consistency risk, so escalate to warn.
+            # name -- a rotation/consistency risk, so escalate to warn.
             disagree = len(names) > 1
             finding_severity = "warn" if disagree else severity
             label = key_label(key)
@@ -81,13 +81,13 @@ class DuplicateCredentialClustersRule(AuditRule):
                 msg = (
                     f"{len(members)} duplicate credentials for {label} exist "
                     f"under {len(names)} different names "
-                    f"({', '.join(sorted(n or '?' for n in names))}) — likely "
+                    f"({', '.join(sorted(n or '?' for n in names))}) -- likely "
                     f"uncoordinated copies that will drift apart on rotation."
                 )
             else:
                 msg = (
                     f"{len(members)} copies of credential {label} exist across "
-                    f"sites/shared scope — consolidate to reduce maintenance."
+                    f"sites/shared scope -- consolidate to reduce maintenance."
                 )
             findings.append(Finding(
                 severity=finding_severity,

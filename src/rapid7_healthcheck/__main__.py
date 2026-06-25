@@ -67,7 +67,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     Split out from ``_parse_args`` so the frozen flag set is introspectable
     (the 1.0 contract-lock test asserts the exact option strings). The set of
-    flags here is part of the 1.0 public contract — see
+    flags here is part of the 1.0 public contract -- see
     ``tests/test_contract_lock.py``.
     """
     p = argparse.ArgumentParser(prog="rapid7-healthcheck")
@@ -180,7 +180,7 @@ def _resolve_auth_or_none(
 
     Peer of ``_build_cloud_client_or_none``: reads ``os.environ`` inside and
     returns ``(value, error_or_None)``. The ``error`` string (when non-None) is
-    logged and surfaced as a startup error — a configured ``auth_mode`` whose
+    logged and surfaced as a startup error -- a configured ``auth_mode`` whose
     env vars are unset is an operator mistake, so __main__ exits 3 rather than
     proceeding without credentials.
 
@@ -224,7 +224,7 @@ def _resolve_log_file(args: argparse.Namespace, cfg: AppConfig, log_format: str)
         return Path(args.log_file)
     if getattr(args, "output", None):
         return Path(args.output).with_suffix(".log")
-    # Derive from config — mirror what write_report does for the default path.
+    # Derive from config -- mirror what write_report does for the default path.
     timestamp = datetime.now().strftime("%Y-%m-%d_%H%M")
     base = cfg.report.filename_pattern.replace("{timestamp}", timestamp)
     suffix = ".jsonl" if log_format == "json" else ".log"
@@ -261,7 +261,7 @@ def pick_exit_code(results: list[CheckResult]) -> int:
 def _build_inventory_totals(snapshot: Any) -> "InventoryTotals | None":
     """Build the InventoryTotals dataclass from the shared EnvSnapshot.
 
-    A single snapshot-accessor failure should not kill the whole report —
+    A single snapshot-accessor failure should not kill the whole report --
     if any accessor raises, log and return None, and the template skips
     the inventory strip.
     """
@@ -293,7 +293,7 @@ def _run_checks(
     # The caller owns the snapshot (since 0.6.6) so it can be shared with the
     # inventory-totals builder. Op-checks accept it via the `snapshot=` kwarg;
     # audit checks still build their own snapshot internally today (deferred
-    # cleanup — see backlog).
+    # cleanup -- see backlog).
     results: list[CheckResult] = []
     total = len(_REGISTRY)
     for idx, (name, check_cls) in enumerate(_REGISTRY.items(), start=1):
@@ -316,7 +316,7 @@ def _run_checks(
             try:
                 # Every check accepts the same optional-kwarg superset and uses
                 # only what it needs (op-checks read snapshot, cloud-drift reads
-                # cloud_client, audits read progress). Dispatch is uniform — no
+                # cloud_client, audits read progress). Dispatch is uniform -- no
                 # branching on check identity. See CONTEXT.md "Check dispatch".
                 results.append(instance.run(
                     client, cfg,

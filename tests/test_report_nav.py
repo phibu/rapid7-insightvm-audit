@@ -1,4 +1,4 @@
-"""Report navigation (section rail) tests — 0.8.5.
+"""Report navigation (section rail) tests -- 0.8.5.
 
 The section rail is the persistent left-column wayfinding added in 0.8.5:
 a grid shell wraps the page into [section rail | content column]; the rail
@@ -91,7 +91,7 @@ def test_section_rail_entries_carry_status_dot_and_counts():
 
 def test_grid_shell_preserves_section_details_child_relationship():
     """The grid wrapper must wrap the PAGE, never get inserted between a
-    section.check and its <details> cards — the CSS filter selector
+    section.check and its <details> cards -- the CSS filter selector
     ``section.check > details`` depends on the direct-child relationship."""
     html = render_report(_ctx_multi_check())
     # The rule card <details> must be a direct child of its section in the markup:
@@ -116,7 +116,7 @@ def test_filter_child_combinator_still_used_after_grid():
 
 def test_narrow_screen_disclosure_present():
     """On narrow screens the rail folds into a native <details> 'Jump to section'
-    disclosure — no-JS safe. The <details class='section-rail'> + <summary> must exist."""
+    disclosure -- no-JS safe. The <details class='section-rail'> + <summary> must exist."""
     html = render_report(_ctx_multi_check())
     assert re.search(r'<details class="section-rail"[^>]*>', html) is not None, \
         "section rail <details> disclosure wrapper missing"
@@ -158,7 +158,7 @@ def test_rail_is_sticky_on_the_grid_item_within_wide_breakpoint():
     containing block must be as tall as the content column. The rail's grid
     item satisfies that (the grid row is content-column height); the inner
     <nav>, which is only as tall as the link list inside a short <details>,
-    does NOT — sticking it there lets the rail scroll away once you pass the
+    does NOT -- sticking it there lets the rail scroll away once you pass the
     list. So sticky belongs on the GRID ITEM (.section-rail), scoped to the
     wide breakpoint (where the rail is a real column, not the narrow-screen
     <details> disclosure), paired with align-items/align-self start.

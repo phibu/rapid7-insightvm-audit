@@ -7,7 +7,7 @@ from rapid7_healthcheck.audit.template.rules.service_discovery_disabled import (
 
 def test_issue_31_asset_discovery_off_but_service_discovery_configured_passes(fake_snapshot):
     """Issue #31: a template with Asset Discovery packets disabled but
-    Service Discovery scanning ``well-known`` ports is fully functional —
+    Service Discovery scanning ``well-known`` ports is fully functional --
     it must NOT be flagged. The old rule read ``discovery.asset.*`` (the
     wrong subtree) and false-flagged exactly this config.
     """
@@ -19,7 +19,7 @@ def test_issue_31_asset_discovery_off_but_service_discovery_configured_passes(fa
             "discovery": {
                 # Asset Discovery: "send TCP/UDP packets" disabled (empty arrays)
                 "asset": {"tcpPorts": [], "udpPorts": []},
-                # Service Discovery: scanning well-known ports — healthy
+                # Service Discovery: scanning well-known ports -- healthy
                 "service": {
                     "tcp": {"ports": "well-known", "additionalPorts": "1-1040"},
                     "udp": {"ports": "well-known"},
@@ -59,7 +59,7 @@ def test_flags_when_both_protocols_scan_no_ports(fake_snapshot):
 
 def test_tcp_alive_udp_dead_passes(fake_snapshot):
     """If only one protocol scans ports, the scanner still discovers
-    services — not 'disabled'. Both must be dead to flag.
+    services -- not 'disabled'. Both must be dead to flag.
     """
     fake_snapshot.set_templates_full([
         {
@@ -120,7 +120,7 @@ def test_missing_service_block_does_not_flag(fake_snapshot):
     must NOT be flagged: Rapid7 applies the 'well-known' default server-side
     when the field is omitted, so an absent block means default (healthy)
     scanning, not disabled. Flagging it would reintroduce the #31 false
-    positive and violate the category's skip-absent norm (ADR-0001 — only
+    positive and violate the category's skip-absent norm (ADR-0001 -- only
     flag absent when the API default is itself dangerous; 'well-known' is
     benign).
     """

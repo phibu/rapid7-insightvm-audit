@@ -1,12 +1,12 @@
 # Normalize line endings. The repo is developed on Windows but CI runs on
-# Linux and releases are built with `git archive` — committing everything as
+# Linux and releases are built with `git archive` -- committing everything as
 # LF keeps the working tree, CI, and the runtime zip byte-stable regardless
 # of each developer's core.autocrlf setting.
 
 # Default: treat every file as text and store it with LF in the repo.
 * text=eol=lf
 
-# Source and config — explicit for clarity (covered by the default above).
+# Source and config -- explicit for clarity (covered by the default above).
 *.py    text eol=lf
 *.md    text eol=lf
 *.yml   text eol=lf
@@ -23,7 +23,7 @@
 .gitattributes text eol=lf
 .env.example   text eol=lf
 
-# Binary files: never normalize, never diff as text. None exist today —
+# Binary files: never normalize, never diff as text. None exist today --
 # listed so a future addition is handled correctly without churn.
 *.png   binary
 *.jpg   binary

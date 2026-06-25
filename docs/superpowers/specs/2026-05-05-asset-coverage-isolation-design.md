@@ -1,7 +1,7 @@
 # Per-rule isolation for AssetCoverageCheck
 
 **Target version:** 0.2.9
-**Status:** approved (brainstorming) — pending implementation
+**Status:** approved (brainstorming) -- pending implementation
 **Owner:** Phibu
 **Date:** 2026-05-05
 
@@ -10,12 +10,12 @@
 Extend the per-rule isolation pattern shipped in 0.2.8 for `DataQualityCheck`
 to `AssetCoverageCheck`. Today, a single asset-coverage rule's
 `Rapid7ClientError` propagates out of `run()` and the orchestrator marks the
-whole check as `status="error"` with zero `rule_results` — hiding output from
+whole check as `status="error"` with zero `rule_results` -- hiding output from
 the three rules that would have run cleanly.
 
 Hoist the `_safe()` helper out of `DataQualityCheck` into `checks/_op_rule.py`
 as a free function (`safe_run()`) so both checks share one implementation.
-`scan_engines` and `scan_activity` are deliberately out of scope — they have
+`scan_engines` and `scan_activity` are deliberately out of scope -- they have
 no per-rule methods to wrap and would need a structural refactor with
 delta-blob signature implications. That work belongs in a separate spec.
 
@@ -114,7 +114,7 @@ directly for both rules from a single shared paginate failure) is unchanged.
 The 0.2.8 regression tests
 (`test_per_rule_failure_isolated_other_rules_still_run`,
 `test_duplicates_paginate_failure_emits_two_error_rules`) keep passing
-without modification — they exercise the user-visible behavior, not the
+without modification -- they exercise the user-visible behavior, not the
 internal `_safe` location.
 
 ### `asset_coverage.py` migration
@@ -142,7 +142,7 @@ def run(self, client, config, *, snapshot=None) -> CheckResult:
             rule_id="op.asset_coverage.never_scanned_assets",
             rule_name="Never-scanned assets",
             description=(
-                "Assets whose last scan exceeds the never-scanned threshold — "
+                "Assets whose last scan exceeds the never-scanned threshold -- "
                 "treated as effectively unscanned."
             ),
             sources=[_SRC_FILTERED_SEARCH],
@@ -176,7 +176,7 @@ def run(self, client, config, *, snapshot=None) -> CheckResult:
 
 The `description` and `sources` strings are copied verbatim from each rule
 method's internal constants. The single risk introduced by this duplication
-is identity drift — addressed by the new test below.
+is identity drift -- addressed by the new test below.
 
 ### Existing inline 400-traps survive
 
@@ -184,9 +184,9 @@ Two of the four rules already trap specific 400 cases (operator unsupported)
 and convert them into meaningful info findings rather than letting them
 escape:
 
-- `_stale_assets` — `is-empty` operator on `last-scan-date` rejected on some
+- `_stale_assets` -- `is-empty` operator on `last-scan-date` rejected on some
   hosted consoles
-- `_never_scanned_assets` — same trap
+- `_never_scanned_assets` -- same trap
 
 These inline handlers stay. `safe_run()` is the *outer* catch-all: anything
 the rule doesn't handle internally becomes an `error_rule`. A 400 the rule
@@ -205,7 +205,7 @@ def test_per_rule_failure_isolated_other_rules_still_run(fake_client, app_config
     from rapid7_healthcheck.client import Rapid7ClientError
 
     def paginate_post(path, json_body, params=None, page_size=500):
-        # _stale_assets is the first rule to call paginate_post — make it raise.
+        # _stale_assets is the first rule to call paginate_post -- make it raise.
         # The other three rules don't depend on this paginate, so they should
         # complete normally.
         if path == "/api/3/assets/search" and any(
@@ -245,7 +245,7 @@ def test_rule_identity_matches_method_constants(fake_client, app_config):
     Without this guard, if a rule method's rule_id changes but the
     wrapper's stays the same, the report renders the wrapper's stale
     identity for the success path and the method's new identity for the
-    error path — confusing operators and breaking delta-blob signatures.
+    error path -- confusing operators and breaking delta-blob signatures.
     """
     fake_client.set_paginate_post("/api/3/assets/search", [])
     snap = _FakeSnapshot(asset_groups=[])
@@ -270,11 +270,11 @@ unchanged. They assert on user-visible behavior; the internal helper
 location move is invisible to them.
 
 If `pytest tests/checks/test_data_quality.py` regresses after the helper
-hoist, the migration was done wrong — investigate before continuing.
+hoist, the migration was done wrong -- investigate before continuing.
 
 ### Project test suite
 
-`pytest -q` should land at 438 passing (was 436 at v0.2.8 — +2 new asset
+`pytest -q` should land at 438 passing (was 436 at v0.2.8 -- +2 new asset
 coverage tests, no removals).
 
 ## Risk + rollback
@@ -306,7 +306,7 @@ No API surface changes. Read-only contract unchanged.
 
 ## Out-of-scope items captured for later
 
-- **`scan_engines` + `scan_activity` per-rule restructure** — separate
+- **`scan_engines` + `scan_activity` per-rule restructure** -- separate
   spec. Both checks compute multiple finding buckets in a single
   `run()`-body loop with no per-rule methods to wrap. Restructuring needs
   to preserve all existing rule_ids for delta-blob continuity, migrate
@@ -314,9 +314,9 @@ No API surface changes. Read-only contract unchanged.
   assertions to per-rule-result assertions, and decide whether per-site
   scan history needs an `EnvSnapshot`-equivalent storage layer. Sized
   more like 0.3.0 than a sub-task of 0.2.9.
-- **`agent_only_assets` (R4) per-asset GET flood** — open backlog item;
+- **`agent_only_assets` (R4) per-asset GET flood** -- open backlog item;
   separate fix.
-- **`dead_asset_groups` missing-`assets`-key false positive** — open
+- **`dead_asset_groups` missing-`assets`-key false positive** -- open
   backlog item; separate fix.
-- **`_PER_ITEM_FINDING_CAP` rollup duplication** — open backlog cleanup
+- **`_PER_ITEM_FINDING_CAP` rollup duplication** -- open backlog cleanup
   item; separate refactor.

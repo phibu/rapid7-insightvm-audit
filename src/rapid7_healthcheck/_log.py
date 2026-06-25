@@ -1,20 +1,20 @@
 """Logging helpers internal to rapid7_healthcheck.
 
 Public surface:
-    FlushingFileHandler — drop-in for logging.FileHandler that flushes the
+    FlushingFileHandler -- drop-in for logging.FileHandler that flushes the
         underlying stream after every emit, so a tailed log file shows live
         progress during long-running audits.
-    ProgressAwareStreamHandler — stderr StreamHandler that clears the
+    ProgressAwareStreamHandler -- stderr StreamHandler that clears the
         current TTY line before emitting, so log records don't collide with
         the in-place progress status line written by ProgressReporter.
-    PlainFormatter — the default human-readable file format:
+    PlainFormatter -- the default human-readable file format:
         "%(asctime)s %(levelname)s %(name)s: %(message)s".
-    CMTraceFormatter — SCCM/MECM CMTrace viewer format. Lets Windows ops
+    CMTraceFormatter -- SCCM/MECM CMTrace viewer format. Lets Windows ops
         open run logs in cmtrace.exe with severity colorization and the
         component filter.
-    JsonFormatter — JSON Lines (one object per line). For shipping logs
+    JsonFormatter -- JSON Lines (one object per line). For shipping logs
         into Splunk/Loki/OpenSearch.
-    make_file_formatter — selector keyed by the literal config string
+    make_file_formatter -- selector keyed by the literal config string
         ("plain" | "cmtrace" | "json"); used by __main__._setup_logging.
 """
 from __future__ import annotations
@@ -33,7 +33,7 @@ class ProgressAwareStreamHandler(logging.StreamHandler):
     ProgressReporter writes its status line in-place via ``\\r\\x1b[K`` and
     leaves the cursor parked at the end of the line with no trailing newline.
     A vanilla StreamHandler would then write its record starting at that
-    cursor position — gluing the log message onto the status label
+    cursor position -- gluing the log message onto the status label
     (e.g. ``[ 25%] (2/8) Scan Activity2026-05-07 14:23:45,375 INFO ...``).
 
     This handler prefixes ``\\r\\x1b[K`` to each record on TTY streams so the
@@ -171,7 +171,7 @@ class JsonFormatter(logging.Formatter):
 def make_file_formatter(log_format: str) -> logging.Formatter:
     """Return the file-log formatter matching the requested string.
 
-    Defensive — config validation should have caught unknown values upstream.
+    Defensive -- config validation should have caught unknown values upstream.
     """
     if log_format == "plain":
         return PlainFormatter()

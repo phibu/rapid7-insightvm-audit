@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-06
 **Status:** Approved (design); implementation plan pending
-**Scope:** Add a configurable file-log format with three options — `plain` (current behavior), `cmtrace` (SCCM/MECM viewer), and `json` (JSONL).
+**Scope:** Add a configurable file-log format with three options -- `plain` (current behavior), `cmtrace` (SCCM/MECM viewer), and `json` (JSONL).
 
 ## Motivation
 
@@ -11,14 +11,14 @@ The tool produces a single text log file alongside each report. Today the format
 - **Windows / SCCM shops** want CMTrace-formatted logs so operators can open the run log in `cmtrace.exe` and use its severity colorization, component filter, and structured navigation.
 - **Centralized logging shops** want JSON Lines so logs can be shipped into Splunk / Loki / OpenSearch without an ingest-side parser.
 
-Both are read-only, additive concerns — no API surface change, no behavioral change to the audit itself.
+Both are read-only, additive concerns -- no API surface change, no behavioral change to the audit itself.
 
 ## Decisions
 
 | # | Decision | Choice |
 |---|---|---|
 | 1 | Where does the format choice live? | Both: config default + CLI override |
-| 2 | Does format apply to stderr too? | No — file only. Stderr stays human-readable plain. |
+| 2 | Does format apply to stderr too? | No -- file only. Stderr stays human-readable plain. |
 | 3 | What does the JSON format emit? | JSONL minimal (fixed key set, no `extra={...}` plumbing) |
 | 4 | CMTrace `component` field source? | Python logger name (`record.name`) |
 | 5 | Auto-derived file extension when format is JSON? | `.jsonl` when path is auto-derived; explicit `--log-file <path>` is honored verbatim |
@@ -50,7 +50,7 @@ CLI --log-format  >  config report.log_format  >  built-in default ("plain")
 
 ## The three formats
 
-### plain (default — unchanged behavior)
+### plain (default -- unchanged behavior)
 
 ```
 2026-05-06 14:23:01,123 INFO rapid7_healthcheck: running check: Scan Engines
@@ -66,14 +66,14 @@ Format string: `%(asctime)s %(levelname)s %(name)s: %(message)s` (the current co
 
 Field rules:
 
-- `<message>` — `record.getMessage()`. Embedded newlines (e.g. tracebacks) are kept as-is; CMTrace handles multi-line messages inside the `<![LOG[...]LOG]!>` envelope.
-- `time` — local time, format `HH:mm:ss.fff+ZZZ` where `ZZZ` is the local UTC offset in minutes (SCCM convention; e.g. `+060` for UTC+1).
-- `date` — local date, format `MM-dd-yyyy` (SCCM convention).
-- `component` — `record.name` (Python logger name).
-- `context` — always empty string `""` (we have no SCCM context concept).
-- `type` — severity mapping: `DEBUG=1`, `INFO=1`, `WARNING=2`, `ERROR=3`, `CRITICAL=3`.
-- `thread` — `record.thread` (integer thread id).
-- `file` — `record.module + ":" + record.lineno` (e.g. `scan_engines.py:42`). We use the module basename, not the full path, to keep lines short — CMTrace's "file" filter works on the displayed string.
+- `<message>` -- `record.getMessage()`. Embedded newlines (e.g. tracebacks) are kept as-is; CMTrace handles multi-line messages inside the `<![LOG[...]LOG]!>` envelope.
+- `time` -- local time, format `HH:mm:ss.fff+ZZZ` where `ZZZ` is the local UTC offset in minutes (SCCM convention; e.g. `+060` for UTC+1).
+- `date` -- local date, format `MM-dd-yyyy` (SCCM convention).
+- `component` -- `record.name` (Python logger name).
+- `context` -- always empty string `""` (we have no SCCM context concept).
+- `type` -- severity mapping: `DEBUG=1`, `INFO=1`, `WARNING=2`, `ERROR=3`, `CRITICAL=3`.
+- `thread` -- `record.thread` (integer thread id).
+- `file` -- `record.module + ":" + record.lineno` (e.g. `scan_engines.py:42`). We use the module basename, not the full path, to keep lines short -- CMTrace's "file" filter works on the displayed string.
 
 Exceptions: when `record.exc_info` is set, the formatted traceback is appended to the message inside the `<![LOG[...]LOG]!>` envelope (one CMTrace record, multi-line message).
 
@@ -85,15 +85,15 @@ Exceptions: when `record.exc_info` is set, the formatted traceback is appended t
 
 Field rules (one JSON object per line, no surrounding array):
 
-- `ts` — UTC ISO-8601 with millisecond precision and trailing `Z` (e.g. `2026-05-06T14:23:01.123Z`).
-- `level` — uppercase level name (`DEBUG` / `INFO` / `WARNING` / `ERROR` / `CRITICAL`).
-- `logger` — `record.name`.
-- `msg` — `record.getMessage()` (after `%`-formatting of args).
-- `exc` — present only when `record.exc_info` is truthy; value is the formatted traceback string (same content `logging.Formatter.formatException` produces).
+- `ts` -- UTC ISO-8601 with millisecond precision and trailing `Z` (e.g. `2026-05-06T14:23:01.123Z`).
+- `level` -- uppercase level name (`DEBUG` / `INFO` / `WARNING` / `ERROR` / `CRITICAL`).
+- `logger` -- `record.name`.
+- `msg` -- `record.getMessage()` (after `%`-formatting of args).
+- `exc` -- present only when `record.exc_info` is truthy; value is the formatted traceback string (same content `logging.Formatter.formatException` produces).
 
 No other top-level keys. We do not currently use `logger.info(..., extra={...})` anywhere in the codebase, so adding `extra` plumbing now would be unused capacity; it can be added later without breaking compatibility (new top-level fields are additive for JSONL consumers).
 
-JSON encoding: `json.dumps(obj, ensure_ascii=False, separators=(",", ":"))` — compact, UTF-8.
+JSON encoding: `json.dumps(obj, ensure_ascii=False, separators=(",", ":"))` -- compact, UTF-8.
 
 ## Architecture
 
@@ -101,10 +101,10 @@ JSON encoding: `json.dumps(obj, ensure_ascii=False, separators=(",", ":"))` — 
 
 Already exists today and exports `FlushingFileHandler`. Extended to also export three formatters and a selector:
 
-- `PlainFormatter` — `logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")`. Defined here so the format string lives in one place; today it lives inside `_setup_logging`'s `logging.basicConfig(format=...)` call.
-- `CMTraceFormatter(logging.Formatter)` — overrides `format()` to emit the SCCM line shape per the field rules above. Helper for the local-offset string format.
-- `JsonFormatter(logging.Formatter)` — overrides `format()` to emit one JSON object per call.
-- `make_file_formatter(log_format: str) -> logging.Formatter` — switch on the literal value; returns the appropriate formatter instance. Unknown values raise `ValueError` (defensive — config validation should have caught it earlier).
+- `PlainFormatter` -- `logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")`. Defined here so the format string lives in one place; today it lives inside `_setup_logging`'s `logging.basicConfig(format=...)` call.
+- `CMTraceFormatter(logging.Formatter)` -- overrides `format()` to emit the SCCM line shape per the field rules above. Helper for the local-offset string format.
+- `JsonFormatter(logging.Formatter)` -- overrides `format()` to emit one JSON object per call.
+- `make_file_formatter(log_format: str) -> logging.Formatter` -- switch on the literal value; returns the appropriate formatter instance. Unknown values raise `ValueError` (defensive -- config validation should have caught it earlier).
 
 ### `__main__.py` changes
 
@@ -146,12 +146,12 @@ def _resolve_log_file(args: argparse.Namespace, cfg: AppConfig, log_format: str)
     return Path(cfg.report.output_dir) / log_name
 ```
 
-Steps 1–3 unchanged: `--no-log-file` returns `None`; explicit `--log-file <p>` returns `Path(p)` verbatim; `--output <p>` returns `Path(p).with_suffix(".log")`. Explicit user paths are never rewritten by the format choice.
+Steps 1-3 unchanged: `--no-log-file` returns `None`; explicit `--log-file <p>` returns `Path(p)` verbatim; `--output <p>` returns `Path(p).with_suffix(".log")`. Explicit user paths are never rewritten by the format choice.
 
 In `run()`:
 
 ```python
-# First-pass logging (stderr only, plain) for config errors — unchanged.
+# First-pass logging (stderr only, plain) for config errors -- unchanged.
 _setup_logging(args.verbose, log_file=None, log_format="plain")
 load_dotenv(override=False)
 
@@ -187,7 +187,7 @@ Unknown keys under `report:` already raise per the project rule; the new key is 
 Add (under existing `report:` block, with a commented sibling for discoverability):
 
 ```yaml
-  log_format: plain   # plain | cmtrace | json — file format only; stderr stays plain
+  log_format: plain   # plain | cmtrace | json -- file format only; stderr stays plain
 ```
 
 ## Testing
@@ -196,7 +196,7 @@ Add (under existing `report:` block, with a commented sibling for discoverabilit
 
 Build `logging.LogRecord` instances by hand (or via `logger.makeRecord`) and assert on `formatter.format(record)`:
 
-- **PlainFormatter** — one record with `level=INFO`, name `rapid7_healthcheck`, message `running check: X`. Assert the line matches the existing format (regression guard against accidental drift).
+- **PlainFormatter** -- one record with `level=INFO`, name `rapid7_healthcheck`, message `running check: X`. Assert the line matches the existing format (regression guard against accidental drift).
 - **CMTraceFormatter**:
   - Envelope present: starts with `<![LOG[`, contains `]LOG]!>`.
   - Severity mapping: `DEBUG → type="1"`, `INFO → type="1"`, `WARNING → type="2"`, `ERROR → type="3"`, `CRITICAL → type="3"`.
@@ -210,9 +210,9 @@ Build `logging.LogRecord` instances by hand (or via `logger.makeRecord`) and ass
   - Key set is exactly `{ts, level, logger, msg, exc}` for a record with exception.
   - `ts` matches `\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z`.
   - `level` is uppercase.
-  - Non-ASCII message round-trips (e.g. `"München"` survives without `\u` escapes — `ensure_ascii=False`).
+  - Non-ASCII message round-trips (e.g. `"München"` survives without `\u` escapes -- `ensure_ascii=False`).
 
-### `tests/test_log_resolution.py` (new — or extend existing if one materializes)
+### `tests/test_log_resolution.py` (new -- or extend existing if one materializes)
 
 Use `argparse.Namespace` and a stub `AppConfig`/`ReportConfig` to drive `_resolve_log_file`:
 
@@ -239,10 +239,10 @@ Extend the existing config-loading test file (or add `tests/test_config_log_form
 
 - **Run-id / tool-version / host enrichment** for log correlation across runs. Better tackled when we wire up a real run-id concept (related to the report's run hash).
 - **Log rotation / retention.** External tools (logrotate, file-rotation libraries, scheduled cleanup) handle this; we don't want to own it.
-- **`--console-format` flag.** Stderr stays plain. If demand emerges, add later — does not break compatibility.
+- **`--console-format` flag.** Stderr stays plain. If demand emerges, add later -- does not break compatibility.
 - **`extra={...}` enrichment at call sites.** No current call site uses `extra`. JSONL keeps a fixed minimal shape until there's a real consumer need.
 - **Top-level `logging:` config block.** One key (`log_format`) does not justify a new block. If more logging knobs land later (per-logger level, rotation policy), introduce `logging:` then and migrate `report.log_format` with a deprecation alias.
 
 ## Read-only safety
 
-This change touches no HTTP code paths. `client.py`, `audit/rules/*`, `audit/snapshot.py`, and the `_REGISTRY` are unaffected. The verb allowlist and `_ALLOWED_POST_PATHS` are not modified. The change adds one new module-internal switch, one new config field, one new CLI flag, and three new formatter classes — none of which can issue HTTP.
+This change touches no HTTP code paths. `client.py`, `audit/rules/*`, `audit/snapshot.py`, and the `_REGISTRY` are unaffected. The verb allowlist and `_ALLOWED_POST_PATHS` are not modified. The change adds one new module-internal switch, one new config field, one new CLI flag, and three new formatter classes -- none of which can issue HTTP.

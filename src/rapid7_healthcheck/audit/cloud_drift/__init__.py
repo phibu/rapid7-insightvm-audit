@@ -5,7 +5,7 @@ Sibling to ``rapid7_healthcheck.audit`` (Configuration Audit) and
 Reconciles the on-prem Security Console (v3) against the InsightVM
 Cloud Integrations API (v4).
 
-Disabled by default — the entire category self-skips when the
+Disabled by default -- the entire category self-skips when the
 ``cloud_integration`` config block is absent or has ``enabled: false``,
 or when the cloud client could not be constructed (e.g. missing key).
 """
@@ -108,7 +108,7 @@ class CloudDriftAuditCheck:
 
 
 # Register every cloud-drift rule at package-import time. The directory is the
-# single source of truth — see CONTEXT.md "Rule registration".
+# single source of truth -- see CONTEXT.md "Rule registration".
 from rapid7_healthcheck._rule_loader import load_rules  # noqa: E402
 
 load_rules("rapid7_healthcheck.audit.cloud_drift.rules")

@@ -1,8 +1,8 @@
-"""Cross-run delta engine — lifted out of report.py so deltas are testable
+"""Cross-run delta engine -- lifted out of report.py so deltas are testable
 without rendering HTML.
 
 The report embeds a *trimmed projection* of each run (signatures + severity +
-short message — never the full `details`) in a
+short message -- never the full `details`) in a
 `<script id="report-state" type="application/json">` blob, capped at 1 MB. The
 next run extracts that prior blob, diffs it against the current projection, and
 renders a "what changed" strip. This module owns that whole machinery; report.py
@@ -10,18 +10,18 @@ owns only rendering.
 
 Interface (the small public surface other modules / tests use):
 
-  - ``finding_signature(rule_id, finding)`` — stable hash matching a finding
+  - ``finding_signature(rule_id, finding)`` -- stable hash matching a finding
     across runs.
-  - ``project(results, *, ...)`` — build the trimmed state blob (or None if it
+  - ``project(results, *, ...)`` -- build the trimmed state blob (or None if it
     exceeds the size cap).
-  - ``compute(prior, current)`` — diff two state blobs into a delta (or None).
-  - ``load_prior(output_dir, *, ...)`` — discover the most recent prior report
+  - ``compute(prior, current)`` -- diff two state blobs into a delta (or None).
+  - ``load_prior(output_dir, *, ...)`` -- discover the most recent prior report
     file and return its embedded blob (or None).
-  - ``extract_blob_from_html(text)`` — the single HTML adapter at the seam:
+  - ``extract_blob_from_html(text)`` -- the single HTML adapter at the seam:
     pull the embedded JSON blob back out of a rendered report.
 
 ``compute`` and ``project`` take/return plain dicts, so prior→delta is unit
--testable by passing an in-memory prior dict directly — no render-to-disk-then
+-testable by passing an in-memory prior dict directly -- no render-to-disk-then
 -regex-parse round trip. ``load_prior`` is the file-I/O adapter (the
 local-substitutable dependency); ``extract_blob_from_html`` is the lone
 HTML-coupling point.
@@ -69,7 +69,7 @@ def project(
 
     Drops the largest fields (`details`, `description`, `sources`) since those
     already exist in the rendered DOM. Returns None if the projection exceeds
-    `size_cap_bytes` — the report still renders without it; delta will simply
+    `size_cap_bytes` -- the report still renders without it; delta will simply
     not compute next run.
     """
     def project_finding(rule_id: str, idx: int, f: Finding) -> dict:
@@ -137,7 +137,7 @@ def compute(*, prior: dict | None, current: dict) -> dict | None:
 
     Skips silently on host mismatch (filename collision protection).
     Tolerates version skew: unknown rule_ids in current count as new findings,
-    not as resolutions. Conservative — never claims something was resolved
+    not as resolutions. Conservative -- never claims something was resolved
     when we can't verify the prior actually checked for it.
 
     Returns:
@@ -158,11 +158,11 @@ def compute(*, prior: dict | None, current: dict) -> dict | None:
 
         Walks the *deserialized* prior/current blob (plain dicts), so it cannot
         use `checks.findings_of` (which takes a live CheckResult). It re-encodes
-        the same xor-walk invariant — see `checks.findings_of` for the canonical
+        the same xor-walk invariant -- see `checks.findings_of` for the canonical
         statement of why the top-level mirror must not be indexed too.
 
         Every check now produces rule_results, so we index findings out of
-        rule_results only. The top-level `r.findings` is a flattened mirror —
+        rule_results only. The top-level `r.findings` is a flattened mirror --
         indexing it would double-count each finding under check_name.
 
         Pre-0.2.6 reports stored op-check findings only at the top level; for
@@ -219,7 +219,7 @@ def extract_blob_from_html(text: str) -> dict | None:
     This is the single HTML-coupling adapter at the prior-state seam: file
     discovery and staleness live in ``load_prior``; the *format* of the embed
     is known only here. Returns None when no blob is present or the JSON is
-    unparseable (both silent — caller treats None as "no comparable prior").
+    unparseable (both silent -- caller treats None as "no comparable prior").
     """
     m = STATE_BLOB_RE.search(text)
     if not m:
@@ -241,7 +241,7 @@ def load_prior(
     parse its embedded JSON state blob, and return the dict.
 
     Returns None on any failure: no candidates, all stale, parse error, or
-    missing script tag. All failure modes are silent — the caller should treat
+    missing script tag. All failure modes are silent -- the caller should treat
     None as "no comparable prior, don't render the delta strip."
 
     `max_age_days=None` disables the age filter (still excludes `exclude`).

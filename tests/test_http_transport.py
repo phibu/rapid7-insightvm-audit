@@ -1,14 +1,14 @@
 """Interface tests for the deep HttpTransport module.
 
 HttpTransport owns everything identical across the v3 Console API and the
-v4 Cloud Integrations API — the retry loop, backoff, read-only allowlist
+v4 Cloud Integrations API -- the retry loop, backoff, read-only allowlist
 *enforcement*, JSON parsing, and pagination. The per-API differences are
 injected as an ApiDialect (the adapter at the seam).
 
 These tests drive the transport with a *fake* dialect carrying
 distinctive values (envelope key ``widgets``/``meta``, its own allowlist
 and error class). If the transport hardcoded ``resources``/``data`` or a
-fixed allowlist, these tests would fail — proving the variation genuinely
+fixed allowlist, these tests would fail -- proving the variation genuinely
 crosses the seam.
 """
 

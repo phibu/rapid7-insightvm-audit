@@ -262,7 +262,7 @@ def test_truncated_aggregate_does_not_lift_status(fake_snapshot):
 
 
 def test_short_circuit_in_full_scan_mode(fake_snapshot):
-    """full_scan=True still short-circuits on first agent — pagination consumed
+    """full_scan=True still short-circuits on first agent -- pagination consumed
     exactly 1 item even with 5000 total assets."""
     fake_snapshot.set_sites([_site(1, "tpl-vuln", "Huge")])
     fake_snapshot.set_scan_template("tpl-vuln", {
@@ -326,7 +326,7 @@ def test_regression_flags_when_site_payload_lacks_agent_and_history_fields(fake_
     /api/3/agents-driven refactor.
 
     Site-asset listings (/api/3/sites/{id}/assets) frequently OMIT the `agent`
-    block and the `history` array — the fields are reliably populated only on
+    block and the `history` array -- the fields are reliably populated only on
     /api/3/assets/{id} and /api/3/agents. The pre-refactor rule detected agent
     presence inline from the site-asset payload and silently produced 0
     findings on real consoles. This test asserts the rule still flags the site
@@ -352,7 +352,7 @@ def test_regression_flags_when_site_payload_lacks_agent_and_history_fields(fake_
 
 def test_agent_id_via_links_href(fake_snapshot):
     """Agent payload without top-level `id` but with a `links` entry pointing
-    at /api/3/assets/{id} — the snapshot accessor must extract the id."""
+    at /api/3/assets/{id} -- the snapshot accessor must extract the id."""
     fake_snapshot.set_sites([_site(1, "tpl-vuln", "Linked")])
     fake_snapshot.set_scan_template("tpl-vuln", {"id": "tpl-vuln", "name": "Vuln",
                                                   "vulnerabilityChecks": {"enabled": True}})

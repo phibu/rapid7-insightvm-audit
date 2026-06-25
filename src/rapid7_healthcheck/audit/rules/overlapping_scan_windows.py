@@ -45,7 +45,7 @@ def _parse_scope(targets: list) -> tuple[list, set[str]]:
     comparison; anything that is not a valid IP/CIDR is kept as a
     case-folded hostname string for exact-match comparison. Hostnames are
     not resolved (DNS lookup is out of scope and non-deterministic), so
-    only identical names count as overlapping scope — but they are no
+    only identical names count as overlapping scope -- but they are no
     longer silently dropped.
     """
     networks: list = []

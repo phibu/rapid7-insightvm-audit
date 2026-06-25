@@ -42,7 +42,7 @@ def test_threshold_knob(fake_user_snapshot):
 
 
 def test_zero_global_admins_hard_fails(fake_user_snapshot):
-    """No enabled Global Administrator at all is a hard failure — a console
+    """No enabled Global Administrator at all is a hard failure -- a console
     no one can administer. The finding is `fail` even when the rule's
     configured severity is `info`."""
     fake_user_snapshot.set_users([
@@ -61,7 +61,7 @@ def test_zero_global_admins_hard_fails(fake_user_snapshot):
 
 
 def test_one_global_admin_passes(fake_user_snapshot):
-    """One enabled GA is below max_ga — still a pass, no finding."""
+    """One enabled GA is below max_ga -- still a pass, no finding."""
     fake_user_snapshot.set_users([
         {"id": 1, "login": "ga", "enabled": True, "role": {"id": "global-admin"}},
     ])

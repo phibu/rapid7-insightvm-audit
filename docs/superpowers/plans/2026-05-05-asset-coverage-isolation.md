@@ -4,7 +4,7 @@
 
 **Goal:** Apply the per-rule isolation pattern (data_quality 0.2.8) to `AssetCoverageCheck` by hoisting the `_safe()` helper into `_op_rule.py` as a free function `safe_run()`, then wrapping each of `AssetCoverageCheck.run()`'s four rule calls with it. So a single asset-coverage rule's API failure no longer black-holes the whole check.
 
-**Architecture:** New free function `safe_run(fn, *, rule_id, rule_name, description, sources, default_severity)` in `checks/_op_rule.py`. `DataQualityCheck` migrates from its own `_safe()` method to importing `safe_run`. `AssetCoverageCheck.run()` wraps each of its 4 rule calls (`_stale_assets`, `_never_scanned_assets`, `_dead_asset_groups`, `_agent_only_assets`) with `safe_run`. Identity strings (rule_id, name, description, sources) are duplicated at the call site because the rule method may raise before returning — drift is caught by an explicit identity-stability test.
+**Architecture:** New free function `safe_run(fn, *, rule_id, rule_name, description, sources, default_severity)` in `checks/_op_rule.py`. `DataQualityCheck` migrates from its own `_safe()` method to importing `safe_run`. `AssetCoverageCheck.run()` wraps each of its 4 rule calls (`_stale_assets`, `_never_scanned_assets`, `_dead_asset_groups`, `_agent_only_assets`) with `safe_run`. Identity strings (rule_id, name, description, sources) are duplicated at the call site because the rule method may raise before returning -- drift is caught by an explicit identity-stability test.
 
 **Tech Stack:** Python 3.11+, pytest. Same toolchain as 0.2.8.
 
@@ -30,7 +30,7 @@
 - Modify: `src/rapid7_healthcheck/checks/_op_rule.py:1-16` (imports) and append a new function after `error_rule`
 - Test: `tests/checks/test_op_rule.py` (NEW file)
 
-This task introduces the helper. `data_quality.py` and `asset_coverage.py` are not modified yet — those are Tasks 2 and 3.
+This task introduces the helper. `data_quality.py` and `asset_coverage.py` are not modified yet -- those are Tasks 2 and 3.
 
 - [ ] **Step 1: Write failing test for `safe_run` happy path**
 
@@ -76,7 +76,7 @@ def test_safe_run_returns_fn_result_on_success():
 - [ ] **Step 2: Run test, verify FAIL with ImportError**
 
 Run: `pytest tests/checks/test_op_rule.py::test_safe_run_returns_fn_result_on_success -v`
-Expected: FAIL — `ImportError: cannot import name 'safe_run' from 'rapid7_healthcheck.checks._op_rule'`.
+Expected: FAIL -- `ImportError: cannot import name 'safe_run' from 'rapid7_healthcheck.checks._op_rule'`.
 
 - [ ] **Step 3: Add module-level `import logging`, `import time`, and `logger`**
 
@@ -128,7 +128,7 @@ def safe_run(
     identity and the rule method's own constants is caught by per-check
     unit tests that assert rule_id stability.
 
-    `default_severity` is the rule's own severity tag — used by the
+    `default_severity` is the rule's own severity tag -- used by the
     state-blob/delta logic; surfaces in the synthesized error_rule when
     the producer raises.
     """
@@ -200,7 +200,7 @@ def test_safe_run_populates_status_code_for_rapid7_client_error():
 
 def test_safe_run_handles_arbitrary_exception_types():
     """Non-Rapid7ClientError exceptions also produce an error_rule (with
-    error_path=None and error_status_code=None — the diagnostics extractor
+    error_path=None and error_status_code=None -- the diagnostics extractor
     only knows how to read Rapid7ClientError)."""
     def raises():
         raise ValueError("not a Rapid7ClientError")
@@ -225,9 +225,9 @@ Expected: 4 passed.
 - [ ] **Step 8: Run full project test suite (no regression check)**
 
 Run: `pytest -q`
-Expected: 437 passed (was 436 at v0.2.8 — +1 new test file with 4 tests, but `test_op_rule.py` should not affect any existing tests because the new function is unused outside the new test file at this point).
+Expected: 437 passed (was 436 at v0.2.8 -- +1 new test file with 4 tests, but `test_op_rule.py` should not affect any existing tests because the new function is unused outside the new test file at this point).
 
-Note: if the count is exactly 440 instead of 437, that's also fine — it just means existing test files were unchanged and 4 new ones were added on top of 436. Any regression (existing test going red) means stop and investigate.
+Note: if the count is exactly 440 instead of 437, that's also fine -- it just means existing test files were unchanged and 4 new ones were added on top of 436. Any regression (existing test going red) means stop and investigate.
 
 - [ ] **Step 9: Commit**
 
@@ -337,7 +337,7 @@ rule_results.append(safe_run(
     rule_name="Long-stale assets",
     description=(
         "Assets whose last scan is older than the data-quality threshold. "
-        "Distinct from Asset Coverage's never-scanned signal — this flags "
+        "Distinct from Asset Coverage's never-scanned signal -- this flags "
         "asset records whose data is so old it's likely unreliable."
     ),
     sources=[_SRC_FILTERED_SEARCH],
@@ -363,7 +363,7 @@ def _safe(
     Identity (rid/name/desc/sources) is supplied here because the rule
     method may raise before returning, so we cannot read its internal
     constants reflectively. Stays in sync with each rule method's
-    own constants — drift is caught by the data_quality unit tests.
+    own constants -- drift is caught by the data_quality unit tests.
     """
     rule_start = time.monotonic()
     try:
@@ -380,7 +380,7 @@ def _safe(
         )
 ```
 
-Delete the entire method (signature, docstring, body — everything from `def _safe` through the closing `)` of the `return error_rule(...)`).
+Delete the entire method (signature, docstring, body -- everything from `def _safe` through the closing `)` of the `return error_rule(...)`).
 
 - [ ] **Step 4: Drop the now-unused `Callable` import if it's no longer used**
 
@@ -411,12 +411,12 @@ Expected: every existing test passes, including the two 0.2.8 regression tests:
 - `test_per_rule_failure_isolated_other_rules_still_run` PASS
 - `test_duplicates_paginate_failure_emits_two_error_rules` PASS
 
-If either regresses, the migration was done wrong — investigate before continuing. Likely cause: a misnamed kwarg at the call site (`rid` instead of `rule_id`).
+If either regresses, the migration was done wrong -- investigate before continuing. Likely cause: a misnamed kwarg at the call site (`rid` instead of `rule_id`).
 
 - [ ] **Step 6: Run the full project test suite**
 
 Run: `pytest -q`
-Expected: same green count as Task 1 ended with (437 + 0 deltas). Watch for regressions outside `test_data_quality.py` — there shouldn't be any but the hoist touches an import surface used elsewhere.
+Expected: same green count as Task 1 ended with (437 + 0 deltas). Watch for regressions outside `test_data_quality.py` -- there shouldn't be any but the hoist touches an import surface used elsewhere.
 
 - [ ] **Step 7: Commit**
 
@@ -425,7 +425,7 @@ git add src/rapid7_healthcheck/checks/data_quality.py
 git commit -m "refactor(data_quality): migrate _safe() -> safe_run() free function
 
 Replace the in-class _safe() method with the hoisted safe_run() free
-function from checks/_op_rule.py. Pure refactor — behavior is
+function from checks/_op_rule.py. Pure refactor -- behavior is
 unchanged. The 0.2.8 regression tests pass without modification.
 
 Kwarg rename (api shape change inside the helper signature):
@@ -445,10 +445,10 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 ## Task 3: Apply `safe_run()` to `AssetCoverageCheck`
 
 **Files:**
-- Modify: `src/rapid7_healthcheck/checks/asset_coverage.py` (import block — find the existing `_op_rule` import, add `safe_run`)
+- Modify: `src/rapid7_healthcheck/checks/asset_coverage.py` (import block -- find the existing `_op_rule` import, add `safe_run`)
 - Modify: `src/rapid7_healthcheck/checks/asset_coverage.py:87-107` (`AssetCoverageCheck.run()` body)
 
-This is the core feature task. The 4 rule methods (`_stale_assets`, `_never_scanned_assets`, `_dead_asset_groups`, `_agent_only_assets`) themselves are not modified — only the call sites in `run()`.
+This is the core feature task. The 4 rule methods (`_stale_assets`, `_never_scanned_assets`, `_dead_asset_groups`, `_agent_only_assets`) themselves are not modified -- only the call sites in `run()`.
 
 - [ ] **Step 1: Add `safe_run` to the `_op_rule` import block**
 
@@ -525,7 +525,7 @@ def run(self, client: Any, config: AppConfig, *, snapshot: "EnvSnapshot | None" 
             rule_id="op.asset_coverage.never_scanned_assets",
             rule_name="Never-scanned assets",
             description=(
-                "Assets whose last scan exceeds the never-scanned threshold — "
+                "Assets whose last scan exceeds the never-scanned threshold -- "
                 "treated as effectively unscanned."
             ),
             sources=[_SRC_FILTERED_SEARCH],
@@ -566,12 +566,12 @@ def run(self, client: Any, config: AppConfig, *, snapshot: "EnvSnapshot | None" 
     )
 ```
 
-- [ ] **Step 3: Run the asset_coverage test suite — every existing test must still pass**
+- [ ] **Step 3: Run the asset_coverage test suite -- every existing test must still pass**
 
 Run: `pytest tests/checks/test_asset_coverage.py -q`
 Expected: every test passes. The 4 rule methods are unchanged, the rule_ids they emit are unchanged, the `RuleResult` shapes they return are unchanged. `safe_run` is a transparent passthrough on the success path.
 
-If any test fails, the most likely cause is a typo in one of the duplicated identity strings — verify rule_ids are exactly:
+If any test fails, the most likely cause is a typo in one of the duplicated identity strings -- verify rule_ids are exactly:
 - `op.asset_coverage.stale_assets`
 - `op.asset_coverage.never_scanned_assets`
 - `op.asset_coverage.dead_asset_groups`
@@ -596,7 +596,7 @@ rules still produce their normal output.
 Each call site in AssetCoverageCheck.run() is wrapped with safe_run()
 from checks/_op_rule.py. The 4 rule methods themselves are unchanged
 and continue to handle their own specific 400 traps inline (e.g.
-_stale_assets's is-empty operator rejection on hosted consoles) —
+_stale_assets's is-empty operator rejection on hosted consoles) --
 safe_run is the outer catch-all for anything those handlers don't
 handle.
 
@@ -604,7 +604,7 @@ Identity strings (rule_id, name, description, sources) are duplicated
 at the call site because the rule method may raise before returning;
 the next commit adds an explicit drift-guard test.
 
-No rule_id changes — delta-blob signatures continue to match prior
+No rule_id changes -- delta-blob signatures continue to match prior
 runs.
 
 Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
@@ -658,7 +658,7 @@ def test_per_rule_failure_isolated_other_rules_still_run(fake_client, app_config
     assert stale.status == "error"
     assert "Read timed out" in (stale.error or "")
 
-    # Other rules still ran — exact status depends on fake_client setup, but
+    # Other rules still ran -- exact status depends on fake_client setup, but
     # they must not be 'error' from the same exception.
     for rid in (
         "op.asset_coverage.never_scanned_assets",
@@ -673,7 +673,7 @@ def test_per_rule_failure_isolated_other_rules_still_run(fake_client, app_config
 - [ ] **Step 2: Run the test, verify FAIL only if the implementation is wrong**
 
 Run: `pytest tests/checks/test_asset_coverage.py::test_per_rule_failure_isolated_other_rules_still_run -v`
-Expected: PASS — the implementation in Task 3 should already make this work.
+Expected: PASS -- the implementation in Task 3 should already make this work.
 
 If FAIL: the failing rule's `safe_run` wrapper is wrong (typo in rule_id, missing one of the 4 wrappers, etc.). Fix Task 3, then re-run.
 
@@ -691,7 +691,7 @@ def test_rule_identity_matches_method_constants(fake_client, app_config):
     Without this guard, if a rule method's rule_id changes but the
     wrapper's stays the same, the report renders the wrapper's stale
     identity for the success path and the method's new identity for the
-    error path — confusing operators and breaking delta-blob signatures.
+    error path -- confusing operators and breaking delta-blob signatures.
     """
     fake_client.set_paginate_post("/api/3/assets/search", [])
     snap = _FakeSnapshot(asset_groups=[])
@@ -738,7 +738,7 @@ Two new regression tests mirror the data_quality 0.2.8 pattern:
   produce normal output.
 
 - test_rule_identity_matches_method_constants: assert all 4
-  expected rule_ids are present in result.rule_results — guards
+  expected rule_ids are present in result.rule_results -- guards
   against drift between the safe_run wrapper's duplicated identity
   strings and the rule method's own internal rule_id constant.
 
@@ -752,7 +752,7 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 ## Task 5: CHANGELOG entry under [Unreleased]
 
 **Files:**
-- Modify: `CHANGELOG.md` (`[Unreleased]` block — add a `### Fixed` entry)
+- Modify: `CHANGELOG.md` (`[Unreleased]` block -- add a `### Fixed` entry)
 
 - [ ] **Step 1: Inspect the current `[Unreleased]` block**
 
@@ -785,7 +785,7 @@ Replace the `## [Unreleased]` block with:
   fails (timeout, 400, 500), that rule's `RuleResult` is `status="error"`
   but the other three rules still produce their normal output. The 0.2.8
   helper `_safe()` is hoisted out of `DataQualityCheck` into
-  `checks/_op_rule.py` as a free function `safe_run()` — both checks (and
+  `checks/_op_rule.py` as a free function `safe_run()` -- both checks (and
   any future op-checks restructured for per-rule isolation) share one
   implementation. No `rule_id` changes, no config schema changes;
   delta-blob signatures continue to match prior runs.

@@ -162,7 +162,7 @@ class DynamicGroupsAndNestedTagsRule(AuditRule):
             ))
 
         # Dynamic asset groups that themselves reference tags. Not cycles, but
-        # Rapid7 calls them out as a cost amplifier — surface as info-severity
+        # Rapid7 calls them out as a cost amplifier -- surface as info-severity
         # so it appears in the report without inflating the rule's status.
         groups_referencing_tags: list[dict] = []
         for g in dynamic_groups:

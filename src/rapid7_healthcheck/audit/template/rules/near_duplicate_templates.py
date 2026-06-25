@@ -27,7 +27,7 @@ class NearDuplicateTemplatesRule(AuditRule):
         "Groups of templates that are ≥95% identical in their top-level "
         "configuration fields (ignoring `id`, `links`, and `name`). Likely "
         "the result of someone duplicating a template rather than reusing "
-        "it — leads to drift, redundant maintenance, and inconsistent scan "
+        "it -- leads to drift, redundant maintenance, and inconsistent scan "
         "behavior. One finding per cluster. Skipped when the template count "
         "exceeds the audit's `sample_size` (this rule is O(N²)); rerun with "
         "`audit.full_scan: true` to bypass the cap."
@@ -53,7 +53,7 @@ class NearDuplicateTemplatesRule(AuditRule):
         templates = snapshot.templates_full()
         total = len(templates)
 
-        # O(N²) — skip when over sample_size unless full_scan is on.
+        # O(N²) -- skip when over sample_size unless full_scan is on.
         if not full_scan and total > sample_size:
             # Skip-path is purely informational: hardcode severity="info"
             # so a user who overrides the rule's severity to warn/fail

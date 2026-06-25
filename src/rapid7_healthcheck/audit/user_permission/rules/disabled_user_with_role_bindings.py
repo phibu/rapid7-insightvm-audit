@@ -8,7 +8,7 @@ from rapid7_healthcheck.checks import Finding
 def _has_bindings(user: dict) -> bool:
     role = user.get("role") or {}
     # role["id"] is the role-name string ("global-admin", "user", etc.) on
-    # this endpoint, not a numeric identifier — truthy means the user is
+    # this endpoint, not a numeric identifier -- truthy means the user is
     # bound to a role.
     return bool(
         role.get("id")
@@ -25,7 +25,7 @@ class DisabledUserWithRoleBindingsRule(AuditRule):
     description = (
         "Disabled accounts that still hold role assignments are a hygiene "
         "concern: re-enabling the account silently restores all prior "
-        "privileges. Cleanup signal — not a security risk in itself."
+        "privileges. Cleanup signal -- not a security risk in itself."
     )
     default_severity = "warn"
     expensive = False

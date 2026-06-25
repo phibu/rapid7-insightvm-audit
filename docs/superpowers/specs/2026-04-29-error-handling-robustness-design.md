@@ -1,4 +1,4 @@
-# Error-handling robustness — design
+# Error-handling robustness -- design
 
 **Status:** approved
 **Target release:** 0.1.5
@@ -22,7 +22,7 @@ brittle error handling in two places:
    name.
 
 Separately, `EnvSnapshot.blackouts_unavailable` is a property that
-performs a network call on first access — a hidden side effect that
+performs a network call on first access -- a hidden side effect that
 violates least-surprise.
 
 ## Goal
@@ -39,7 +39,7 @@ test.
   quirks.
 - Adding a `flag_blackouts_check` config knob (premature).
 - Renaming `template_vuln_enabled` or normalising its precedence
-  semantics — its existing top-level-wins behaviour is correct;
+  semantics -- its existing top-level-wins behaviour is correct;
   documentation only.
 
 ## Design
@@ -108,7 +108,7 @@ except Rapid7ClientError as e:
 The `"is-empty"` substring guard is removed. The status code itself is
 the trap. If a future console returns 400 on this endpoint+filter for a
 *different* reason, we still want to mark the count unavailable and
-move on — the existing rule already handles that case gracefully.
+move on -- the existing rule already handles that case gracefully.
 
 ### `blackouts_unavailable` property → `is_blackouts_unavailable()` method
 
@@ -136,27 +136,27 @@ read to a direct method call.
 Add one sentence to the existing docstring:
 
 > When both shapes are present, the top-level `vulnerabilityEnabled` is
-> authoritative — older nested shapes are read only as a fallback.
+> authoritative -- older nested shapes are read only as a fallback.
 
 This documents the existing behaviour without changing it.
 
 ### Documentation
 
-- **`.env.example`** — add (commented out) entries for `R7_BASIC_USER`
+- **`.env.example`** -- add (commented out) entries for `R7_BASIC_USER`
   and `R7_BASIC_PASSWORD`. The 0.1.3 release added Basic Auth support
   but `.env.example` only documents `R7_API_KEY`; new operators using
   `auth_mode: basic` have no template to copy.
-- **README.md Troubleshooting section** — one new bullet explaining
+- **README.md Troubleshooting section** -- one new bullet explaining
   that some `info`-severity findings ("endpoint not available on this
   console", "operator unsupported on this console") are *expected* on
   Rapid7-hosted consoles and indicate API surface differences, not
   bugs in the tool.
-- **CLAUDE.md architecture section** — one paragraph noting that
+- **CLAUDE.md architecture section** -- one paragraph noting that
   `Rapid7ClientError.status_code` is the canonical way to branch on
   HTTP status, and that string-substring matching on error messages
   is a footgun.
-- **CHANGELOG.md** — `[0.1.5]` entry under `### Changed` and `### Tests`.
-- **SECURITY.md** — no changes; the read-only invariant is unaffected.
+- **CHANGELOG.md** -- `[0.1.5]` entry under `### Changed` and `### Tests`.
+- **SECURITY.md** -- no changes; the read-only invariant is unaffected.
 
 ## Tests
 
@@ -206,7 +206,7 @@ Total expected: 199 passing (up from 195; +4 new tests).
 
 ## Out of scope (Minor review items not addressed)
 
-- `template_vuln_enabled` precedence redesign — documented only.
-- `site_scan_template_id` falsy-id-zero edge — IDs are strings.
-- Static helpers as module-level functions — refactoring is theatrical.
-- `flag_blackouts_check: false` config knob — ship when asked.
+- `template_vuln_enabled` precedence redesign -- documented only.
+- `site_scan_template_id` falsy-id-zero edge -- IDs are strings.
+- Static helpers as module-level functions -- refactoring is theatrical.
+- `flag_blackouts_check: false` config knob -- ship when asked.

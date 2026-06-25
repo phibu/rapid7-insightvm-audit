@@ -66,7 +66,7 @@ def test_warn_on_stale_lastRefreshedDate(fake_snapshot):
 
 def test_pass_when_console_version_unknown(fake_snapshot):
     """If the console doesn't surface a version key we recognise, we cannot
-    detect drift — be conservative and pass rather than emit a false positive.
+    detect drift -- be conservative and pass rather than emit a false positive.
     """
     fake_snapshot.set_administration_properties({"unrelated": "x"})
     fake_snapshot.set_scan_engines([

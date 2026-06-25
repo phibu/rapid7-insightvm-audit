@@ -75,7 +75,7 @@ def _metrics(results: list[CheckResult]) -> dict:
 
     # Rule-level counts come from `rule_summary` (the same rollup the runners
     # use to build each CheckResult.summary), summed across checks. Only
-    # `rules_sampled` is added here — `rule_summary` doesn't carry it.
+    # `rules_sampled` is added here -- `rule_summary` doesn't carry it.
     # Finding-level counts iterate `findings_of`, the single owner of the
     # rule_results-xor-top-level-findings walk; no xor branch re-typed here.
     for r in results:
@@ -139,7 +139,7 @@ class ReportContext:
 
 
 # The hero verdict for each worst-status outcome: (css-class, label). The
-# status precedence itself lives once, in `worst_status` — this is only the
+# status precedence itself lives once, in `worst_status` -- this is only the
 # status->presentation mapping. `skipped`/`error` never reach here as a key:
 # `worst_status` collapses the run to one of fail/warn/pass.
 _VERDICT_BY_STATUS: dict[str, tuple[str, str]] = {
@@ -159,7 +159,7 @@ def _annotate_findings(results: list[CheckResult]) -> None:
     `Finding` is `frozen=True`, so attribute assignment is normally blocked.
     `object.__setattr__` bypasses that to attach a `details_json` slot used by
     the Jinja template. We pre-serialize here (rather than in the template) so
-    autoescape treats the JSON as plain text — `<` characters in details would
+    autoescape treats the JSON as plain text -- `<` characters in details would
     otherwise break the HTML. The mutation is intentional and confined to the
     render path; downstream code does not rely on `Finding` immutability.
     """

@@ -78,7 +78,7 @@ def test_handles_stream_without_isatty_method():
     handler = ProgressAwareStreamHandler(stream)
     handler.setFormatter(logging.Formatter("%(message)s"))
 
-    # Treated as non-TTY — no prefix, no exception.
+    # Treated as non-TTY -- no prefix, no exception.
     handler.emit(_make_record("hello"))
 
     output = stream.getvalue()

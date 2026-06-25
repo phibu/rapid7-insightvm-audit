@@ -27,7 +27,7 @@ def test_allowed_post_paths_is_assets_only():
 
 
 def test_post_to_disallowed_path_raises_before_network(client):
-    # /v4/integration/scan would START a scan — never permit.
+    # /v4/integration/scan would START a scan -- never permit.
     with pytest.raises(ReadOnlyViolationError) as exc:
         client.post("/v4/integration/scan", json_body={})
     assert "/v4/integration/scan" in str(exc.value)

@@ -89,14 +89,14 @@ class _ParsedSiteScans:
 def _fetch_parsed_sites(client, snapshot: "EnvSnapshot") -> list[_ParsedSiteScans]:
     """Single I/O pass: fetch each site's recent scans, parse once.
 
-    The result is consumed by every rule class in this module — each rule
+    The result is consumed by every rule class in this module -- each rule
     iterates the list and applies its own concept-specific predicate.
     Site list comes from the shared snapshot (potentially pre-cached by
     the audit); per-site scans are fetched directly here because no
     second consumer exists today.
     API call cost from this function: one GET per site for
     /api/3/sites/{id}/scans?sort=startTime,DESC&size=20. The /api/3/sites
-    pagination is owned by the snapshot — issued at most once across the
+    pagination is owned by the snapshot -- issued at most once across the
     whole run, regardless of how many checks consume it.
     """
     parsed: list[_ParsedSiteScans] = []
@@ -196,7 +196,7 @@ class StuckScansRule:
     RULE_ID = "op.scan_activity.stuck_scans"
     RULE_NAME = "Stuck scans"
     DESCRIPTION = (
-        "Scans in 'running' state past the stuck-scan threshold — "
+        "Scans in 'running' state past the stuck-scan threshold -- "
         "likely hung or orphaned."
     )
     SOURCES = (_SRC_SCANS,)
@@ -298,7 +298,7 @@ class RecentUnknownScansRule:
     RULE_NAME = "Recent scans in unknown state"
     DESCRIPTION = (
         "Scans within the recent window whose status is reported as "
-        "'unknown' — indeterminate scan state, likely needs operator "
+        "'unknown' -- indeterminate scan state, likely needs operator "
         "inspection."
     )
     SOURCES = (_SRC_SCANS,)
@@ -399,7 +399,7 @@ class SitesOverdueScansRule:
                 "sites_with_recent_scans": sites_with_recent_scans,
                 "sites_total": len(parsed_sites),
             },
-            # examined is sites this rule actually evaluated — those with at
+            # examined is sites this rule actually evaluated -- those with at
             # least one finished scan. Sites with no scan history are silently
             # skipped above (and flagged separately by sites_never_scanned /
             # sites_no_successful_scan), so counting them as "passed" here

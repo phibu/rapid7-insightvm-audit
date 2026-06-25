@@ -26,7 +26,7 @@ class DiscoveryTimeoutHighRule(AuditRule):
         "`timeout.maximum` (the ceiling after retries; default `PT3S`/3000ms) "
         "are ISO-8601 durations. Rapid7 recommends lowering the initial wait "
         "to ~200ms and the ceiling to ~500ms on modern networks. Values are "
-        "parsed defensively — a value that is not a `PnS`/`PTnS` duration is "
+        "parsed defensively -- a value that is not a `PnS`/`PTnS` duration is "
         "skipped, never crashed or false-flagged. Templates without a timeout "
         "block use the engine default and are not examined (skip-absent). "
         "Knobs: `max_timeout_initial_ms` (200), `max_timeout_ceiling_ms` (500)."
@@ -68,7 +68,7 @@ class DiscoveryTimeoutHighRule(AuditRule):
                 severity=severity,
                 message=(
                     f"Template '{t.get('name')}' discovery timeout is high "
-                    f"({'; '.join(breaches)}) — inflates wait time per dead "
+                    f"({'; '.join(breaches)}) -- inflates wait time per dead "
                     f"port on modern networks."
                 ),
                 details={

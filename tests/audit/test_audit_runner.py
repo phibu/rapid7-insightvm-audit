@@ -2,8 +2,8 @@
 
 The four audit categories (config / template / user-permission / cloud-drift)
 all run their rules through one ``AuditRunner`` (see CONTEXT.md). These tests
-exercise the runner directly through a *fake* ``AuditCategory`` — a fake
-registry, fake snapshot factory, and fake rules — so the shared loop is tested
+exercise the runner directly through a *fake* ``AuditCategory`` -- a fake
+registry, fake snapshot factory, and fake rules -- so the shared loop is tested
 once here rather than four times across the per-category orchestrator tests.
 
 The interface is the test surface: everything the runner owns (enabled gate,
@@ -405,7 +405,7 @@ def test_progress_finishes_skipped_rule_with_skipped_status():
     )
     progress = _RecordingProgress()
     AuditRunner().run(cat, client=object(), config=object(), progress=progress)
-    # A disabled rule finishes with the word 'skipped' — not a misleading 0ms,
+    # A disabled rule finishes with the word 'skipped' -- not a misleading 0ms,
     # and not a start_rule (it never ran).
     finishes = [e for e in progress.events if e[0] == "finish_rule"]
     assert finishes == [("finish_rule", "Fake Rule", "skipped")]

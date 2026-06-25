@@ -17,7 +17,7 @@
 | File | Why |
 |------|-----|
 | `src/rapid7_healthcheck/client.py` | Bump `timeout_seconds` default to 60. Add `parallel_pages` and `default_page_size` ctor kwargs. Rewrite `_paginate` with two-phase walk + parallel batch helper. Add `parallel_pages` kwarg to `paginate` / `paginate_post`. |
-| `src/rapid7_healthcheck/config.py` | Add `parallel_pages` and `page_size` fields to `Rapid7Config`. Validator updates. Bump `request_timeout_seconds` example default to 60 (no schema change — already int). |
+| `src/rapid7_healthcheck/config.py` | Add `parallel_pages` and `page_size` fields to `Rapid7Config`. Validator updates. Bump `request_timeout_seconds` example default to 60 (no schema change -- already int). |
 | `src/rapid7_healthcheck/__main__.py` | Thread the two new config fields into `Rapid7Client(...)`. |
 | `tests/test_client.py` | 3 new tests (in-order yield, fail-fast, sequential default). |
 | `tests/test_config.py` | 2 new tests (validator bounds for `parallel_pages` + `page_size`, default-timeout assertion). |
@@ -232,7 +232,7 @@ Adds two new optional config fields with validation:
 - parallel_pages: int 1..16, default 1 (sequential, today's behavior)
 - page_size: int 1..500, default 250 (down from 500 to ease timeouts)
 
-No behavior change yet — fields wired through Rapid7Config but the
+No behavior change yet -- fields wired through Rapid7Config but the
 client and __main__ still use today's hardcoded defaults. Follow-up
 tasks thread these into Rapid7Client and _paginate.
 
@@ -263,7 +263,7 @@ def test_client_default_timeout_is_60_seconds(session):
 
 
 def test_client_default_parallel_pages_is_one(session):
-    """Default parallel_pages is 1 (sequential — preserves today's behavior)."""
+    """Default parallel_pages is 1 (sequential -- preserves today's behavior)."""
     c = Rapid7Client(
         base_url="https://example.test",
         api_key="k",
@@ -295,7 +295,7 @@ def test_client_accepts_parallel_pages_kwarg(session):
 - [ ] **Step 2: Run tests and verify they fail**
 
 Run: `pytest tests/test_client.py -v -k "default_timeout or default_parallel or default_page_size or accepts_parallel_pages"`
-Expected: FAIL — `_timeout == 30`, `_parallel_pages` and `_default_page_size` attrs don't exist, ctor rejects `parallel_pages` kwarg.
+Expected: FAIL -- `_timeout == 30`, `_parallel_pages` and `_default_page_size` attrs don't exist, ctor rejects `parallel_pages` kwarg.
 
 - [ ] **Step 3: Update constructor signature and body**
 
@@ -359,7 +359,7 @@ Expected: every test passes. The `make_client` helper passes `timeout_seconds=5`
 git add src/rapid7_healthcheck/client.py tests/test_client.py
 git commit -m "feat(client): default timeout 30->60s; add parallel_pages + default_page_size kwargs
 
-Bumps the baked-in request timeout default from 30s to 60s — matches
+Bumps the baked-in request timeout default from 30s to 60s -- matches
 the README troubleshooting guidance for hosted consoles where the old
 default was too tight.
 
@@ -368,7 +368,7 @@ both stored on the instance for use by _paginate. Defaults preserve
 today's behavior: parallel_pages=1 (sequential), default_page_size=250
 (down from 500). Bounds validated at construction.
 
-No paginate() change yet — that lands in the next task.
+No paginate() change yet -- that lands in the next task.
 
 Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 ```
@@ -393,7 +393,7 @@ import time as _time_mod
 
 
 def test_parallel_paginate_yields_in_page_order(session):
-    """Pages 0, 1, 2 — page 1's response sleeps longest, page 2's shortest.
+    """Pages 0, 1, 2 -- page 1's response sleeps longest, page 2's shortest.
     Iterator must still yield resources in page-0, page-1, page-2 order."""
     page0 = {"resources": [{"id": "p0a"}, {"id": "p0b"}], "page": {"number": 0, "totalPages": 3}}
     page1 = {"resources": [{"id": "p1a"}], "page": {"number": 1, "totalPages": 3}}
@@ -414,7 +414,7 @@ def test_parallel_paginate_yields_in_page_order(session):
 
 
 def test_parallel_paginate_propagates_first_error(session):
-    """Page 1 of 3 returns 500 — _paginate must raise Rapid7ClientError
+    """Page 1 of 3 returns 500 -- _paginate must raise Rapid7ClientError
     and must not yield page 1's or page 2's resources. Page 0 is yielded
     via Phase 1 before any failure."""
     page0 = {"resources": [{"id": "p0"}], "page": {"number": 0, "totalPages": 3}}
@@ -502,7 +502,7 @@ def test_paginate_explicit_page_size_overrides_default(session):
 - [ ] **Step 2: Run tests and verify they fail**
 
 Run: `pytest tests/test_client.py -v -k "parallel_paginate or default_page_size_when or explicit_page_size"`
-Expected: FAIL — `paginate` doesn't accept `parallel_pages`, `_paginate` is sequential and uses page_size=500 default.
+Expected: FAIL -- `paginate` doesn't accept `parallel_pages`, `_paginate` is sequential and uses page_size=500 default.
 
 - [ ] **Step 3: Add `ThreadPoolExecutor` import**
 
@@ -583,7 +583,7 @@ def _paginate(
     if total_pages <= 1:
         return
 
-    # Sequential fast path — preserve today's behavior bit-for-bit
+    # Sequential fast path -- preserve today's behavior bit-for-bit
     # when caller hasn't opted into parallelism.
     if parallel_pages <= 1:
         for page_num in range(1, total_pages):
@@ -655,7 +655,7 @@ Two-phase walk inside _paginate: page 0 sequential (probes totalPages),
 pages 1..N-1 in concurrent batches of size parallel_pages via a
 ThreadPoolExecutor scoped to the call. In-order yield contract
 preserved by collecting futures into a per-batch dict keyed on page
-index. Sequential fast path when parallel_pages == 1 — executor is
+index. Sequential fast path when parallel_pages == 1 -- executor is
 never instantiated, behavior bit-for-bit identical to v0.2.7.
 
 paginate() and paginate_post() gain a parallel_pages kwarg defaulting
@@ -665,7 +665,7 @@ to None (= use instance default). page_size kwarg defaulting to None
 Fail-fast: any future raising calls executor.shutdown(cancel_futures=True)
 and re-raises immediately. No silent partial results.
 
-Read-only contract unchanged — every page fetch goes through
+Read-only contract unchanged -- every page fetch goes through
 _request, which checks _ALLOWED_VERBS / _ALLOWED_POST_PATHS before
 network I/O.
 
@@ -754,7 +754,7 @@ The current block is:
 rapid7:
   base_url: "..."
   verify_tls: true
-  # Per-request timeout. (max_retries+1) attempts — exponential backoff between.
+  # Per-request timeout. (max_retries+1) attempts -- exponential backoff between.
   # worst-case wait per call ≈ (max_retries + 1) * request_timeout_seconds.
   request_timeout_seconds: 30
   max_retries: 3
@@ -772,9 +772,9 @@ Replace the block above with:
 rapid7:
   base_url: "..."
   verify_tls: true
-  # Per-request timeout. (max_retries+1) attempts — exponential backoff between.
+  # Per-request timeout. (max_retries+1) attempts -- exponential backoff between.
   # worst-case wait per call ≈ (max_retries + 1) * request_timeout_seconds.
-  # Default raised from 30s to 60s in 0.2.8 — hosted consoles often need >30s
+  # Default raised from 30s to 60s in 0.2.8 -- hosted consoles often need >30s
   # under load.
   request_timeout_seconds: 60
   max_retries: 3
@@ -784,7 +784,7 @@ rapid7:
   # How many pages to fetch concurrently inside one paginated call against
   # /api/3/assets/search and similar endpoints. The InsightVM API documents
   # 8 parallel requests as the supported limit; values up to 16 are accepted
-  # but emit a startup warning. Default 1 (sequential — today's behavior);
+  # but emit a startup warning. Default 1 (sequential -- today's behavior);
   # bump to 6 to speed up large asset-search walks.
   parallel_pages: 1
 
@@ -864,12 +864,12 @@ Open `CHANGELOG.md`. Under `## [Unreleased]`, add three sections (matching the K
   `ThreadPoolExecutor` scoped to the call. Page 0 is fetched sequentially
   to probe `totalPages`. In-order yield contract is preserved: callers see
   resources in strict page-0 → page-N order regardless of completion timing.
-  Fail-fast on first error — no silent partial results. Read-only contract
+  Fail-fast on first error -- no silent partial results. Read-only contract
   unchanged. Default is 1 (sequential, today's behavior); operators tune via
   `config.yaml`. The InsightVM API documents 8 parallel requests as the
   supported limit; the validator caps at 16 and warns above 8.
 - New `rapid7.parallel_pages` config field (int, range 1..16, default 1).
-- New `rapid7.page_size` config field (int, range 1..500, default 250) —
+- New `rapid7.page_size` config field (int, range 1..500, default 250) --
   configurable default page size for paginated calls.
 
 ### Changed

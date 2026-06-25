@@ -48,7 +48,7 @@ def test_finding_signature_handles_none_details():
 
 
 def test_finding_signature_independent_of_severity():
-    """Same finding promoted from warn to fail keeps its signature — this is what
+    """Same finding promoted from warn to fail keeps its signature -- this is what
     lets us detect a 'severity changed' delta rather than counting it as a new
     finding plus a resolved one."""
     from rapid7_healthcheck.state_engine import finding_signature as _finding_signature

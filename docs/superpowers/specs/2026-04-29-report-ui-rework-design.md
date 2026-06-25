@@ -1,4 +1,4 @@
-# Report UI/UX Rework — Design Spec
+# Report UI/UX Rework -- Design Spec
 
 **Date:** 2026-04-29
 **Target releases:** 0.1.9 (Phase 1) + 0.2.0 (Phase 2)
@@ -6,7 +6,7 @@
 
 ## Summary
 
-Restructure and restyle the self-contained HTML report (`templates/report.html.j2`) to better serve three audiences — compliance officer, ops engineer, external auditor — while preserving the hard "single self-contained file, no external resources" constraint. Adds a lightweight delta-since-last-run feature, an interactivity layer (filtering, theme toggle, expandable rule cards), and a calibrated visual language with light + dark mode.
+Restructure and restyle the self-contained HTML report (`templates/report.html.j2`) to better serve three audiences -- compliance officer, ops engineer, external auditor -- while preserving the hard "single self-contained file, no external resources" constraint. Adds a lightweight delta-since-last-run feature, an interactivity layer (filtering, theme toggle, expandable rule cards), and a calibrated visual language with light + dark mode.
 
 Phase 1 (0.1.9): visual rewrite + delta strip, no JS interactivity beyond what existing browsers natively provide.
 Phase 2 (0.2.0): inline JS for filtering, theme toggle, rule-card toggle, plus a11y test sweep.
@@ -45,9 +45,9 @@ Two-band document.
 Header strip       : console host · generated timestamp · tool version · config path · theme toggle
 Hero verdict       : PASSED / WARNINGS / FAILED  +  one-line summary
                      ("3 fail · 7 warn across 24 rules in 4 checks")
-Delta strip        : (conditional — only when prior report is parseable)
+Delta strip        : (conditional -- only when prior report is parseable)
                      [↓ N resolved] [↑ N new fails] [↻ N changed]   since 2026-04-22 14:03 (filename.html)
-Metric grid        : 4-6 tiles — total rules · fail · warn · sampled · duration · skipped
+Metric grid        : 4-6 tiles -- total rules · fail · warn · sampled · duration · skipped
 ```
 
 ### Dashboard band (below)
@@ -64,7 +64,7 @@ Footer             : thresholds applied · config path · run hash (16-char SHA-
 ### IA decisions
 
 - Delta strip is **conditional**: present only if a prior parseable report exists. No empty state.
-- Filter state lives in **`location.hash`** (`#severity=fail,warn`, `#changed`) — shareable URLs, bookmarkable.
+- Filter state lives in **`location.hash`** (`#severity=fail,warn`, `#changed`) -- shareable URLs, bookmarkable.
 - Sticky sub-nav under 56px so editorial band stays the dominant first impression.
 - Each rule card has a stable id (`rule-<rule_id>`) for direct linking.
 
@@ -107,14 +107,14 @@ Dark mode auto-applies via `@media (prefers-color-scheme: dark)`. Backgrounds in
 
 ### Color discipline (non-negotiable)
 
-1. Severity color is never decorative — only used to convey severity.
-2. Color is never the only signal — every status has a text label too.
+1. Severity color is never decorative -- only used to convey severity.
+2. Color is never the only signal -- every status has a text label too.
 3. No emoji icons. Inline SVG `<symbol>`s in a single hidden `<svg>` defs block, referenced via `<use>`.
 4. No focus-state suppression. All interactive elements keep a visible 2px focus ring (`--info-fg`, 2px offset).
 
 ### Spacing scale (rem)
 
-`0.25 · 0.5 · 0.75 · 1 · 1.5 · 2 · 3 · 4` — eight steps, no in-between values. Section gap `3rem`; internal padding `1rem` / `1.5rem`; table cell padding `0.55rem 0.7rem` (matches current).
+`0.25 · 0.5 · 0.75 · 1 · 1.5 · 2 · 3 · 4` -- eight steps, no in-between values. Section gap `3rem`; internal padding `1rem` / `1.5rem`; table cell padding `0.55rem 0.7rem` (matches current).
 
 ## Components
 
@@ -130,11 +130,11 @@ Full-width band, 96px tall, surface-tinted by severity. Left: status word in 36p
 
 `grid-template-columns: repeat(auto-fit, minmax(160px, 1fr))`. Each tile: small uppercase label (12px muted) + big number (28px tabular) + optional sub-label (13px muted). No icons in tiles.
 
-### 4. Filter Bar (Phase 2 — sticky)
+### 4. Filter Bar (Phase 2 -- sticky)
 
 56px sticky bar: severity chips (`All` · `Fail` · `Warn` · `Pass` · `Skipped`), `Changed` chip (when delta exists), text search box, category jump-to dropdown. Chips: `<button role="checkbox" aria-pressed="true|false">`. State syncs to URL hash. Search debounced 150ms; runs over `data-search-text` attributes set at render time. With JS off: chips degrade to anchor links, search/theme toggle hide via `<noscript>` styles.
 
-### 5. Rule Card (Phase 2 — replaces nested `<details>`)
+### 5. Rule Card (Phase 2 -- replaces nested `<details>`)
 
 1px border, 8px radius, `0.75rem 1rem` padding. Header row: status badge · rule name · finding count · duration (right-aligned mono). Full row is the toggle (`<button aria-expanded aria-controls>`), not just a chevron. Expanded body: rule description, sample info if sampled, findings table, sources list. Each card has `id="rule-<rule_id>"` for direct linking.
 
@@ -146,7 +146,7 @@ Two columns: severity (90px fixed) + message (fluid). Message cell: primary text
 
 ### 7. Footer
 
-Thresholds table (existing shape) restyled. Adds: 16-char SHA-256 prefix of the rendered JSON state blob — content hash for "is this the same report I saw yesterday?" without trusting filenames.
+Thresholds table (existing shape) restyled. Adds: 16-char SHA-256 prefix of the rendered JSON state blob -- content hash for "is this the same report I saw yesterday?" without trusting filenames.
 
 ## Interactivity & Data Layer (Phase 2 except where noted)
 
@@ -197,7 +197,7 @@ Failure modes (all silent, all non-blocking):
 
 - Inline `<script>` in `<head>` (before any styles render) reads `localStorage.theme` and sets `<html data-theme="dark|light">` to prevent FOUC.
 - Header button cycles `light → dark → system`. State stored in `localStorage.theme` (`"light" | "dark" | null`).
-- CSS uses `:root[data-theme="dark"]` AND `@media (prefers-color-scheme: dark)` (when no override) — both paths must work.
+- CSS uses `:root[data-theme="dark"]` AND `@media (prefers-color-scheme: dark)` (when no override) -- both paths must work.
 
 ### Rule card toggle (Phase 2)
 
@@ -242,7 +242,7 @@ Validator (`config.py`) extends to reject unknown keys (existing behavior). `doc
 
 | File                                                 | Change                                                                                                |
 |------------------------------------------------------|-------------------------------------------------------------------------------------------------------|
-| `src/rapid7_healthcheck/templates/report.html.j2`    | Full rewrite — new structure, embedded JSON blob, inline JS (Phase 2), print CSS                      |
+| `src/rapid7_healthcheck/templates/report.html.j2`    | Full rewrite -- new structure, embedded JSON blob, inline JS (Phase 2), print CSS                      |
 | `src/rapid7_healthcheck/report.py`                   | Add: prior-report parsing, delta computation, finding-signature hash, projection serializer, content-hash, config plumbing |
 | `src/rapid7_healthcheck/config.py`                   | Add `report.delta_max_age_days` (default 30); validator rejects unknown keys                          |
 | `docs/examples/config.yaml`                          | Add the new field with comment                                                                        |
@@ -256,7 +256,7 @@ Validator (`config.py`) extends to reject unknown keys (existing behavior). `doc
 
 Two PRs.
 
-### Phase 1 — 0.1.9
+### Phase 1 -- 0.1.9
 
 1. **Config plumbing.** Add `delta_max_age_days`. One-line change + test.
 2. **Finding-signature + projection serializer.** Pure functions, fully unit-testable, no template work.
@@ -264,7 +264,7 @@ Two PRs.
 4. **Template rewrite.** Hero, delta strip, metric grid, footer, restyled per-category sections. No interactivity beyond native `<details>`. Visual diff verifiable by eye.
 5. **Print CSS pass.**
 
-### Phase 2 — 0.2.0
+### Phase 2 -- 0.2.0
 
 6. **Filter bar + URL hash sync + chip state.** Inline JS. `<noscript>` fallback styles.
 7. **Rule card with `aria-expanded` toggle** replaces native `<details>`.

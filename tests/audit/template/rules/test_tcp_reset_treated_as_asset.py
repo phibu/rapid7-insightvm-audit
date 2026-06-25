@@ -22,7 +22,7 @@ def test_flags_explicit_true(fake_snapshot):
 
 def test_flags_absent_default_is_true(fake_snapshot):
     """ADR-0001: the API default is `true` (the dangerous value), so an absent
-    field is non-compliant and must be flagged — unlike every other discovery
+    field is non-compliant and must be flagged -- unlike every other discovery
     rule which skips-absent."""
     fake_snapshot.set_templates_full([
         {"id": "t2", "name": "Untouched", "vulnerabilityEnabled": True},
@@ -43,7 +43,7 @@ def test_explicit_false_is_compliant(fake_snapshot):
 
 
 def test_discovery_only_template_examined(fake_snapshot):
-    """Discovery-only templates are the purest discovery case — they MUST be
+    """Discovery-only templates are the purest discovery case -- they MUST be
     examined even though they are not vuln-enabled."""
     fake_snapshot.set_templates_full([
         {"id": "t4", "name": "DiscoOnly", "discoveryOnly": True},
@@ -53,7 +53,7 @@ def test_discovery_only_template_examined(fake_snapshot):
 
 
 def test_policy_only_template_not_examined(fake_snapshot):
-    """A policy-only template performs no discovery — its discovery settings
+    """A policy-only template performs no discovery -- its discovery settings
     are inert and must not be examined or flagged."""
     fake_snapshot.set_templates_full([
         {"id": "t5", "name": "PolicyOnly", "policyEnabled": True,

@@ -83,7 +83,7 @@ def test_site_asset_count_falls_back_to_size_one_get_when_no_inline():
 def test_site_asset_count_uses_inline_assets_field_no_http():
     """When sites() is already loaded and the Site object carries the inline
     `assets` count (every real /api/3/sites response does), site_asset_count
-    reads it directly — no per-site GET. This is the fix for the N+1 query
+    reads it directly -- no per-site GET. This is the fix for the N+1 query
     that made 'sites with zero assets' take ~19 min on large consoles."""
     c = _FakeClient()
     c.set_paginate("/api/3/sites", [
@@ -94,7 +94,7 @@ def test_site_asset_count_uses_inline_assets_field_no_http():
     s.sites()  # prime the cache, as the real run does before calling the rule
     assert s.site_asset_count(1) == 1200
     assert s.site_asset_count(2) == 0
-    # No per-site /assets GET was issued — the inline field served both.
+    # No per-site /assets GET was issued -- the inline field served both.
     assert c.get_calls == []
 
 
@@ -118,7 +118,7 @@ def test_site_asset_count_inline_missing_falls_back_to_get():
 
 def test_site_asset_count_inline_non_numeric_falls_back_to_get():
     """A non-numeric inline `assets` value (None, string) is treated as
-    missing — fall back to the GET rather than crash."""
+    missing -- fall back to the GET rather than crash."""
     c = _FakeClient()
     c.set_paginate("/api/3/sites", [{"id": 3, "name": "Weird", "assets": None}])
     c.set_get("/api/3/sites/3/assets", {"resources": [], "page": {"totalResources": 7}})
@@ -170,7 +170,7 @@ class _ConcurrentFakeClient:
 
 
 def test_prefetch_site_schedules_warms_cache_no_further_http():
-    """After prefetch, site_schedules(sid) is a cache hit — the per-site GET
+    """After prefetch, site_schedules(sid) is a cache hit -- the per-site GET
     happens during prefetch, not on the accessor call."""
     c = _ConcurrentFakeClient(parallel_pages=4)
     for sid in (1, 2, 3):
@@ -180,7 +180,7 @@ def test_prefetch_site_schedules_warms_cache_no_further_http():
     s.prefetch_site_schedules([1, 2, 3])
     calls_after_prefetch = len(c.get_calls)
     assert calls_after_prefetch == 3
-    # Accessor calls now hit the warm cache — no new HTTP.
+    # Accessor calls now hit the warm cache -- no new HTTP.
     assert s.site_schedules(2) == [{"id": 20, "enabled": True}]
     assert len(c.get_calls) == calls_after_prefetch
 
@@ -198,7 +198,7 @@ def test_prefetch_site_included_targets_reads_addresses_envelope():
 
 
 def test_prefetch_runs_concurrently_when_parallel_pages_gt_1():
-    """With parallel_pages > 1, prefetch fans GETs out — proven by observing
+    """With parallel_pages > 1, prefetch fans GETs out -- proven by observing
     more than one GET in flight at once."""
     c = _ConcurrentFakeClient(parallel_pages=8, get_delay=0.05)
     for sid in range(1, 9):
@@ -209,7 +209,7 @@ def test_prefetch_runs_concurrently_when_parallel_pages_gt_1():
 
 
 def test_prefetch_sequential_when_parallel_pages_is_1():
-    """parallel_pages == 1 keeps prefetch sequential — never more than one
+    """parallel_pages == 1 keeps prefetch sequential -- never more than one
     GET in flight."""
     c = _ConcurrentFakeClient(parallel_pages=1, get_delay=0.01)
     for sid in (1, 2, 3):
@@ -247,7 +247,7 @@ def test_prefetch_swallows_per_site_error_leaves_site_uncached():
     c.set_get("/api/3/sites/3/scan_schedules", {"resources": [{"id": 33}]})
     s = EnvSnapshot(c, full_scan=False, sample_size=500)
     s.prefetch_site_schedules([1, 2, 3])
-    # Sites 1 and 3 cached; site 2 not — accessor for 2 would retry/raise.
+    # Sites 1 and 3 cached; site 2 not -- accessor for 2 would retry/raise.
     assert s.site_schedules(1) == [{"id": 11}]
     assert s.site_schedules(3) == [{"id": 33}]
     assert 2 not in s._site_schedules
@@ -455,7 +455,7 @@ class TestAgentAssetIdsSampled:
     def test_endpoint_504_marks_unavailable(self):
         # 502/503/504 are gateway-level timeouts/overload responses from a
         # proxy in front of the console. /api/3/agents is well-known to be
-        # slow on consoles with large fleets — these must skip agent rules
+        # slow on consoles with large fleets -- these must skip agent rules
         # cleanly rather than render as red errors.
         from rapid7_healthcheck.client import Rapid7ClientError
         c = _FakeAgentsClient(
@@ -638,7 +638,7 @@ def test_scan_engine_pools_propagates_non_gateway_errors():
 @pytest.mark.parametrize("status_code", [502, 503, 504, None])
 def test_scan_engine_pools_returns_empty_on_gateway_or_network_error(status_code):
     """Gateway errors (502/503/504) and pre-response failures (status_code is
-    None — read timeout, network error) must be swallowed so EngineUnpairedRule
+    None -- read timeout, network error) must be swallowed so EngineUnpairedRule
     falls back to direct-only pairing rather than emitting an error rule card.
     Matches the agent_count() defensive pattern."""
     from rapid7_healthcheck.client import Rapid7ClientError
@@ -720,7 +720,7 @@ def test_asset_group_member_count_returns_none_on_client_error():
 
 
 def test_asset_group_member_count_500_also_returns_none():
-    """Non-404 errors are also swallowed and cached as None — symmetric with 404.
+    """Non-404 errors are also swallowed and cached as None -- symmetric with 404.
 
     Rationale: surface a per-group info finding regardless of the underlying
     status. The rule already excludes the group from the dead-group analysis;
@@ -741,13 +741,13 @@ def test_asset_group_member_count_500_also_returns_none():
     c = _Client500()
     s = EnvSnapshot(c, full_scan=False, sample_size=500)
     assert s.asset_group_member_count(11) is None
-    # Cached: subsequent call does not retry — symmetric with the 404 path.
+    # Cached: subsequent call does not retry -- symmetric with the 404 path.
     assert s.asset_group_member_count(11) is None
     assert sum(1 for path, _ in c.get_calls if path == "/api/3/asset_groups/11/assets") == 1
 
 
 def test_scans_total_returns_page_total():
-    """scans_total() reads /api/3/scans page.totalResources only — no enumeration."""
+    """scans_total() reads /api/3/scans page.totalResources only -- no enumeration."""
     c = _FakeClient()
     c.set_get("/api/3/scans", {"resources": [], "page": {"totalResources": 42}})
     s = EnvSnapshot(c, full_scan=False, sample_size=500)
@@ -789,7 +789,7 @@ def test_build_env_snapshot_maps_sampling_fields_onto_snapshot():
 
 def test_build_env_snapshot_defaults_agents_timeout_when_not_passed():
     """When a caller omits agents_timeout_seconds (the config block lacks the
-    field), the builder supplies DEFAULT_AGENTS_TIMEOUT — no stray literal."""
+    field), the builder supplies DEFAULT_AGENTS_TIMEOUT -- no stray literal."""
     from rapid7_healthcheck.audit.snapshot import DEFAULT_AGENTS_TIMEOUT, build_env_snapshot
     from rapid7_healthcheck.config import UserAuditConfig
 
@@ -834,9 +834,9 @@ def test_build_env_snapshot_duck_types_across_all_three_config_blocks(make_cfg):
 def test_config_driven_snapshot_sites_route_through_the_builder():
     """Regression guard for the build_env_snapshot seam.
 
-    The four config-driven snapshot-construction sites — __main__ (operational
+    The four config-driven snapshot-construction sites -- __main__ (operational
     checks) and the three audit categories that build an EnvSnapshot from a
-    sampling-config block — must construct via build_env_snapshot, NOT call
+    sampling-config block -- must construct via build_env_snapshot, NOT call
     EnvSnapshot(...) directly. A direct construction at one of these sites is
     exactly how the agents_timeout_seconds=180 literal drifted before; this
     test fails the moment a fifth `EnvSnapshot(` literal appears in a routed
@@ -844,8 +844,8 @@ def test_config_driven_snapshot_sites_route_through_the_builder():
 
     The three op-check standalone *fallbacks* (scan_engines / scan_activity /
     data_quality, when invoked without a __main__-supplied snapshot) are a
-    different shape — no sampling-config block, hardcoded full_scan=False /
-    sample_size=500 standalone defaults, no timeout literal — and are
+    different shape -- no sampling-config block, hardcoded full_scan=False /
+    sample_size=500 standalone defaults, no timeout literal -- and are
     deliberately OUT of scope for this seam. They are not asserted here.
     """
     import re
@@ -881,7 +881,7 @@ def test_is_builtin_template_known_id():
 
 def test_is_builtin_template_user_id_not_builtin():
     """A user-created template (name-derived slug not in the set) is not built-in.
-    This is the safe direction — never mislabel a user's own template.
+    This is the safe direction -- never mislabel a user's own template.
     """
     assert EnvSnapshot.is_builtin_template({"id": "my-custom-audit"}) is False
     assert EnvSnapshot.is_builtin_template({"id": "acme-prod-weekly"}) is False

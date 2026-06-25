@@ -15,7 +15,7 @@ class AgentUnauthCollisionRule(AuditRule):
         "richer authenticated data; redundant unauth scans add load, cause "
         "asset-correlation drift, and (prior to console release 6.6.229) could "
         "degrade results. Detection is grounded in the authoritative agent "
-        "inventory at /api/3/agents (one fetch, cached) — site-asset listings "
+        "inventory at /api/3/agents (one fetch, cached) -- site-asset listings "
         "are intersected by asset id, which is reliably populated. In fast "
         "mode (`full_scan: false`), per-site enumeration is bounded by "
         "`audit.sample_size` and short-circuits on the first agent-managed "
@@ -174,7 +174,7 @@ class AgentUnauthCollisionRule(AuditRule):
                 message=(
                     f"{len(truncated_sites)} sites exceeded the per-site sample "
                     f"cap ({per_site_cap} assets) without finding an Insight "
-                    f"Agent — verify in the Security Console UI: "
+                    f"Agent -- verify in the Security Console UI: "
                     f"{', '.join(s['name'] for s in truncated_sites[:20])}."
                 ),
                 details={

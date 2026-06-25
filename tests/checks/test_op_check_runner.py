@@ -1,4 +1,4 @@
-"""Tests for OpCheckRunner / OpCheckDescriptor — the operational-vertical
+"""Tests for OpCheckRunner / OpCheckDescriptor -- the operational-vertical
 mirror of AuditRunner / AuditCategory.
 
 The runner owns the envelope every operational check repeats verbatim: start

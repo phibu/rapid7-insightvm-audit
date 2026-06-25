@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python 3.11+, pytest, `requests` (already wrapped by `client.py` with verb allowlist), `ipaddress` (stdlib) for CIDR/IP-range matching, no new dependencies.
 
-**Read-only safety:** No new POST paths. No `client.py` changes. The only new HTTP calls are `GET /api/3/assets/{id}` (R4) — `GET` is already in `_ALLOWED_VERBS`. `POST /api/3/assets/search` (R2, R3) is already on `_ALLOWED_POST_PATHS`. Per-task verification commands are included.
+**Read-only safety:** No new POST paths. No `client.py` changes. The only new HTTP calls are `GET /api/3/assets/{id}` (R4) -- `GET` is already in `_ALLOWED_VERBS`. `POST /api/3/assets/search` (R2, R3) is already on `_ALLOWED_POST_PATHS`. Per-task verification commands are included.
 
 **Spec:** [docs/superpowers/specs/2026-05-04-asset-coverage-expansion-design.md](../specs/2026-05-04-asset-coverage-expansion-design.md)
 
@@ -18,7 +18,7 @@
 
 | File | Responsibility | Change type |
 |---|---|---|
-| `src/rapid7_healthcheck/checks/__init__.py` | `Check` Protocol — add optional `snapshot=None` kwarg | modify |
+| `src/rapid7_healthcheck/checks/__init__.py` | `Check` Protocol -- add optional `snapshot=None` kwarg | modify |
 | `src/rapid7_healthcheck/audit/snapshot.py` | Add `all_included_targets()` lazy accessor + `IncludedTargets` helper dataclass | modify |
 | `src/rapid7_healthcheck/config.py` | Extend `AssetCoverageThresholds` with 4 new boolean fields (defaulted) | modify |
 | `src/rapid7_healthcheck/checks/asset_coverage.py` | Add 4 private rule methods + thread `snapshot` kwarg | modify |
@@ -26,7 +26,7 @@
 | `docs/examples/config.yaml` | Document the 4 new toggle keys with comments | modify |
 | `tests/checks/test_asset_coverage.py` | Add per-rule tests + integration-shape tests | modify |
 | `tests/audit/test_snapshot.py` (if absent: `tests/audit/test_snapshot_targets.py`) | Test the new `all_included_targets()` accessor in isolation | create or modify |
-| `README.md` | Extend Asset Coverage rule table with R1–R4 | modify |
+| `README.md` | Extend Asset Coverage rule table with R1-R4 | modify |
 | `CHANGELOG.md` | Add Unreleased entry noting 2→6 rules + config additions | modify |
 
 ---
@@ -96,7 +96,7 @@ Expected: same pass/fail counts as before this task. (Existing checks pass `(cli
 git add src/rapid7_healthcheck/checks/__init__.py
 git commit -m "feat(checks): add optional snapshot kwarg to Check protocol
 
-Additive change — existing checks continue to satisfy the protocol.
+Additive change -- existing checks continue to satisfy the protocol.
 Threading EnvSnapshot through op-checks lets future rules reuse the
 audit subsystem's lazy-loaded API reads (sites, asset_groups, agents)
 without duplicating fetches in __main__.
@@ -119,7 +119,7 @@ Refs spec 2026-05-04-asset-coverage-expansion."
 Create `tests/audit/test_snapshot_targets.py`:
 
 ```python
-"""Tests for EnvSnapshot.all_included_targets() — used by op.asset_coverage.agent_only_assets."""
+"""Tests for EnvSnapshot.all_included_targets() -- used by op.asset_coverage.agent_only_assets."""
 from __future__ import annotations
 
 from ipaddress import ip_network
@@ -185,7 +185,7 @@ def test_all_included_targets_handles_ip_ranges():
 
 
 def test_all_included_targets_skips_invalid_entries():
-    """Malformed targets must not crash the rule — log and skip."""
+    """Malformed targets must not crash the rule -- log and skip."""
     sites = [{"id": 1}]
     targets = {1: ["not-an-ip", "10.0.0.0/24"]}
     snap = _snap(sites, targets)
@@ -267,7 +267,7 @@ def _expand_target(entry: str, *, range_cap: int = 1024) -> tuple[list, set]:
     Rapid7-style ranges ('10.0.0.1-10.0.0.10'). Ranges are expanded into
     literal IPs up to `range_cap` addresses; oversized ranges fall back to
     being treated as the bounding /CIDR network so we don't blow up memory.
-    Invalid entries return ([], set()) — caller logs and skips.
+    Invalid entries return ([], set()) -- caller logs and skips.
     """
     networks: list = []
     literals: set = set()
@@ -288,7 +288,7 @@ def _expand_target(entry: str, *, range_cap: int = 1024) -> tuple[list, set]:
                 for i in range(span):
                     literals.add(str(cls(int(lo) + i)))
                 return networks, literals
-            # Oversized range — fall back to the broadest covering network.
+            # Oversized range -- fall back to the broadest covering network.
             # Conservative: include both endpoints as literals so callers don't lose them.
             literals.add(str(lo))
             literals.add(str(hi))
@@ -346,7 +346,7 @@ def all_included_targets(self) -> IncludedTargets:
     return self._all_included_targets_cache
 ```
 
-Also initialize the cache slot in `__init__` for explicitness — add this line alongside the other `self._*_cache: ... = None` lines in `EnvSnapshot.__init__`:
+Also initialize the cache slot in `__init__` for explicitness -- add this line alongside the other `self._*_cache: ... = None` lines in `EnvSnapshot.__init__`:
 
 ```python
 self._all_included_targets_cache: IncludedTargets | None = None
@@ -418,7 +418,7 @@ def test_asset_coverage_thresholds_have_new_toggles_with_defaults(tmp_path):
     from rapid7_healthcheck.config import load_config
 
     cfg_path = tmp_path / "config.yaml"
-    # Minimal valid config — omit the new toggles entirely.
+    # Minimal valid config -- omit the new toggles entirely.
     cfg_path.write_text(yaml.safe_dump({
         "rapid7": {
             "base_url": "https://example.com",
@@ -487,25 +487,25 @@ Expected: new test passes; existing config tests still pass.
 
 - [ ] **Step 5: Update the example config**
 
-In `docs/examples/config.yaml`, replace the `asset_coverage:` block (currently lines 32–35):
+In `docs/examples/config.yaml`, replace the `asset_coverage:` block (currently lines 32-35):
 
 ```yaml
   asset_coverage:
     stale_asset_days: 30
     flag_unscanned_assets: true
     never_scanned_days: 90
-    # New in 0.2.7 — see README "Asset Coverage" section.
+    # New in 0.2.7 -- see README "Asset Coverage" section.
     # Flag asset groups whose membership criteria match zero assets
     # (orphaned RBAC/report scopes).
     flag_dead_asset_groups: true
     # Flag assets where the most recent scan was unauthenticated
-    # (vulnerability-assessed=false) — surface-level visibility only.
+    # (vulnerability-assessed=false) -- surface-level visibility only.
     flag_unauth_only_assets: true
-    # Flag assets recently scanned but with zero detected services —
+    # Flag assets recently scanned but with zero detected services --
     # usually a firewall blocking the scan engine or a scope misconfig.
     flag_no_services_detected: true
     # Flag Insight Agent-managed assets that fall outside every site's
-    # configured scan target ranges — they only get opportunistic agent
+    # configured scan target ranges -- they only get opportunistic agent
     # data, never scheduled scans. REQUIRES audit.full_scan: true to
     # actually run (per-asset GETs are too expensive for the fast path).
     flag_agent_only_assets: false
@@ -523,7 +523,7 @@ If a test loads the example config, run it:
 pytest -k "example" -v 2>&1 | tail -10
 ```
 
-Expected: passes. (If no such test exists, skip — the validator will run against this YAML at app startup and would have caught a typo.)
+Expected: passes. (If no such test exists, skip -- the validator will run against this YAML at app startup and would have caught a typo.)
 
 - [ ] **Step 7: Commit**
 
@@ -543,7 +543,7 @@ Refs spec 2026-05-04-asset-coverage-expansion."
 
 ---
 
-## Task 4: Implement R1 — `op.asset_coverage.dead_asset_groups`
+## Task 4: Implement R1 -- `op.asset_coverage.dead_asset_groups`
 
 **Files:**
 - Modify: `src/rapid7_healthcheck/checks/asset_coverage.py`
@@ -701,7 +701,7 @@ def _dead_asset_groups(self, snapshot: Any, t) -> RuleResult:
     rid = "op.asset_coverage.dead_asset_groups"
     name = "Asset groups with zero members"
     desc = (
-        "Asset groups whose membership criteria match no assets — orphaned "
+        "Asset groups whose membership criteria match no assets -- orphaned "
         "RBAC/report scopes that were probably created for a project that "
         "ended or for assets that have since been removed."
     )
@@ -754,7 +754,7 @@ def _dead_asset_groups(self, snapshot: Any, t) -> RuleResult:
     )
 ```
 
-> **Note on the snapshot-missing case:** the spec says "RuleResult(status="error")". Easiest way to produce status="error" via `make_rule_result` is to emit a `Finding(severity="warn"...)` (which would yield status="warn"), but the test asserts `status == "error"`. So instead we construct the `RuleResult` directly when snapshot is missing — but the helper takes findings list. Look at the existing `make_rule_result` carefully: it derives status from finding severity via `fail > warn > pass`. There's no "error" severity. So to produce status="error" we must construct `RuleResult` directly. **Refactor:** replace the `if snapshot is None` block above with:
+> **Note on the snapshot-missing case:** the spec says "RuleResult(status="error")". Easiest way to produce status="error" via `make_rule_result` is to emit a `Finding(severity="warn"...)` (which would yield status="warn"), but the test asserts `status == "error"`. So instead we construct the `RuleResult` directly when snapshot is missing -- but the helper takes findings list. Look at the existing `make_rule_result` carefully: it derives status from finding severity via `fail > warn > pass`. There's no "error" severity. So to produce status="error" we must construct `RuleResult` directly. **Refactor:** replace the `if snapshot is None` block above with:
 
 ```python
 if snapshot is None:
@@ -776,7 +776,7 @@ Add the import at the top of `asset_coverage.py` if not already present:
 from rapid7_healthcheck.audit import RuleResult
 ```
 
-(It's already imported — confirm before duplicating.)
+(It's already imported -- confirm before duplicating.)
 
 - [ ] **Step 4: Run R1 tests to verify they pass**
 
@@ -810,7 +810,7 @@ git commit -m "feat(asset_coverage): add R1 dead_asset_groups rule
 
 Detects asset groups whose membership criteria match zero assets.
 Reads the per-group 'assets' count already present in the
-/api/3/asset_groups response — zero extra API calls.
+/api/3/asset_groups response -- zero extra API calls.
 
 Run signature gains an optional snapshot kwarg; no-snapshot path
 returns status='error' with a clear message rather than crashing.
@@ -820,7 +820,7 @@ Refs spec 2026-05-04-asset-coverage-expansion."
 
 ---
 
-## Task 5: Implement R2 — `op.asset_coverage.unauth_only_assets`
+## Task 5: Implement R2 -- `op.asset_coverage.unauth_only_assets`
 
 **Files:**
 - Modify: `src/rapid7_healthcheck/checks/asset_coverage.py`
@@ -898,7 +898,7 @@ def test_r2_unauth_only_assets_uses_correct_filter_body(fake_client, app_config)
 
 def test_r2_unauth_only_assets_handles_400_filter_unsupported(fake_client, app_config):
     """If the console rejects the filter (older API version), report as error
-    via status_code branching — never substring-match the message."""
+    via status_code branching -- never substring-match the message."""
     from tests.conftest import FakeRapid7Client
     from rapid7_healthcheck.client import Rapid7ClientError
     fc = FakeRapid7Client()
@@ -967,7 +967,7 @@ def _unauth_only_assets(self, client: Any, t) -> RuleResult:
     rid = "op.asset_coverage.unauth_only_assets"
     name = "Assets scanned but not authenticated"
     desc = (
-        "Assets where vulnerability-assessed=false — they were discovered "
+        "Assets where vulnerability-assessed=false -- they were discovered "
         "and possibly port-scanned but never assessed for vulnerabilities. "
         "Surface-level visibility only; masks real risk."
     )
@@ -1052,20 +1052,20 @@ git commit -m "feat(asset_coverage): add R2 unauth_only_assets rule
 
 Filters /api/3/assets/search by vulnerability-assessed=false to detect
 assets that were discovered and port-scanned but never authenticated.
-Surface-level visibility only — these assets mask real risk.
+Surface-level visibility only -- these assets mask real risk.
 
-Severity: fail (per spec — this is the most valuable depth-coverage signal).
+Severity: fail (per spec -- this is the most valuable depth-coverage signal).
 
 Per-rule isolation: 400 responses (filter not supported on this console
 version) are caught and reported as status='error' via status_code
-branching — never substring-match per CLAUDE.md.
+branching -- never substring-match per CLAUDE.md.
 
 Refs spec 2026-05-04-asset-coverage-expansion."
 ```
 
 ---
 
-## Task 6: Implement R3 — `op.asset_coverage.no_services_detected`
+## Task 6: Implement R3 -- `op.asset_coverage.no_services_detected`
 
 **Files:**
 - Modify: `src/rapid7_healthcheck/checks/asset_coverage.py`
@@ -1266,7 +1266,7 @@ git commit -m "feat(asset_coverage): add R3 no_services_detected rule
 
 Combines service-count=0 AND last-scan-date is-within stale_asset_days
 filters to surface assets that were recently scanned but where the scan
-returned zero services — typically a firewall blocking the engine or a
+returned zero services -- typically a firewall blocking the engine or a
 misconfigured site scope. The recency filter excludes already-stale
 assets so we don't double-count with the stale_assets rule.
 
@@ -1275,7 +1275,7 @@ Refs spec 2026-05-04-asset-coverage-expansion."
 
 ---
 
-## Task 7: Implement R4 — `op.asset_coverage.agent_only_assets` (the gated, expensive one)
+## Task 7: Implement R4 -- `op.asset_coverage.agent_only_assets` (the gated, expensive one)
 
 **Files:**
 - Modify: `src/rapid7_healthcheck/checks/asset_coverage.py`
@@ -1307,7 +1307,7 @@ def _enable_r4_via_full_scan(app_config):
 
 
 def test_r4_skipped_by_default(fake_client, app_config):
-    """Default config has flag_agent_only_assets=false — rule must be skipped."""
+    """Default config has flag_agent_only_assets=false -- rule must be skipped."""
     fake_client.set_paginate_post("/api/3/assets/search", [])
     snap = _FakeSnapshot(asset_groups=[])
     result = AssetCoverageCheck().run(fake_client, app_config, snapshot=snap)
@@ -1558,7 +1558,7 @@ def _agent_only_assets(self, snapshot: Any, client: Any, t, audit_cfg) -> RuleRe
     )
 ```
 
-Add at the top of the file (only if not already present — check first):
+Add at the top of the file (only if not already present -- check first):
 
 ```python
 import logging
@@ -1579,7 +1579,7 @@ Expected: all 7 R4 tests pass.
 grep -nE 'PUT|PATCH|DELETE|client\.(put|patch|delete)' src/rapid7_healthcheck/checks/asset_coverage.py
 ```
 
-Expected: zero matches. (The new code uses `client.get(...)` which is GET — verb-allowlisted.)
+Expected: zero matches. (The new code uses `client.get(...)` which is GET -- verb-allowlisted.)
 
 - [ ] **Step 6: Commit**
 
@@ -1617,7 +1617,7 @@ grep -n -A 30 'def _run_checks' src/rapid7_healthcheck/__main__.py
 ```
 
 Identify:
-- where the snapshot is currently constructed (it's inside `ConfigurationAuditCheck.run` today — needs to move out, or be passed in)
+- where the snapshot is currently constructed (it's inside `ConfigurationAuditCheck.run` today -- needs to move out, or be passed in)
 - the call site `instance.run(...)` where we'll thread `snapshot=...`
 
 - [ ] **Step 2: Modify `_run_checks` to build the snapshot once**
@@ -1765,7 +1765,7 @@ def test_optional_snapshot_kwarg_is_backwards_compatible(fake_client, app_config
     assert _rule(result, "op.asset_coverage.no_services_detected").status == "pass"
     # Snapshot-dependent rules error cleanly (don't crash)
     assert _rule(result, "op.asset_coverage.dead_asset_groups").status == "error"
-    # R4 is skipped because flag_agent_only_assets=False by default — snapshot check never runs
+    # R4 is skipped because flag_agent_only_assets=False by default -- snapshot check never runs
     assert _rule(result, "op.asset_coverage.agent_only_assets").status == "skipped"
 ```
 
@@ -1775,7 +1775,7 @@ def test_optional_snapshot_kwarg_is_backwards_compatible(fake_client, app_config
 pytest tests/checks/test_asset_coverage.py -v 2>&1 | tail -40
 ```
 
-Expected: every test passes. The new integration tests + all R1–R4 tests + the original 4 tests = ~25 tests passing.
+Expected: every test passes. The new integration tests + all R1-R4 tests + the original 4 tests = ~25 tests passing.
 
 - [ ] **Step 5: Run the full suite**
 
@@ -1804,7 +1804,7 @@ EnvSnapshot, so AssetCoverageCheck's R1 (dead_asset_groups) and R4
 (agent_only_assets) rules can read /asset_groups and /agents data
 that the audit subsystem already lazy-loads.
 
-Audit checks still build their own snapshot internally — threading the
+Audit checks still build their own snapshot internally -- threading the
 shared one through them is a deferred cleanup tracked in backlog.md.
 
 Adds integration-shape tests confirming:
@@ -1829,9 +1829,9 @@ Refs spec 2026-05-04-asset-coverage-expansion."
 grep -n -A 10 'Asset Coverage' README.md | head -30
 ```
 
-Identify the rule listing (likely a markdown table or bullet list). The exact format varies — match the existing style.
+Identify the rule listing (likely a markdown table or bullet list). The exact format varies -- match the existing style.
 
-- [ ] **Step 2: Extend the table/list with R1–R4**
+- [ ] **Step 2: Extend the table/list with R1-R4**
 
 Add (using the existing format):
 
@@ -1840,7 +1840,7 @@ Add (using the existing format):
 | `op.asset_coverage.stale_assets` | (existing) | warn | Filtered Asset Search |
 | `op.asset_coverage.never_scanned_assets` | (existing) | fail | Filtered Asset Search |
 | `op.asset_coverage.dead_asset_groups` | Asset groups whose criteria match zero members. Orphaned RBAC/report scopes. | warn | [Asset Groups](https://docs.rapid7.com/insightvm/asset-groups/) |
-| `op.asset_coverage.unauth_only_assets` | Assets where vulnerability-assessed=false — discovered but never authenticated. Surface-level visibility only. | **fail** | [Filtered Asset Search](https://docs.rapid7.com/insightvm/filtered-asset-search) |
+| `op.asset_coverage.unauth_only_assets` | Assets where vulnerability-assessed=false -- discovered but never authenticated. Surface-level visibility only. | **fail** | [Filtered Asset Search](https://docs.rapid7.com/insightvm/filtered-asset-search) |
 | `op.asset_coverage.no_services_detected` | Assets recently scanned but with zero services detected. Usually firewall/scope misconfiguration. | warn | [Filtered Asset Search](https://docs.rapid7.com/insightvm/filtered-asset-search) |
 | `op.asset_coverage.agent_only_assets` | Insight Agent-managed assets whose IP falls outside every site's scan scope. Default off; requires `audit.full_scan: true`. | warn | [Insight Agent Overview](https://docs.rapid7.com/insightvm/insight-agent-overview/) |
 
@@ -1855,12 +1855,12 @@ Find the `## [Unreleased]` heading in `CHANGELOG.md` (or create one above the mo
 
 ### Added
 - **Asset Coverage check expanded from 2 to 6 rules.** Adds:
-  - `op.asset_coverage.dead_asset_groups` (warn) — asset groups with zero members.
-  - `op.asset_coverage.unauth_only_assets` (fail) — assets discovered but never authenticated.
-  - `op.asset_coverage.no_services_detected` (warn) — recently scanned assets with zero services.
-  - `op.asset_coverage.agent_only_assets` (warn, default off) — Insight Agent assets outside scheduled scan scope. Requires `audit.full_scan: true`.
+  - `op.asset_coverage.dead_asset_groups` (warn) -- asset groups with zero members.
+  - `op.asset_coverage.unauth_only_assets` (fail) -- assets discovered but never authenticated.
+  - `op.asset_coverage.no_services_detected` (warn) -- recently scanned assets with zero services.
+  - `op.asset_coverage.agent_only_assets` (warn, default off) -- Insight Agent assets outside scheduled scan scope. Requires `audit.full_scan: true`.
 - New `AssetCoverageThresholds` toggles: `flag_dead_asset_groups`, `flag_unauth_only_assets`, `flag_no_services_detected`, `flag_agent_only_assets`. All default to `true` except the last (default `false`).
-- `EnvSnapshot.all_included_targets()` accessor — normalizes every site's included scan targets into CIDR networks + literal IPs with a `contains(ip_str)` helper. Used by the new `agent_only_assets` rule.
+- `EnvSnapshot.all_included_targets()` accessor -- normalizes every site's included scan targets into CIDR networks + literal IPs with a `contains(ip_str)` helper. Used by the new `agent_only_assets` rule.
 
 ### Changed
 - `Check` Protocol gains an optional `snapshot=None` kwarg. Existing checks continue to satisfy the protocol unchanged. `__main__._run_checks` now builds a single `EnvSnapshot` and passes it to checks that accept it.
@@ -1895,7 +1895,7 @@ Refs spec 2026-05-04-asset-coverage-expansion."
 pytest -v 2>&1 | tail -30
 ```
 
-Expected: every test passes. Compare the count against the pre-PR baseline — should be up by approximately:
+Expected: every test passes. Compare the count against the pre-PR baseline -- should be up by approximately:
 - 6 from `test_snapshot_targets.py`
 - 5 from R1
 - 5 from R2
@@ -1958,7 +1958,7 @@ git commit -m "docs: add asset coverage expansion design spec"
 
 | Spec section | Plan task |
 |---|---|
-| Goal: 4 new rules | Tasks 4–7 (one per rule) |
+| Goal: 4 new rules | Tasks 4-7 (one per rule) |
 | Architecture: optional `snapshot` kwarg on `Check.run` | Task 1 |
 | Snapshot threading via `__main__` | Task 8 |
 | `AssetCoverageThresholds` 4 new toggles | Task 3 |
@@ -1968,20 +1968,20 @@ git commit -m "docs: add asset coverage expansion design spec"
 | R4 `agent_only_assets` contract + full_scan gate + sampling | Task 7 |
 | `all_included_targets()` accessor | Task 2 |
 | Per-rule isolation, snapshot=None → status="error" | Tasks 4 (test), 7 (test), 8 (integration test) |
-| Test plan (per-rule + integration) | Tasks 4–8 |
+| Test plan (per-rule + integration) | Tasks 4-8 |
 | Documentation impact (README, CHANGELOG, example config) | Tasks 3 + 9 |
 | Acceptance criteria: 6 rule_results in order | Task 8 (integration test) |
 | Acceptance: read-only contract preserved | Task 10 (final sweep) |
 
 No spec requirements left without a task.
 
-**Placeholder scan:** searched plan body for "TBD", "TODO", "implement later", "appropriate error handling" — zero matches. (One legitimate "(if not already present)" hedge in Task 5/7 imports — those are import deduplication checks, not placeholders.)
+**Placeholder scan:** searched plan body for "TBD", "TODO", "implement later", "appropriate error handling" -- zero matches. (One legitimate "(if not already present)" hedge in Task 5/7 imports -- those are import deduplication checks, not placeholders.)
 
 **Type consistency:**
-- `IncludedTargets` defined in Task 2 (`networks: list`, `literals: set`, `contains(ip_str: str) -> bool`) — referenced consistently in Task 7 tests and rule code.
-- `_FakeSnapshot` defined in Task 4 — extended (not re-defined) in Tasks 5–8 by adding constructor kwargs as needed.
+- `IncludedTargets` defined in Task 2 (`networks: list`, `literals: set`, `contains(ip_str: str) -> bool`) -- referenced consistently in Task 7 tests and rule code.
+- `_FakeSnapshot` defined in Task 4 -- extended (not re-defined) in Tasks 5-8 by adding constructor kwargs as needed.
 - Rule IDs (`op.asset_coverage.dead_asset_groups`, etc.) used identically in tests, source code, README, and CHANGELOG.
-- `flag_dead_asset_groups`, `flag_unauth_only_assets`, `flag_no_services_detected`, `flag_agent_only_assets` — same names in dataclass (Task 3), rule code (Tasks 4–7), example YAML (Task 3), and tests (Tasks 4–7).
-- `summary["dead_groups_count"]`, `["unauth_only_count"]`, `["no_services_count"]`, `["agent_only_count"]` — used consistently across rule implementations and test assertions.
+- `flag_dead_asset_groups`, `flag_unauth_only_assets`, `flag_no_services_detected`, `flag_agent_only_assets` -- same names in dataclass (Task 3), rule code (Tasks 4-7), example YAML (Task 3), and tests (Tasks 4-7).
+- `summary["dead_groups_count"]`, `["unauth_only_count"]`, `["no_services_count"]`, `["agent_only_count"]` -- used consistently across rule implementations and test assertions.
 
 No type/name drift.

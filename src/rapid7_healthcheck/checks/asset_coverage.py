@@ -52,7 +52,7 @@ def _capped_findings_with_rollup(
     dict (alongside the canonical ``remainder`` / ``total`` / ``cap`` keys).
 
     ``total`` overrides the affected-population size used for the rollup
-    math. By default the population is ``len(items)`` — correct when the
+    math. By default the population is ``len(items)`` -- correct when the
     caller materialized the whole result set. When the caller deliberately
     fetched only a bounded head (e.g. the first ``cap`` rows, with the
     true count read from ``page.totalResources``), it MUST pass ``total``
@@ -98,7 +98,7 @@ def _per_asset_findings(
     count stays bounded while still reflecting the actual affected-asset count
     in the row. ``message_for(asset) -> str`` builds the per-asset message.
 
-    ``total`` is forwarded to ``_capped_findings_with_rollup`` — pass it when
+    ``total`` is forwarded to ``_capped_findings_with_rollup`` -- pass it when
     ``assets`` is a bounded head of a larger population so the rollup count
     stays accurate without materializing the whole result set.
     """
@@ -135,17 +135,17 @@ def _bounded_asset_search(
     """Fetch only the first ``cap`` matching assets, plus the exact total.
 
     Returns ``(head, total)``:
-        - ``head``: at most ``cap`` asset dicts — enough to fill the
+        - ``head``: at most ``cap`` asset dicts -- enough to fill the
           per-asset findings the report actually renders.
         - ``total``: exact match count from ``page.totalResources``.
 
     Why this exists: the report caps per-asset findings at
     ``_PER_ITEM_FINDING_CAP`` and shows the rest as a single rollup. Fully
     paginating the result set (``paginate_post``) to then discard everything
-    past the cap is the bug this replaces — on a console with 50k stale
+    past the cap is the bug this replaces -- on a console with 50k stale
     assets that was ~100 sequential POSTs (~19 min) to render 500 rows.
 
-    Issues ``ceil(cap / page_size)`` POSTs — normally **one**, since the
+    Issues ``ceil(cap / page_size)`` POSTs -- normally **one**, since the
     default page size (500) equals the cap. The exact total still comes
     from the first page's metadata, so ``summary`` counts and the rollup
     remainder are byte-identical to the old full-enumeration behavior.
@@ -224,7 +224,7 @@ class NeverScannedAssetsRule:
     RULE_ID = "op.asset_coverage.never_scanned_assets"
     RULE_NAME = "Never-scanned assets"
     DESCRIPTION = (
-        "Assets whose last scan exceeds the never-scanned threshold — "
+        "Assets whose last scan exceeds the never-scanned threshold -- "
         "treated as effectively unscanned."
     )
     SOURCES = (_SRC_FILTERED_SEARCH,)
@@ -276,7 +276,7 @@ class DeadAssetGroupsRule:
     RULE_ID = "op.asset_coverage.dead_asset_groups"
     RULE_NAME = "Asset groups with zero members"
     DESCRIPTION = (
-        "Asset groups whose membership criteria match no assets — orphaned "
+        "Asset groups whose membership criteria match no assets -- orphaned "
         "RBAC/report scopes that were probably created for a project that "
         "ended or for assets that have since been removed."
     )
@@ -293,7 +293,7 @@ class DeadAssetGroupsRule:
             )
 
         if snapshot is None:
-            # An error RuleResult carries no findings — the reason lives in
+            # An error RuleResult carries no findings -- the reason lives in
             # summary, matching the error_rule() helper. A warn-severity
             # finding inside an error rule would leak into flatten_findings
             # and the delta signature index.
@@ -431,7 +431,7 @@ class AgentOnlyAssetsRule:
     RULE_NAME = "Insight Agent assets in no scan-engine site"
     DESCRIPTION = (
         "Assets that belong to the Insight Agent site but to no "
-        "scan-engine site — the console only ever sees them through the "
+        "scan-engine site -- the console only ever sees them through the "
         "endpoint agent, never via a network scan, so any control that "
         "relies on scan-engine data has a blind spot for them.\n\n"
         "Computed server-side and complete (not sampled): the agent "
@@ -459,7 +459,7 @@ class AgentOnlyAssetsRule:
             )
 
         if snapshot is None:
-            # An error RuleResult carries no findings — the reason lives in
+            # An error RuleResult carries no findings -- the reason lives in
             # summary, matching the error_rule() helper.
             return RuleResult(
                 rule_id=self.RULE_ID,
@@ -491,7 +491,7 @@ class AgentOnlyAssetsRule:
                 findings=[Finding(
                     severity="info",
                     message=(
-                        f"No site named '{agent_site_name}' was found — no "
+                        f"No site named '{agent_site_name}' was found -- no "
                         f"Insight Agent site to compare against. (Set "
                         f"thresholds.asset_coverage.agent_site_name if your "
                         f"agent site is named differently.)"
@@ -567,7 +567,7 @@ class GhostAssetsRule:
     RULE_ID = "op.asset_coverage.ghost_assets"
     RULE_NAME = "Ghost assets (no OS AND no hostname)"
     DESCRIPTION = (
-        "Assets the console knows about but cannot identify — neither an OS "
+        "Assets the console knows about but cannot identify -- neither an OS "
         "fingerprint nor a hostname. Typically the result of stale agent "
         "registrations, network-only scans of unreachable hosts, or import "
         "errors. Stricter than the data-quality 'missing OS' rule, which "
@@ -591,7 +591,7 @@ class GhostAssetsRule:
         # hostName client-side over the fetched head. _bounded_asset_search
         # fetches only the first _PER_ITEM_FINDING_CAP OS-empty rows (enough
         # to render findings) plus the EXACT OS-empty population from
-        # page.totalResources — so we can detect and disclose when the
+        # page.totalResources -- so we can detect and disclose when the
         # client-side ghost narrowing only saw a bounded window.
         head, os_empty_total = _bounded_asset_search(
             client,

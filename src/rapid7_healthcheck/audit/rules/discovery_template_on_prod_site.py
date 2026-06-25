@@ -42,7 +42,7 @@ class DiscoveryTemplateOnProdSiteRule(AuditRule):
                 message=(
                     f"Site '{site.get('name', site_id)}' (importance: {importance}, "
                     f"{snapshot.site_asset_count(site_id)} assets) uses Discovery-only template "
-                    f"'{tpl.get('name', tpl_id)}' — no vulnerabilities will be reported"
+                    f"'{tpl.get('name', tpl_id)}' -- no vulnerabilities will be reported"
                 ),
                 details={"site_id": site_id, "template_id": tpl_id,
                          "importance": importance,
