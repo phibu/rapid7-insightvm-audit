@@ -25,8 +25,8 @@ class TelnetRegexUnsetRule(AuditRule):
     description = (
         "Templates with a `telnet` configuration block but all four telnet "
         "prompt-matching regex fields empty (loginRegex, passwordPromptRegex, "
-        "failedLoginRegex, questionableLoginRegex). Cosmetic — telnet auth is "
-        "rare today — but signals an untuned template. Templates with no "
+        "failedLoginRegex, questionableLoginRegex). Cosmetic -- telnet auth is "
+        "rare today -- but signals an untuned template. Templates with no "
         "telnet block at all are skipped (the field set is not applicable)."
     )
     default_severity = "info"

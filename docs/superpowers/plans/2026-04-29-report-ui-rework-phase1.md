@@ -1,8 +1,8 @@
-# Report UI/UX Rework — Phase 1 Implementation Plan (0.1.9)
+# Report UI/UX Rework -- Phase 1 Implementation Plan (0.1.9)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace the current single-block HTML report with a hybrid editorial + dashboard layout (hero verdict, conditional delta strip, metric grid, restyled per-category sections), light + dark mode via system preference, and an embedded trimmed JSON state blob that the next run uses to compute deltas. No JS interactivity layer in this phase — that ships in 0.2.0.
+**Goal:** Replace the current single-block HTML report with a hybrid editorial + dashboard layout (hero verdict, conditional delta strip, metric grid, restyled per-category sections), light + dark mode via system preference, and an embedded trimmed JSON state blob that the next run uses to compute deltas. No JS interactivity layer in this phase -- that ships in 0.2.0.
 
 **Architecture:** All changes confined to `report.py`, `templates/report.html.j2`, `config.py`, and tests. Add three pure helpers in `report.py` (`_finding_signature`, `_state_blob_projection`, `_compute_delta`) plus one I/O helper (`_load_prior_state`). Wire them through `render_report` so the template gets new context fields (`delta`, `state_blob_json`, `metrics`). Replace the template wholesale; preserve every existing tested behavior (verdicts, sampling notes, durations, error messages, source links, threshold table, no external resources). Add a `_build_report_config` validator to `config.py` so the new `delta_max_age_days` field is optional in YAML and existing configs keep loading.
 
@@ -15,7 +15,7 @@
 | Path | Responsibility |
 |---|---|
 | `src/rapid7_healthcheck/report.py` | Add: signature/projection/delta/prior-load helpers, content-hash, metrics rollup, expanded `ReportContext` fields. Modify: `render_report` to populate new context. |
-| `src/rapid7_healthcheck/templates/report.html.j2` | Full rewrite — new IA, light+dark CSS, embedded state blob, print CSS. Native `<details>` for rule expansion (no JS yet). |
+| `src/rapid7_healthcheck/templates/report.html.j2` | Full rewrite -- new IA, light+dark CSS, embedded state blob, print CSS. Native `<details>` for rule expansion (no JS yet). |
 | `src/rapid7_healthcheck/config.py` | Add `delta_max_age_days: int \| None` to `ReportConfig`. Add `_build_report_config` so the field is optional in YAML. |
 | `docs/examples/config.yaml` | Add `delta_max_age_days: 30` under `report:` with a comment. |
 | `tests/test_report.py` | Update `test_no_external_resources` to allow inline JSON `<script>` while still forbidding external `src=`. Update `test_renders_pass_verdict_when_all_pass` to match new verdict text if needed. |
@@ -201,7 +201,7 @@ def test_report_rejects_negative_delta(tmp_path):
         load_config(p)
 ```
 
-If `_MINIMAL_CONFIG_TEXT` doesn't already exist in the test file, extract it from the test in step 1.1 — pull everything up through the `report:` block (so the appended line lands inside it) into a module-level constant.
+If `_MINIMAL_CONFIG_TEXT` doesn't already exist in the test file, extract it from the test in step 1.1 -- pull everything up through the `report:` block (so the appended line lands inside it) into a module-level constant.
 
 - [ ] **Step 1.8: Run the new tests + the full config suite**
 
@@ -241,7 +241,7 @@ Read the file first to find the `report:` block. Insert the new line at the end 
 python -c "from rapid7_healthcheck.config import load_config; load_config('docs/examples/config.yaml'); print('ok')"
 ```
 
-Expected: `ok`. (The example config may use a placeholder API URL — that's fine, this test only validates schema loading, not network calls.)
+Expected: `ok`. (The example config may use a placeholder API URL -- that's fine, this test only validates schema loading, not network calls.)
 
 - [ ] **Step 2.3: Commit**
 
@@ -311,7 +311,7 @@ def test_finding_signature_handles_none_details():
 
 
 def test_finding_signature_independent_of_severity():
-    """Same finding promoted from warn to fail keeps its signature — this is what
+    """Same finding promoted from warn to fail keeps its signature -- this is what
     lets us detect a 'severity changed' delta rather than counting it as a new
     finding plus a resolved one."""
     from rapid7_healthcheck.report import _finding_signature
@@ -488,7 +488,7 @@ def _state_blob_projection(
 
     Drops the largest fields (`details`, `description`, `sources`) since those
     already exist in the rendered DOM. Returns None if the projection exceeds
-    `size_cap_bytes` — the report still renders without it; delta will simply
+    `size_cap_bytes` -- the report still renders without it; delta will simply
     not compute next run.
     """
     def project_finding(rule_id: str, idx: int, f: Finding) -> dict:
@@ -641,7 +641,7 @@ def test_compute_delta_severity_changed():
 
 
 def test_compute_delta_host_mismatch_returns_none():
-    """Filename collision protection — different consoles should not produce a delta."""
+    """Filename collision protection -- different consoles should not produce a delta."""
     from rapid7_healthcheck.report import _compute_delta
     prior = _state([_check("Audit", [_rule("r1", "fail", [_f("a")])])], host="us.api")
     cur = _state([_check("Audit", [_rule("r1", "fail", [_f("a")])])], host="eu.api")
@@ -672,7 +672,7 @@ def test_compute_delta_only_fail_severity_counts_as_new_fail():
     cur = _state([_check("Audit", [_rule("r1", "warn", [_f("a", severity="warn")])])])
     delta = _compute_delta(prior=prior, current=cur)
     assert len(delta["new_fails"]) == 0
-    # But it should still show up in 'new_findings' if we expose that — for
+    # But it should still show up in 'new_findings' if we expose that -- for
     # Phase 1 we expose only resolved/new_fails/severity_changed, and the
     # new warn is correctly absent from all three.
     assert len(delta["resolved"]) == 0
@@ -697,7 +697,7 @@ def _compute_delta(*, prior: dict | None, current: dict) -> dict | None:
 
     Skips silently on host mismatch (filename collision protection).
     Tolerates version skew: unknown rule_ids in current count as new findings,
-    not as resolutions. Conservative — never claims something was resolved
+    not as resolutions. Conservative -- never claims something was resolved
     when we can't verify the prior actually checked for it.
 
     Returns:
@@ -762,7 +762,7 @@ git commit -m "feat(report): add _compute_delta for cross-run finding diff"
 
 ---
 
-## Task 6: Implement `_load_prior_state` (I/O — find + parse the most recent prior report)
+## Task 6: Implement `_load_prior_state` (I/O -- find + parse the most recent prior report)
 
 **Files:**
 - Modify: `src/rapid7_healthcheck/report.py`
@@ -825,7 +825,7 @@ def test_load_prior_state_picks_most_recent(tmp_path):
 
 def test_load_prior_state_excludes_self(tmp_path):
     """The current run's path must be excluded so we don't compare to ourselves
-    (relevant if same minute write — defensive)."""
+    (relevant if same minute write -- defensive)."""
     from rapid7_healthcheck.report import _load_prior_state
     self_path = tmp_path / "r-2026-04-29_1200.html"
     _write_report_with_blob(self_path, _state([], host="h"))
@@ -926,7 +926,7 @@ def _load_prior_state(
     parse its embedded JSON state blob, and return the dict.
 
     Returns None on any failure: no candidates, all stale, parse error, or
-    missing script tag. All failure modes are silent — the caller should treat
+    missing script tag. All failure modes are silent -- the caller should treat
     None as "no comparable prior, don't render the delta strip."
 
     `max_age_days=None` disables the age filter (still excludes `exclude`).
@@ -1037,7 +1037,7 @@ def test_metrics_rollup_counts():
 
 
 def test_metrics_rollup_handles_check_without_rule_results():
-    """Operational checks (scan_engines etc.) have no rule_results — they
+    """Operational checks (scan_engines etc.) have no rule_results -- they
     contribute findings but not rule counts."""
     from rapid7_healthcheck.report import _metrics
     cr = CheckResult(
@@ -1157,10 +1157,10 @@ class ReportContext:
     config_path: str
     results: list[CheckResult]
     thresholds_table: list[tuple[str, str]] = field(default_factory=list)
-    delta: dict | None = None              # new — computed delta or None
-    state_blob_json: str | None = None     # new — pre-serialized JSON for embedding, or None if dropped
-    metrics: dict | None = None            # new — populated by render_report
-    content_hash: str | None = None        # new — SHA-256 prefix of state_blob_json
+    delta: dict | None = None              # new -- computed delta or None
+    state_blob_json: str | None = None     # new -- pre-serialized JSON for embedding, or None if dropped
+    metrics: dict | None = None            # new -- populated by render_report
+    content_hash: str | None = None        # new -- SHA-256 prefix of state_blob_json
 ```
 
 - [ ] **Step 8.2: Update `render_report` to populate the new context fields**
@@ -1269,7 +1269,7 @@ def write_report(
 
 - [ ] **Step 8.4: Plumb `delta_max_age_days` from config in `__main__.py`**
 
-Find the existing `write_report(...)` call site in `src/rapid7_healthcheck/__main__.py`. (Use Grep with pattern `write_report\(` against `__main__.py` if needed.) Add `delta_max_age_days=cfg.report.delta_max_age_days` to the kwargs. If the call already has explicit_path it will be ignored — fine.
+Find the existing `write_report(...)` call site in `src/rapid7_healthcheck/__main__.py`. (Use Grep with pattern `write_report\(` against `__main__.py` if needed.) Add `delta_max_age_days=cfg.report.delta_max_age_days` to the kwargs. If the call already has explicit_path it will be ignored -- fine.
 
 - [ ] **Step 8.5: Add wiring tests**
 
@@ -1288,7 +1288,7 @@ def test_render_report_no_delta_when_no_prior():
                     findings=[Finding(severity="warn", message="m")])
     html = render_report(_ctx([r]))
     # Delta strip section should not render when no prior state was passed.
-    assert "since" not in html.lower() or "Generated" in html  # generated_at uses "since" too — be specific
+    assert "since" not in html.lower() or "Generated" in html  # generated_at uses "since" too -- be specific
     # Positive assertion: no "resolved" / "new fails" pill text.
     assert "resolved" not in html.lower()
     assert "new fails" not in html.lower()
@@ -1337,7 +1337,7 @@ These will partially fail until the template renders the delta strip and state b
 pytest tests/test_report.py::test_render_report_embeds_state_blob -v
 ```
 
-Expected: this test will FAIL because the template doesn't render the script tag yet. That's the bridge to Task 9. The other two wiring tests will also FAIL — leave them failing for Task 9 to satisfy.
+Expected: this test will FAIL because the template doesn't render the script tag yet. That's the bridge to Task 9. The other two wiring tests will also FAIL -- leave them failing for Task 9 to satisfy.
 
 - [ ] **Step 8.7: Commit (red)**
 
@@ -1346,7 +1346,7 @@ git add src/rapid7_healthcheck/report.py src/rapid7_healthcheck/__main__.py test
 git commit -m "feat(report): wire delta + state-blob + metrics through render_report"
 ```
 
-(Yes, committing red — the tests fail because the template hasn't been updated yet. Task 9's commit is what turns them green. This keeps the diff reviewable as logical units.)
+(Yes, committing red -- the tests fail because the template hasn't been updated yet. Task 9's commit is what turns them green. This keeps the diff reviewable as logical units.)
 
 ---
 
@@ -1356,7 +1356,7 @@ git commit -m "feat(report): wire delta + state-blob + metrics through render_re
 - Modify: `src/rapid7_healthcheck/templates/report.html.j2` (full rewrite)
 - Modify: `tests/test_report.py` (update `test_no_external_resources`)
 
-This is the biggest single step. The template is fully rewritten — but it must preserve every assertion in the existing `tests/test_report.py` file (verdict text, rule names, descriptions, source URLs, sampling info, error messages, durations rendered with the duration filter). Take it slow and verify after.
+This is the biggest single step. The template is fully rewritten -- but it must preserve every assertion in the existing `tests/test_report.py` file (verdict text, rule names, descriptions, source URLs, sampling info, error messages, durations rendered with the duration filter). Take it slow and verify after.
 
 - [ ] **Step 9.1: Update `test_no_external_resources` to allow inline JSON script**
 
@@ -1385,7 +1385,7 @@ Also update line 133 in `test_audit_section_renders_per_rule_table`:
 
 - [ ] **Step 9.2: Replace `templates/report.html.j2`**
 
-Overwrite the entire file with the new template below. Treat this as a "write the file fresh" operation — there is no incremental diff that's safer than the full rewrite.
+Overwrite the entire file with the new template below. Treat this as a "write the file fresh" operation -- there is no incremental diff that's safer than the full rewrite.
 
 ```jinja
 <!doctype html>
@@ -1829,7 +1829,7 @@ If any existing test fails, the most likely cause is a missing string the new te
 - adjust the template to preserve the original wording (preferred), or
 - update the test if the new wording is genuinely the intended one.
 
-Either change must be justified — don't silently weaken assertions.
+Either change must be justified -- don't silently weaken assertions.
 
 - [ ] **Step 9.4: Manual smoke check (browser)**
 
@@ -1863,7 +1863,7 @@ results = [
 ]
 
 ctx = ReportContext(
-    title='Rapid7 HealthCheck — sample',
+    title='Rapid7 HealthCheck -- sample',
     generated_at=datetime.now(timezone.utc),
     base_url_host='us.api.insight.rapid7.com',
     tool_version='0.1.9',
@@ -1884,8 +1884,8 @@ Visual checklist:
 - Metric grid renders with 6 tiles, numbers tabular-aligned.
 - Per-check section renders with rules table + collapsible rule details.
 - Sources link is clickable, opens in new tab.
-- Toggle the OS to dark mode, refresh — colors invert sensibly.
-- Print preview (Ctrl+P) — rule cards expand, no chrome lost.
+- Toggle the OS to dark mode, refresh -- colors invert sensibly.
+- Print preview (Ctrl+P) -- rule cards expand, no chrome lost.
 
 - [ ] **Step 9.5: Commit**
 
@@ -1912,7 +1912,7 @@ Find the line `version = "0.1.8"` (or wherever the version lives) and change to 
 Add a new section at the top of `CHANGELOG.md` (after the format header):
 
 ```markdown
-## 0.1.9 — 2026-04-29
+## 0.1.9 -- 2026-04-29
 
 ### Changed
 - Report HTML restyled with a hybrid editorial + dashboard layout: hero verdict
@@ -1986,12 +1986,12 @@ Done after the plan was written, before handing off to execution.
 **Placeholder scan:** None found. Every code step shows the actual code; every test step shows the actual test.
 
 **Type consistency:**
-- `_finding_signature(rule_id: str, finding: Finding) -> str` — used the same way in Tasks 4 (projection), 5 (delta input is signature-keyed). ✓
-- `_state_blob_projection(...) -> dict | None` — `None` return on size cap is what Task 8's `render_report` checks via `if blob is not None`. ✓
-- `_compute_delta(*, prior, current) -> dict | None` — keyword-only args; `None` handled in Task 8 wiring. ✓
-- `_load_prior_state(*, output_dir, filename_pattern, exclude, max_age_days) -> dict | None` — same kwargs in tests (Task 6) and call site (Task 8). ✓
-- `delta` dict shape: `prior_generated_at`, `resolved`, `new_fails`, `severity_changed` — consistent across compute (Task 5), wiring (Task 8), template (Task 9). ✓
-- `metrics` dict keys: `rules_total/rules_fail/rules_warn/rules_pass/rules_skipped/rules_sampled/findings_total/findings_fail/findings_warn/total_duration_ms` — defined Task 7, used in template Task 9 (only `findings_fail`, `findings_warn`, `rules_total`, `rules_sampled`, `rules_pass`, `rules_skipped`, `total_duration_ms` are read; the rest are unused but harmless). ✓
+- `_finding_signature(rule_id: str, finding: Finding) -> str` -- used the same way in Tasks 4 (projection), 5 (delta input is signature-keyed). ✓
+- `_state_blob_projection(...) -> dict | None` -- `None` return on size cap is what Task 8's `render_report` checks via `if blob is not None`. ✓
+- `_compute_delta(*, prior, current) -> dict | None` -- keyword-only args; `None` handled in Task 8 wiring. ✓
+- `_load_prior_state(*, output_dir, filename_pattern, exclude, max_age_days) -> dict | None` -- same kwargs in tests (Task 6) and call site (Task 8). ✓
+- `delta` dict shape: `prior_generated_at`, `resolved`, `new_fails`, `severity_changed` -- consistent across compute (Task 5), wiring (Task 8), template (Task 9). ✓
+- `metrics` dict keys: `rules_total/rules_fail/rules_warn/rules_pass/rules_skipped/rules_sampled/findings_total/findings_fail/findings_warn/total_duration_ms` -- defined Task 7, used in template Task 9 (only `findings_fail`, `findings_warn`, `rules_total`, `rules_sampled`, `rules_pass`, `rules_skipped`, `total_duration_ms` are read; the rest are unused but harmless). ✓
 - `ReportContext` new fields default to `None` so existing call sites in tests don't break. ✓
 
 **One known red commit (Task 8 step 8.7).** This is intentional: the helpers and wiring land separately from the template rewrite to keep each commit reviewable. Task 9's commit is the one that turns the suite green. If you prefer fully-green commits, fold step 8.7 into Task 9's commit instead.

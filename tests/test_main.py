@@ -243,7 +243,7 @@ def test_build_thresholds_table_includes_all_keys():
 
 def test_run_checks_dispatches_every_check_with_uniform_kwargs():
     """_run_checks passes snapshot, cloud_client, and progress to EVERY check
-    uniformly — no branching on check name to decide which kwargs a check gets.
+    uniformly -- no branching on check name to decide which kwargs a check gets.
     Each check uses what it needs; dispatch hands all three to all of them.
     """
     from unittest.mock import patch as _patch
@@ -270,7 +270,7 @@ def test_run_checks_dispatches_every_check_with_uniform_kwargs():
     fake_registry = {"alpha_check": make_check("alpha_check"), "beta_check": make_check("beta_check")}
 
     class _Cfg:
-        # checks.get(name, False) — enable both fakes
+        # checks.get(name, False) -- enable both fakes
         checks = {"alpha_check": True, "beta_check": True}
 
     sentinel_client = object()
@@ -287,7 +287,7 @@ def test_run_checks_dispatches_every_check_with_uniform_kwargs():
         )
 
     assert len(results) == 2
-    # Both checks received the SAME uniform kwargs — dispatch did not special-case by name.
+    # Both checks received the SAME uniform kwargs -- dispatch did not special-case by name.
     for name in ("alpha_check", "beta_check"):
         assert received[name]["snapshot"] is sentinel_snapshot
         assert received[name]["cloud_client"] is sentinel_cloud
@@ -301,7 +301,7 @@ def test_every_registered_check_run_accepts_uniform_kwargs():
     uses a hand-written _FakeCheck, so it verifies the dispatch but not the real
     signatures. A check that omits **_kwargs (or a needed named kwarg) raises
     TypeError "unexpected keyword argument 'cloud_client'" only when actually
-    invoked — and most e2e tests disable the op-checks. This binds the real
+    invoked -- and most e2e tests disable the op-checks. This binds the real
     signatures directly: introspect each run() and assert it can be called with
     all three kwargs without a TypeError from the parameter binding.
     """

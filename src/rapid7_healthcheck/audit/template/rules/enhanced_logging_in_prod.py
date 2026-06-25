@@ -16,7 +16,7 @@ class EnhancedLoggingInProdRule(AuditRule):
     description = (
         "Templates with `enhancedLogging: true` (verbose debug logging) "
         "bound as the scan template on a high-importance site. Verbose "
-        "logging is intended for short-lived troubleshooting — leaving it "
+        "logging is intended for short-lived troubleshooting -- leaving it "
         "on for production sites bloats console disk usage and slows scans. "
         "Templates with enhanced logging but no bound high-importance site "
         "are not examined."

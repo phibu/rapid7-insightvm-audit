@@ -57,7 +57,7 @@ def test_skip_empty_site(fake_snapshot):
 def test_shared_credential_specific_sites_covers_site(fake_snapshot):
     """A shared credential assigned to specific sites (siteAssignment=
     "specific-sites", sites=[1]) covers site 1. Per the v3 spec a
-    SharedCredential has NO `enabled` field — the rule must not gate on
+    SharedCredential has NO `enabled` field -- the rule must not gate on
     one. Site is covered → pass, and the per-site site_credentials GET
     is never made (site_credentials is not registered, so the fixture
     would raise AssertionError if it were called)."""
@@ -77,7 +77,7 @@ def test_shared_credential_specific_sites_covers_site(fake_snapshot):
 def test_shared_credential_all_sites_covers_every_site(fake_snapshot):
     """A shared credential with siteAssignment="all-sites" has sites=null
     and covers every site. The per-site site_credentials GET must be
-    skipped for all sites — this is the optimization that turns a
+    skipped for all sites -- this is the optimization that turns a
     ~15-minute run into one cheap shared_credentials() GET."""
     fake_snapshot.set_sites([
         {"id": 1, "name": "Prod-A", "scanTemplate": {"id": "tpl-vuln"}},
@@ -90,7 +90,7 @@ def test_shared_credential_all_sites_covers_every_site(fake_snapshot):
     ])
     fake_snapshot.set_site_asset_count(1, 100)
     fake_snapshot.set_site_asset_count(2, 100)
-    # No set_site_credentials for either site — rule must not call it.
+    # No set_site_credentials for either site -- rule must not call it.
     r = SiteVulnTemplateNoCredsRule().run(fake_snapshot, "fail", False, 500, {})
     assert r.status == "pass"
     assert r.findings == []

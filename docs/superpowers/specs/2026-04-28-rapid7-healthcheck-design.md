@@ -1,4 +1,4 @@
-# Rapid7 InsightVM Environment Health Check — Design
+# Rapid7 InsightVM Environment Health Check -- Design
 
 **Date:** 2026-04-28
 **Status:** Draft for review
@@ -37,10 +37,10 @@ The tool is run on demand (manually or by a scheduler). It does not modify any s
 - **Config file** (default `./config.yaml`): base URL, thresholds, output directory, check toggles. See section 5.
 - **Environment variable `R7_API_KEY`**: the read-only Insight Platform API key. Required.
 - **CLI flags**:
-  - `--config <path>` — override config file location.
-  - `--output <path>` — override the report output path.
-  - `--verbose` — DEBUG logging.
-  - `--log-file <path>` — also write logs to a file.
+  - `--config <path>` -- override config file location.
+  - `--output <path>` -- override the report output path.
+  - `--verbose` -- DEBUG logging.
+  - `--log-file <path>` -- also write logs to a file.
 
 ### Outputs
 
@@ -49,11 +49,11 @@ The tool is run on demand (manually or by a scheduler). It does not modify any s
 
 ### Exit codes
 
-- `0` — Healthy (all checks pass)
-- `1` — Warnings (any `warn`, no `fail`/`error`)
-- `2` — Action required (any `fail` or `error`)
-- `3` — Startup failure (bad config, auth failed, network unreachable). No report written.
-- `4` — Internal error (uncaught exception in tool itself).
+- `0` -- Healthy (all checks pass)
+- `1` -- Warnings (any `warn`, no `fail`/`error`)
+- `2` -- Action required (any `fail` or `error`)
+- `3` -- Startup failure (bad config, auth failed, network unreachable). No report written.
+- `4` -- Internal error (uncaught exception in tool itself).
 
 ### Invocation
 
@@ -86,11 +86,11 @@ python -m rapid7_healthcheck [--config config.yaml] [--output report.html] [--ve
 
 ### Module boundaries
 
-- `client.py` — only module that issues HTTP. Knows nothing about checks or reports.
-- `checks/*.py` — only modules that interpret data. Each check takes `client` + `config`, returns a `CheckResult`. Knows nothing about HTML.
-- `report.py` — only module that renders HTML. Takes `list[CheckResult]`, produces a string written to disk.
-- `__main__.py` — wires modules together; loads config, builds the client, iterates checks, hands results to the renderer, picks an exit code. No business logic.
-- `config.py` — YAML loader and dataclass schema with validation. Unknown keys raise.
+- `client.py` -- only module that issues HTTP. Knows nothing about checks or reports.
+- `checks/*.py` -- only modules that interpret data. Each check takes `client` + `config`, returns a `CheckResult`. Knows nothing about HTML.
+- `report.py` -- only module that renders HTML. Takes `list[CheckResult]`, produces a string written to disk.
+- `__main__.py` -- wires modules together; loads config, builds the client, iterates checks, hands results to the renderer, picks an exit code. No business logic.
+- `config.py` -- YAML loader and dataclass schema with validation. Unknown keys raise.
 
 This shape lets us add a new check by adding one file under `checks/`, change report styling without touching code, and swap the HTTP layer (e.g. to `httpx` later) in one place.
 
@@ -160,7 +160,7 @@ checks:
 
 - Base URL from config, e.g. `https://us.api.insight.rapid7.com`.
 - Endpoint paths used (subset; checks may add more):
-  - `GET /api/3` — metadata, used for startup self-test.
+  - `GET /api/3` -- metadata, used for startup self-test.
   - `GET /api/3/scan_engines`
   - `GET /api/3/sites`
   - `GET /api/3/sites/{id}/scans`
@@ -180,9 +180,9 @@ The v3 API returns:
 
 The client provides:
 
-- `get(path, params=None) -> dict` — single request, parsed JSON.
-- `paginate(path, params=None, page_size=500) -> Iterator[dict]` — yields each resource across all pages. Stops at `totalPages`.
-- `post(path, json_body, params=None) -> dict` — single POST. For `/assets/search`, the same pagination params apply; a `paginate_post(...)` helper wraps that.
+- `get(path, params=None) -> dict` -- single request, parsed JSON.
+- `paginate(path, params=None, page_size=500) -> Iterator[dict]` -- yields each resource across all pages. Stops at `totalPages`.
+- `post(path, json_body, params=None) -> dict` -- single POST. For `/assets/search`, the same pagination params apply; a `paginate_post(...)` helper wraps that.
 
 Default `page_size` is 500 (a safe upper bound for the v3 API).
 
@@ -288,19 +288,19 @@ class Check(Protocol):
 
 ### Layout
 
-1. **Header** — title (from config), generation timestamp (UTC + local), Rapid7 base URL host, tool version.
-2. **Overall verdict banner** — colour-coded:
+1. **Header** -- title (from config), generation timestamp (UTC + local), Rapid7 base URL host, tool version.
+2. **Overall verdict banner** -- colour-coded:
    - 🟢 Healthy (all `pass`)
    - 🟡 Warnings (any `warn`)
    - 🔴 Action required (any `fail` or `error`)
-3. **Summary table** — one row per check: name, status badge, finding counts by severity, duration. Each row links to the detail section anchor.
-4. **Detail sections** — one per check, in configured order:
+3. **Summary table** -- one row per check: name, status badge, finding counts by severity, duration. Each row links to the detail section anchor.
+4. **Detail sections** -- one per check, in configured order:
    - Status badge + description.
    - Summary stats rendered as small key-value tiles.
    - Findings table (severity, message, expandable details via `<details>`).
    - For `error` status: red box with the exception message.
    - For `skipped` status: grey box explaining the check is disabled.
-5. **Footer** — config filename used, full thresholds table (so the report is self-explanatory months later).
+5. **Footer** -- config filename used, full thresholds table (so the report is self-explanatory months later).
 
 ### Styling
 
@@ -335,9 +335,9 @@ class Check(Protocol):
 
 ## 10. Errors
 
-- `ConfigError` — bad/missing config (raised by `config.py`).
-- `Rapid7ClientError` — base for HTTP/network problems.
-- `Rapid7AuthError` — 401/403 (subclass of `Rapid7ClientError`).
+- `ConfigError` -- bad/missing config (raised by `config.py`).
+- `Rapid7ClientError` -- base for HTTP/network problems.
+- `Rapid7AuthError` -- 401/403 (subclass of `Rapid7ClientError`).
 - Per-check exceptions are caught by the orchestrator and recorded as `CheckResult(status="error")`.
 - Startup exceptions (config, auth, network self-test) cause exit code `3` with no report written.
 
@@ -381,10 +381,10 @@ rapid7-healthcheck/
 
 Direct, pinned to recent stable versions:
 
-- `requests` — HTTP client.
-- `PyYAML` — YAML config loader.
-- `Jinja2` — HTML templating.
-- `python-dotenv` — `.env` loader.
+- `requests` -- HTTP client.
+- `PyYAML` -- YAML config loader.
+- `Jinja2` -- HTML templating.
+- `python-dotenv` -- `.env` loader.
 
 Test-only:
 

@@ -17,7 +17,7 @@ class PolicyOnlyTemplateAttachedToVulnSiteRule(AuditRule):
         "Policy-only templates (`policyEnabled: true`, `vulnerabilityEnabled: "
         "false`) bound as the scan template on a high-importance site. The "
         "site is scanned for policy compliance but receives no vulnerability "
-        "assessment — a coverage gap on a business-critical asset. Surfaced "
+        "assessment -- a coverage gap on a business-critical asset. Surfaced "
         "as info because policy-only scans are sometimes intentional, but "
         "they are rarely the right choice for `high` or `very_high` sites."
     )
@@ -65,7 +65,7 @@ class PolicyOnlyTemplateAttachedToVulnSiteRule(AuditRule):
                 severity=severity,
                 message=(
                     f"Policy-only template '{t.get('name')}' is bound to "
-                    f"{len(bound_sites)} high-importance site(s) — those "
+                    f"{len(bound_sites)} high-importance site(s) -- those "
                     f"sites receive policy assessment but no vulnerability "
                     f"scanning."
                 ),

@@ -1,8 +1,8 @@
-"""Tests for ``AuditRule.result`` — the shared result-build the four audit
+"""Tests for ``AuditRule.result`` -- the shared result-build the four audit
 categories' rules inherit (see CONTEXT.md "AuditRule").
 
 These assert the build's observable output: derived status, forwarded identity,
-the ``card_summary`` shape, and the sampling fields — the contract every
+the ``card_summary`` shape, and the sampling fields -- the contract every
 migrated rule relies on staying byte-identical.
 """
 from __future__ import annotations
@@ -40,7 +40,7 @@ def test_result_derives_warn_status_from_findings():
 
 def test_result_info_only_findings_stay_pass():
     """An info finding alone must not escalate status (the deliberate
-    info-doesn't-escalate rule — see severity semantics in CLAUDE.md)."""
+    info-doesn't-escalate rule -- see severity semantics in CLAUDE.md)."""
     rule = _SampleRule()
     r = rule.result(
         [Finding(severity="info", message="fyi")],
@@ -60,7 +60,7 @@ def test_result_forwards_rule_identity_from_self():
 
 def test_result_severity_is_the_runtime_arg_not_default():
     """RuleResult.severity must be the config-overridden run-time value, not
-    self.default_severity — the two diverge under an operator override and the
+    self.default_severity -- the two diverge under an operator override and the
     field feeds the state blob."""
     rule = _SampleRule()  # default_severity == "warn"
     r = rule.result([], severity="fail")

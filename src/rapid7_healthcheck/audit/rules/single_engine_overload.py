@@ -17,7 +17,7 @@ class SingleEngineOverloadRule(AuditRule):
         "Scan engines bound to two or more sites whose combined asset count "
         "exceeds the configured threshold. Indicates missing engine pool / "
         "capacity risk. Engines bound to a single site are out of scope for "
-        "this rule — a one-site engine's load is governed by that site's own "
+        "this rule -- a one-site engine's load is governed by that site's own "
         "asset count, not by fan-out across sites."
     )
     default_severity = "warn"

@@ -39,14 +39,14 @@ def test_no_finding_when_loginRegex_set(fake_snapshot):
 
 
 def test_template_without_telnet_block_not_flagged(fake_snapshot):
-    """Templates with no telnet block are silently skipped — flagging every
+    """Templates with no telnet block are silently skipped -- flagging every
     template lacking telnet config would generate massive noise."""
     fake_snapshot.set_templates_full([
         {"id": "t3", "name": "NoTelnet"},
     ])
     r = TelnetRegexUnsetRule().run(fake_snapshot, "info", False, 500, {})
     assert r.findings == []
-    # Examined denominator excludes templates with no telnet block —
+    # Examined denominator excludes templates with no telnet block --
     # they are not applicable to this rule. Avoids inflating "passed"
     # with irrelevant population (same pattern as 0.7.0's
     # sites_overdue_scans fix).

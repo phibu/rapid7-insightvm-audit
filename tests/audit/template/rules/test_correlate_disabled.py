@@ -46,7 +46,7 @@ def test_old_shape_console_examined_but_correlate_not_evaluated(fake_snapshot):
     template.vulnerabilityChecks.enabled (handled by
     EnvSnapshot.template_vuln_enabled()), but the modern `checks.correlate`
     sub-field lives at `vulnerabilityChecks.correlate` on the same console.
-    This rule reads modern-shape `checks.correlate` only — on older shapes,
+    This rule reads modern-shape `checks.correlate` only -- on older shapes,
     the template is correctly examined (counts toward `examined`) but never
     flagged because the sub-field lookup misses. Documents the known
     limitation.

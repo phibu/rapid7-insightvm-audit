@@ -3,7 +3,7 @@
 ## Read-Only Invariant
 
 `rapid7-insightvm-audit` is a **read-only** tool. It is designed to gather
-data from a Rapid7 InsightVM console and produce an HTML report — it never
+data from a Rapid7 InsightVM console and produce an HTML report -- it never
 mutates state on the customer's console.
 
 The guarantee is enforced in three layers:
@@ -34,7 +34,7 @@ relax, broaden, or otherwise affect the read-only invariant.
 `POST /api/3/assets/search` is the only `POST` endpoint the tool calls.
 Rapid7's v3 API requires `POST` for asset filter searches because the
 filter criteria travel in the request body. The endpoint is documented as
-read-only — it returns assets matching the filter and does not mutate
+read-only -- it returns assets matching the filter and does not mutate
 state.
 
 Adding a new `POST` endpoint requires editing `_ALLOWED_POST_PATHS` in

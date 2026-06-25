@@ -76,14 +76,14 @@ def test_safe_run_populates_status_code_for_rapid7_client_error():
 
 def test_safe_run_handles_arbitrary_exception_types():
     """Non-Rapid7ClientError exceptions also produce an error_rule (with
-    error_path=None and error_status_code=None — the diagnostics extractor
+    error_path=None and error_status_code=None -- the diagnostics extractor
     only knows how to read Rapid7ClientError). Also covers the default
     `sources=()` argument: when omitted, the synthesized error_rule
     surfaces an empty sources list."""
     def raises():
         raise ValueError("not a Rapid7ClientError")
 
-    # Note: no `sources=` kwarg — exercises the default `sources=()`.
+    # Note: no `sources=` kwarg -- exercises the default `sources=()`.
     result = safe_run(
         raises,
         rule_id="op.test.value_err",
@@ -117,7 +117,7 @@ def test_safe_run_sets_duration_ms_on_success_path():
         description="d",
     )
     # The behavior under test is that safe_run stamps a wall-clock duration when
-    # the producer left it None — not that the stamp is >= the sleep. Windows'
+    # the producer left it None -- not that the stamp is >= the sleep. Windows'
     # coarse `time.monotonic` granularity can round a 10ms sleep to 0ms, so an
     # exact-floor assertion is flaky; assert the stamp exists and is sane.
     assert result.duration_ms is not None
@@ -127,7 +127,7 @@ def test_safe_run_sets_duration_ms_on_success_path():
 def test_make_rule_result_default_duration_ms_is_none():
     """make_rule_result defaults duration_ms=None (unmeasured), not 0.
 
-    None means "not measured" — distinguishes from a rule that genuinely
+    None means "not measured" -- distinguishes from a rule that genuinely
     measured 0ms (sub-millisecond execution). safe_run's stamping logic
     relies on this distinction.
     """
@@ -158,7 +158,7 @@ def test_safe_run_stamps_duration_on_none_result():
         rule_name="Test",
         description="d",
     )
-    # Assert the stamp exists and is sane, not that it's >= the 10ms sleep —
+    # Assert the stamp exists and is sane, not that it's >= the 10ms sleep --
     # Windows timer granularity can round a 10ms sleep to 0ms (flaky floor).
     assert result.duration_ms is not None
     assert result.duration_ms >= 0
@@ -168,7 +168,7 @@ def test_safe_run_preserves_explicit_zero_duration():
     """A rule that explicitly measured 0ms (sub-millisecond) keeps its 0.
 
     Critical: 0 is now distinct from "not measured" (None). safe_run must
-    NOT overwrite an explicit 0 — that would discard a real measurement.
+    NOT overwrite an explicit 0 -- that would discard a real measurement.
     """
     def rule():
         return make_rule_result(
@@ -298,7 +298,7 @@ def test_safe_run_rule_dispatches_with_class_attrs():
     result = safe_run_rule(rule, lambda: sentinel)
 
     # safe_run may stamp duration_ms via dataclasses.replace, producing a new
-    # instance with the same field values — compare on identity-defining fields
+    # instance with the same field values -- compare on identity-defining fields
     # rather than `is`, which would be coupled to the absence of replace().
     assert result.rule_id == sentinel.rule_id
     assert result.rule_name == sentinel.rule_name

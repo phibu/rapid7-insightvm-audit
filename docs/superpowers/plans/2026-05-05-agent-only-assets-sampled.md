@@ -1,4 +1,4 @@
-# R4 `agent_only_assets` Sampled — Implementation Plan
+# R4 `agent_only_assets` Sampled -- Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -16,7 +16,7 @@ The spec proposes things that don't quite match the codebase as-is. The plan ref
 
 | Spec said | Codebase reality | Plan does |
 |---|---|---|
-| Accessor analog is `agent_inventory()` | The actual method is `agents()` (returns `(sample_dicts, total)`) | Mirror `agents()` (snapshot.py lines 396–429) — same 404 trap, same head probe, same `islice` pattern. |
+| Accessor analog is `agent_inventory()` | The actual method is `agents()` (returns `(sample_dicts, total)`) | Mirror `agents()` (snapshot.py lines 396-429) -- same 404 trap, same head probe, same `islice` pattern. |
 | `sample_info` is a dict | `RuleResult.sample_info: str \| None` | Stringify the dict into a single human-readable line. |
 | Pass `sampled=True, sample_info=...` to `make_rule_result()` | The helper doesn't accept those kwargs | Add `sampled: bool = False` and `sample_info: str \| None = None` to `make_rule_result()` (additive, default-False, safe for other op-check rules). |
 
@@ -26,7 +26,7 @@ The spec proposes things that don't quite match the codebase as-is. The plan ref
 |---|---|---|
 | `src/rapid7_healthcheck/audit/snapshot.py` | Owns `EnvSnapshot` and per-data-source lazy accessors | Add `_agent_asset_ids_sampled_cache` slot in `__init__`; add `agent_asset_ids_sampled()` method; small private helper `_extract_agent_asset_id(agent: dict) -> int \| None` shared with `agent_asset_ids()` |
 | `src/rapid7_healthcheck/checks/_op_rule.py` | Builds `RuleResult` for op-check rules | Add `sampled` and `sample_info` optional params to `make_rule_result()` |
-| `src/rapid7_healthcheck/checks/asset_coverage.py` | R1–R4 operational asset-coverage rules | Rewrite `_agent_only_assets`: drop `full_scan` gate, rename `audit_cfg` → `audit_settings`, swap to new sampled accessor, new summary keys, populate `sampled` + `sample_info`; update the description text in the `safe_run(...)` call site |
+| `src/rapid7_healthcheck/checks/asset_coverage.py` | R1-R4 operational asset-coverage rules | Rewrite `_agent_only_assets`: drop `full_scan` gate, rename `audit_cfg` → `audit_settings`, swap to new sampled accessor, new summary keys, populate `sampled` + `sample_info`; update the description text in the `safe_run(...)` call site |
 | `tests/audit/conftest.py` | `FakeSnapshot` test double | Add `agent_asset_ids_sampled()` and `set_agents_sampled(...)` helper that lets tests configure `(sample, total)` independently of `agent_asset_ids()` |
 | `tests/audit/test_snapshot.py` | EnvSnapshot tests | New test class for `agent_asset_ids_sampled()` |
 | `tests/checks/test_asset_coverage.py` | Asset-coverage rule tests | Replace existing R4 tests; add tests for new directional shape |
@@ -116,7 +116,7 @@ def _extract_agent_asset_id(agent: dict) -> int | None:
     return None
 ```
 
-- [ ] **Step 4: Run the new tests — expect PASS**
+- [ ] **Step 4: Run the new tests -- expect PASS**
 
 Run: `pytest tests/audit/test_snapshot.py::TestExtractAgentAssetId -v`
 
@@ -124,7 +124,7 @@ Expected: 7 passed.
 
 - [ ] **Step 5: Refactor `agent_asset_ids()` to use the helper**
 
-Edit `src/rapid7_healthcheck/audit/snapshot.py`, in `agent_asset_ids()` (currently lines 463–476), replace the inline extraction loop:
+Edit `src/rapid7_healthcheck/audit/snapshot.py`, in `agent_asset_ids()` (currently lines 463-476), replace the inline extraction loop:
 
 ```python
         ids: set[int] = set()
@@ -156,7 +156,7 @@ with:
         return ids
 ```
 
-- [ ] **Step 6: Run the full snapshot test suite — expect green**
+- [ ] **Step 6: Run the full snapshot test suite -- expect green**
 
 Run: `pytest tests/audit/test_snapshot.py -v`
 
@@ -182,7 +182,7 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 - Modify: `src/rapid7_healthcheck/audit/snapshot.py`
 - Test: `tests/audit/test_snapshot.py`
 
-The accessor mirrors `agents()` (existing, snapshot.py lines 396–429): a head probe to read `page.totalResources`, set `_agents_unavailable` on 404, then `itertools.islice(self._client.paginate(...), self._sample_size)`. Cached separately from `agents()` and `agent_asset_ids()`.
+The accessor mirrors `agents()` (existing, snapshot.py lines 396-429): a head probe to read `page.totalResources`, set `_agents_unavailable` on 404, then `itertools.islice(self._client.paginate(...), self._sample_size)`. Cached separately from `agents()` and `agent_asset_ids()`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -320,7 +320,7 @@ class TestAgentAssetIdsSampled:
 
 (Also ensure `import pytest` is present at the top of the file; it almost certainly already is from existing tests.)
 
-- [ ] **Step 2: Run tests — verify they fail**
+- [ ] **Step 2: Run tests -- verify they fail**
 
 Run: `pytest tests/audit/test_snapshot.py::TestAgentAssetIdsSampled -v`
 
@@ -350,7 +350,7 @@ Insert the new method directly after `agent_asset_ids()` (currently ends at line
 
         Cheap by design: paginates ``/api/3/agents`` only until ``sample_size``
         IDs are collected (≈ ``ceil(sample_size / 100)`` page fetches).
-        Independent of ``full_scan`` — always samples.
+        Independent of ``full_scan`` -- always samples.
 
         Returns ``([], 0)`` cleanly when ``/api/3/agents`` is unavailable
         (404), and sets the same ``_agents_unavailable`` flag that
@@ -389,7 +389,7 @@ Insert the new method directly after `agent_asset_ids()` (currently ends at line
         return self._agent_asset_ids_sampled_cache
 ```
 
-- [ ] **Step 5: Run the new tests — expect PASS**
+- [ ] **Step 5: Run the new tests -- expect PASS**
 
 Run: `pytest tests/audit/test_snapshot.py::TestAgentAssetIdsSampled -v`
 
@@ -426,14 +426,14 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 
 The R4 unit tests will register a sampled set independent of the full-set fixture. The cleanest way is a new `set_agents_sampled(sample_dicts, total, *, unavailable=False)` registration helper that backs an `agent_asset_ids_sampled()` method.
 
-We deliberately do **not** derive the sampled fixture from `_agents` / `_agents_total` — it's clearer for the test to spell out exactly what the rule will see, and it lets us test mismatched cases (e.g. `total=500, sample=10`) without weird truncation semantics.
+We deliberately do **not** derive the sampled fixture from `_agents` / `_agents_total` -- it's clearer for the test to spell out exactly what the rule will see, and it lets us test mismatched cases (e.g. `total=500, sample=10`) without weird truncation semantics.
 
 - [ ] **Step 1: Add fields to `FakeSnapshot.__init__`**
 
-In `tests/audit/conftest.py`, locate the `# Agent fleet` block in `__init__` (currently lines 21–24) and add three new fields after the existing three:
+In `tests/audit/conftest.py`, locate the `# Agent fleet` block in `__init__` (currently lines 21-24) and add three new fields after the existing three:
 
 ```python
-        # Agent fleet — sampled accessor (independent of full set above)
+        # Agent fleet -- sampled accessor (independent of full set above)
         self._agents_sampled: list[dict] = []
         self._agents_sampled_total: int = 0
         self._agents_sampled_unavailable: bool = False
@@ -441,7 +441,7 @@ In `tests/audit/conftest.py`, locate the `# Agent fleet` block in `__init__` (cu
 
 - [ ] **Step 2: Add a registration helper**
 
-Add a new helper method below the existing `set_agents` method (currently lines 56–59):
+Add a new helper method below the existing `set_agents` method (currently lines 56-59):
 
 ```python
     def set_agents_sampled(
@@ -464,11 +464,11 @@ Add a new helper method below the existing `set_agents` method (currently lines 
             self._agents_unavailable = True
 ```
 
-(Note the last two lines: when the test marks the sampled accessor unavailable, the shared `_agents_unavailable` flag also flips so `is_agents_unavailable()` returns True — matches `EnvSnapshot.agent_asset_ids_sampled()` real behavior.)
+(Note the last two lines: when the test marks the sampled accessor unavailable, the shared `_agents_unavailable` flag also flips so `is_agents_unavailable()` returns True -- matches `EnvSnapshot.agent_asset_ids_sampled()` real behavior.)
 
 - [ ] **Step 3: Add the accessor method**
 
-Add directly below the existing `agent_asset_ids()` (currently lines 96–110):
+Add directly below the existing `agent_asset_ids()` (currently lines 96-110):
 
 ```python
     def agent_asset_ids_sampled(self) -> tuple[list[int], int]:
@@ -515,7 +515,7 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 
 **Files:**
 - Modify: `src/rapid7_healthcheck/checks/_op_rule.py`
-- Test: `tests/checks/test_op_rule.py` (existing file — confirm with `ls`)
+- Test: `tests/checks/test_op_rule.py` (existing file -- confirm with `ls`)
 
 This is a small additive change to the helper. Default values keep all existing op-check rules working unchanged.
 
@@ -550,9 +550,9 @@ def test_make_rule_result_passes_sampled_and_sample_info():
     assert r.sample_info == "strategy=first-n; sampled=100; population=500000"
 ```
 
-(Ensure `make_rule_result` is imported at the top of the test file. It should be — confirm and add if missing.)
+(Ensure `make_rule_result` is imported at the top of the test file. It should be -- confirm and add if missing.)
 
-- [ ] **Step 3: Run test — verify it fails**
+- [ ] **Step 3: Run test -- verify it fails**
 
 Run: `pytest tests/checks/test_op_rule.py::test_make_rule_result_passes_sampled_and_sample_info -v`
 
@@ -560,7 +560,7 @@ Expected: `TypeError: make_rule_result() got an unexpected keyword argument 'sam
 
 - [ ] **Step 4: Add the parameters to `make_rule_result`**
 
-In `src/rapid7_healthcheck/checks/_op_rule.py`, edit the `make_rule_result` signature (currently lines 23–33) to add two new keyword-only params with defaults, and pass them through:
+In `src/rapid7_healthcheck/checks/_op_rule.py`, edit the `make_rule_result` signature (currently lines 23-33) to add two new keyword-only params with defaults, and pass them through:
 
 ```python
 def make_rule_result(
@@ -578,7 +578,7 @@ def make_rule_result(
 ) -> RuleResult:
 ```
 
-And in the `return RuleResult(...)` block at the bottom of the function (currently lines 48–58), add the two new fields:
+And in the `return RuleResult(...)` block at the bottom of the function (currently lines 48-58), add the two new fields:
 
 ```python
     return RuleResult(
@@ -596,7 +596,7 @@ And in the `return RuleResult(...)` block at the bottom of the function (current
     )
 ```
 
-- [ ] **Step 5: Run new + existing tests — expect PASS**
+- [ ] **Step 5: Run new + existing tests -- expect PASS**
 
 Run: `pytest tests/checks/test_op_rule.py -v`
 
@@ -625,7 +625,7 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 
 This is the core behavior change. After this task, R4 runs unconditionally, samples up to `audit.sample_size` agents, and produces directional output.
 
-The existing description block in the `safe_run(...)` call site (currently lines 124–139) also needs updating to remove the "(Requires audit.full_scan=true)" wording — that's done in this same task to keep wording in sync with behavior.
+The existing description block in the `safe_run(...)` call site (currently lines 124-139) also needs updating to remove the "(Requires audit.full_scan=true)" wording -- that's done in this same task to keep wording in sync with behavior.
 
 - [ ] **Step 1: Update the rule method signature & description constants**
 
@@ -647,7 +647,7 @@ Current:
 
 (The lambda still passes `config.audit`; the receiving param name changes inside the method, not at the call site. Leave the call line as-is.)
 
-But the **`safe_run`'s `description=` argument** must be updated to match the new method-internal description (so when `safe_run` synthesizes an error_rule, the description matches the happy path). Find the multi-line `description=(` string passed to `safe_run` for this rule (lines ~128–139) and replace it with:
+But the **`safe_run`'s `description=` argument** must be updated to match the new method-internal description (so when `safe_run` synthesizes an error_rule, the description matches the happy path). Find the multi-line `description=(` string passed to `safe_run` for this rule (lines ~128-139) and replace it with:
 
 ```python
                 description=(
@@ -657,7 +657,7 @@ But the **`safe_run`'s `description=` argument** must be updated to match the ne
                     "scheduled scans.\n\n"
                     "Sampled. Inspects up to audit.sample_size agents (default "
                     "100) drawn in API default order from /api/3/agents. Result "
-                    "is a directional estimate, not a complete inventory — for "
+                    "is a directional estimate, not a complete inventory -- for "
                     "environments with hundreds of thousands of agents, full "
                     "enumeration is intentionally avoided. Increase "
                     "audit.sample_size for a tighter estimate at the cost of "
@@ -671,11 +671,11 @@ Find `_agent_only_assets` (starts ~line 289, ends ~line 395). The full text is i
 
 - [ ] **Step 3: Read the surrounding context**
 
-Skim 10 lines before and 10 lines after to confirm no surprises (e.g., other helpers used) — `Rapid7ClientError` and `_PER_ITEM_FINDING_CAP` are imported at the top of the file; `make_rule_result`, `skipped_rule`, and `safe_run` come from `_op_rule`. `RuleResult` is imported from `audit/__init__.py`. `Finding` is imported from `checks/__init__.py`.
+Skim 10 lines before and 10 lines after to confirm no surprises (e.g., other helpers used) -- `Rapid7ClientError` and `_PER_ITEM_FINDING_CAP` are imported at the top of the file; `make_rule_result`, `skipped_rule`, and `safe_run` come from `_op_rule`. `RuleResult` is imported from `audit/__init__.py`. `Finding` is imported from `checks/__init__.py`.
 
 - [ ] **Step 4: Replace the method body**
 
-Replace the entire `_agent_only_assets` method (currently lines 289–395) with:
+Replace the entire `_agent_only_assets` method (currently lines 289-395) with:
 
 ```python
     def _agent_only_assets(
@@ -694,7 +694,7 @@ Replace the entire `_agent_only_assets` method (currently lines 289–395) with:
             "scheduled scans.\n\n"
             "Sampled. Inspects up to audit.sample_size agents (default "
             "100) drawn in API default order from /api/3/agents. Result "
-            "is a directional estimate, not a complete inventory — for "
+            "is a directional estimate, not a complete inventory -- for "
             "environments with hundreds of thousands of agents, full "
             "enumeration is intentionally avoided. Increase "
             "audit.sample_size for a tighter estimate at the cost of "
@@ -730,7 +730,7 @@ Replace the entire `_agent_only_assets` method (currently lines 289–395) with:
         targets = snapshot.all_included_targets()
 
         if targets is None:
-            # snapshot fake / edge case — treat as no scope coverage info, rule indeterminate.
+            # snapshot fake / edge case -- treat as no scope coverage info, rule indeterminate.
             return RuleResult(
                 rule_id=rid,
                 rule_name=name,
@@ -866,13 +866,13 @@ Replace the entire `_agent_only_assets` method (currently lines 289–395) with:
         )
 ```
 
-- [ ] **Step 5: Run the existing R4 tests — expect failures**
+- [ ] **Step 5: Run the existing R4 tests -- expect failures**
 
 Run: `pytest tests/checks/test_asset_coverage.py -v -k "agent_only"`
 
-Expected: tests that asserted `audit.full_scan=true` gating now fail (they assert `status="skipped"` but get real findings); tests asserting old summary key `agent_only_count` now fail. This is expected — Task 6 rewrites them.
+Expected: tests that asserted `audit.full_scan=true` gating now fail (they assert `status="skipped"` but get real findings); tests asserting old summary key `agent_only_count` now fail. This is expected -- Task 6 rewrites them.
 
-- [ ] **Step 6: Run tests for the rest of asset_coverage to confirm no regression in R1–R3**
+- [ ] **Step 6: Run tests for the rest of asset_coverage to confirm no regression in R1-R3**
 
 Run: `pytest tests/checks/test_asset_coverage.py -v -k "not agent_only"`
 
@@ -886,7 +886,7 @@ git commit -m "feat(asset_coverage): R4 sampled and unconditional
 
 op.asset_coverage.agent_only_assets now samples up to audit.sample_size
 agents (default 100) instead of enumerating all agents. The audit.full_scan
-gate is removed — the rule runs on every report and bounds API cost to
+gate is removed -- the rule runs on every report and bounds API cost to
 ~1 + ceil(N/100) + N GETs.
 
 Summary key rename: agent_only_count → agent_only_count_sampled. New keys:
@@ -928,7 +928,7 @@ Delete every test function whose name starts with `test_agent_only_` and any R4-
 
 - [ ] **Step 4: Add the new R4 tests**
 
-Append at the end of `tests/checks/test_asset_coverage.py` (or in a new section). Below is the full block. Note the imports at the top of the file likely already include `pytest`, `AssetCoverageCheck`, `AppConfig`, `Rapid7ClientError`, etc. — verify and add `from unittest.mock import MagicMock` if missing.
+Append at the end of `tests/checks/test_asset_coverage.py` (or in a new section). Below is the full block. Note the imports at the top of the file likely already include `pytest`, `AssetCoverageCheck`, `AppConfig`, `Rapid7ClientError`, etc. -- verify and add `from unittest.mock import MagicMock` if missing.
 
 ```python
 # ---------- R4: op.asset_coverage.agent_only_assets ----------
@@ -958,7 +958,7 @@ def test_agent_only_runs_unconditionally(fake_snapshot, monkeypatch):
     # Two sampled agents, one in-scope, one outside.
     fake_snapshot.set_agents_sampled(
         [{"id": 100}, {"id": 101}],
-        total=500_000,  # huge fleet — verify total_agents is read from this
+        total=500_000,  # huge fleet -- verify total_agents is read from this
     )
     client = MagicMock()
     client.get.side_effect = lambda path, **_: {
@@ -967,7 +967,7 @@ def test_agent_only_runs_unconditionally(fake_snapshot, monkeypatch):
     }[path]
 
     check = AssetCoverageCheck()
-    cfg = _build_check_config(full_scan=False)  # full_scan=False — rule still runs
+    cfg = _build_check_config(full_scan=False)  # full_scan=False -- rule still runs
     result = check.run(client, cfg, snapshot=fake_snapshot)
     r4 = _agent_only_rule(result.rule_results)
 
@@ -1189,9 +1189,9 @@ from rapid7_healthcheck.client import Rapid7ClientError
 from rapid7_healthcheck.config import AppConfig
 ```
 
-If `AppConfig.default()` doesn't exist, look at the test file for how other tests build a config — many op-check tests use a fixture or build via `AppConfig(...)`. Adapt `_build_check_config` to whatever pattern the file already uses.
+If `AppConfig.default()` doesn't exist, look at the test file for how other tests build a config -- many op-check tests use a fixture or build via `AppConfig(...)`. Adapt `_build_check_config` to whatever pattern the file already uses.
 
-- [ ] **Step 6: Run the new R4 tests — expect PASS**
+- [ ] **Step 6: Run the new R4 tests -- expect PASS**
 
 Run: `pytest tests/checks/test_asset_coverage.py -v -k "agent_only"`
 
@@ -1253,7 +1253,7 @@ Expected: no changes to `client.py`.
 
 ---
 
-## Task 8: Documentation — README
+## Task 8: Documentation -- README
 
 **Files:**
 - Modify: `README.md`
@@ -1266,7 +1266,7 @@ Find the row for R4 (`op.asset_coverage.agent_only_assets`).
 
 - [ ] **Step 2: Read the surrounding rows to match table format**
 
-The exact format depends on the table style. Read enough lines to see the column structure (10–20 lines around the match).
+The exact format depends on the table style. Read enough lines to see the column structure (10-20 lines around the match).
 
 - [ ] **Step 3: Update the R4 row**
 
@@ -1274,7 +1274,7 @@ Replace the R4 row's description (or whichever column carries it) so it reflects
 
 > "Sampled (up to `audit.sample_size` agents). Reports Insight-Agent assets whose IP is outside every site's `included_targets`. Directional estimate, not full enumeration."
 
-If the table has a "Honors `audit.full_scan`" column (or similar), set R4's value to "no — always samples".
+If the table has a "Honors `audit.full_scan`" column (or similar), set R4's value to "no -- always samples".
 
 - [ ] **Step 4: If there's a "Rules NOT implemented" or "Read-only constraints" section, no change**
 
@@ -1291,7 +1291,7 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 
 ---
 
-## Task 9: Documentation — CHANGELOG
+## Task 9: Documentation -- CHANGELOG
 
 **Files:**
 - Modify: `CHANGELOG.md`
@@ -1307,7 +1307,7 @@ Locate the topmost unreleased section.
 Under `### Changed` (create the subsection if it doesn't yet exist in the topmost unreleased block):
 
 ```markdown
-- `op.asset_coverage.agent_only_assets` (R4) is now **sampled and runs unconditionally**. Previously it required `audit.full_scan=true` and enumerated every Insight-Agent asset, issuing one `GET /api/3/assets/{id}` per agent — unfeasible on large fleets (500k+ agents would never complete). The rule now samples up to `audit.sample_size` agents (default 100) drawn in API default order from `/api/3/agents`, bounding API cost to ~`1 + ceil(N/100) + N` GETs (~102 calls at default sample size).
+- `op.asset_coverage.agent_only_assets` (R4) is now **sampled and runs unconditionally**. Previously it required `audit.full_scan=true` and enumerated every Insight-Agent asset, issuing one `GET /api/3/assets/{id}` per agent -- unfeasible on large fleets (500k+ agents would never complete). The rule now samples up to `audit.sample_size` agents (default 100) drawn in API default order from `/api/3/agents`, bounding API cost to ~`1 + ceil(N/100) + N` GETs (~102 calls at default sample size).
 - R4 summary key `agent_only_count` renamed to `agent_only_count_sampled`. New summary keys: `sample_size`, `sample_size_configured`, `sampled_fetched`, `total_agents`, `sampled_outside_scope_pct`, `estimated_outsiders_fleetwide`. `RuleResult.sampled` is now `True` for this rule, with `sample_info` carrying strategy/population details.
 - R4's first finding is now a directional summary line ("Sampled N of M agents (P%): X of sample (Q%) are outside scope. Extrapolated estimate ≈Z fleet-wide."), followed by per-outsider findings as before. Per-asset 404s during sampling are excluded from the percentage and extrapolation denominators.
 ```
@@ -1315,7 +1315,7 @@ Under `### Changed` (create the subsection if it doesn't yet exist in the topmos
 Under `### Added`:
 
 ```markdown
-- `EnvSnapshot.agent_asset_ids_sampled()` — sample-aware accessor returning `(sample_ids, total_count)` from `/api/3/agents`. Mirrors `agents()`'s 404-handling pattern; cached independently of `agent_asset_ids()` and `agents()`.
+- `EnvSnapshot.agent_asset_ids_sampled()` -- sample-aware accessor returning `(sample_ids, total_count)` from `/api/3/agents`. Mirrors `agents()`'s 404-handling pattern; cached independently of `agent_asset_ids()` and `agents()`.
 - `make_rule_result()` (op-check helper) accepts optional `sampled` and `sample_info` keyword arguments.
 ```
 
@@ -1346,7 +1346,7 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 Open `backlog.md`. Under the `## 0.2.9` heading, remove the bullet that begins with:
 
 ```
-- **important** — `op.asset_coverage.agent_only_assets` (R4) issues one `GET /api/3/assets/{id}` per agent in a sequential loop. ...
+- **important** -- `op.asset_coverage.agent_only_assets` (R4) issues one `GET /api/3/assets/{id}` per agent in a sequential loop. ...
 ```
 
 Leave the two other 0.2.9 items (`dead_asset_groups` false-positive, the `_PER_ITEM_FINDING_CAP` cleanup helper) intact.
@@ -1374,7 +1374,7 @@ Note: `backlog.md` is gitignored per CLAUDE.md, so this commit may be a no-op. I
 
 **Files:** none (verification only)
 
-- [ ] **Step 1: Full test suite — clean run**
+- [ ] **Step 1: Full test suite -- clean run**
 
 Run: `pytest -v`
 
@@ -1402,7 +1402,7 @@ Open `report.html` and verify the R4 card:
 
 If no console is available, skip this step.
 
-- [ ] **Step 4: git status — confirm clean tree**
+- [ ] **Step 4: git status -- confirm clean tree**
 
 Run: `git status`
 

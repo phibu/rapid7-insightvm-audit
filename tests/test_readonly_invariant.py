@@ -58,7 +58,7 @@ def test_no_write_verb_calls_outside_client_module() -> None:
             if _WRITE_VERB_CALL_RE.search(line):
                 offenders.append(f"{path.relative_to(SRC_ROOT.parent)}:{lineno}: {line.strip()}")
     assert not offenders, (
-        "Write-verb calls found outside client.py — read-only invariant broken:\n"
+        "Write-verb calls found outside client.py -- read-only invariant broken:\n"
         + "\n".join(offenders)
     )
 
@@ -74,7 +74,7 @@ def test_no_direct_requests_write_calls_outside_client_module() -> None:
             if _DIRECT_REQUESTS_WRITE_RE.search(line):
                 offenders.append(f"{path.relative_to(SRC_ROOT.parent)}:{lineno}: {line.strip()}")
     assert not offenders, (
-        "Direct requests.<verb>() calls found outside client.py — bypasses the "
+        "Direct requests.<verb>() calls found outside client.py -- bypasses the "
         "read-only guard:\n" + "\n".join(offenders)
     )
 

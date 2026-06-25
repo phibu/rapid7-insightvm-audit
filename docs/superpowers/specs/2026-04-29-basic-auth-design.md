@@ -1,4 +1,4 @@
-# Basic Auth support for Security Console — design
+# Basic Auth support for Security Console -- design
 
 **Status:** approved
 **Target release:** 0.1.3
@@ -15,7 +15,7 @@ UI.
 It does not work for at least one common Rapid7-hosted-console scenario:
 SAML-provisioned users with MFA enabled (e.g. Global Administrators on a
 `*.hosted.rapid7.com` tenant) cannot generate a console-local API key
-through the UI — Rapid7 disables that path because there is no local
+through the UI -- Rapid7 disables that path because there is no local
 password to scope the key against. The same users *can* still authenticate
 to the API via HTTP Basic Auth using their console-local credentials (or
 service-account credentials provisioned by an admin).
@@ -65,8 +65,8 @@ the `rapid7:` block with a one-line note about when to use it.
 code 3 (startup failure) when missing. New behaviour, branching on
 `config.rapid7.auth_mode`:
 
-- `"api_key"` — same as today.
-- `"basic"` — read `R7_BASIC_USER` and `R7_BASIC_PASSWORD` from env (or
+- `"api_key"` -- same as today.
+- `"basic"` -- read `R7_BASIC_USER` and `R7_BASIC_PASSWORD` from env (or
   `.env`). Either missing → exit code 3 with a precise message naming the
   missing variable.
 
@@ -77,7 +77,7 @@ mutually-exclusive constructor kwargs:
 - `basic_auth: tuple[str, str] | None`
 
 Exactly one must be provided; passing both or neither is a programming
-bug, raised as `ValueError` (not `ReadOnlyViolationError` — that name is
+bug, raised as `ValueError` (not `ReadOnlyViolationError` -- that name is
 reserved for runtime read-only enforcement).
 
 ### Client
@@ -86,7 +86,7 @@ reserved for runtime read-only enforcement).
 
 - API-key mode: existing `X-Api-Key` header (unchanged).
 - Basic mode: pass `auth=(user, password)` to every `self._session.request`
-  call. Don't manually base64-encode the `Authorization` header — `requests`
+  call. Don't manually base64-encode the `Authorization` header -- `requests`
   handles encoding correctly.
 
 The `User-Agent` header stays the same in both modes. The auth machinery
@@ -105,10 +105,10 @@ New tests, organised by file:
 
 `tests/test_client.py`:
 - `test_client_uses_api_key_header_in_api_key_mode`
-- `test_client_uses_basic_auth_in_basic_mode` — assert the `auth=` kwarg
+- `test_client_uses_basic_auth_in_basic_mode` -- assert the `auth=` kwarg
   is passed to the mocked session.
-- `test_client_rejects_both_api_key_and_basic_auth` — mutual exclusivity.
-- `test_client_rejects_neither_api_key_nor_basic_auth` — same gate from
+- `test_client_rejects_both_api_key_and_basic_auth` -- mutual exclusivity.
+- `test_client_rejects_neither_api_key_nor_basic_auth` -- same gate from
   the other side.
 
 `tests/test_config.py`:
@@ -133,7 +133,7 @@ New tests, organised by file:
   port suffix; uses 443).
 
 `SECURITY.md` gains one paragraph: Basic Auth doesn't change the
-read-only invariant — same allowlist enforcement applies.
+read-only invariant -- same allowlist enforcement applies.
 
 `CHANGELOG.md` `[Unreleased]` → `[0.1.3]` entry under `### Added` /
 `### Changed`.
@@ -163,6 +163,6 @@ read-only invariant — same allowlist enforcement applies.
    `verify_tls` field already exists; SSL issues are a separate concern.
 2. **Implicit auth selection vs explicit knob vs auto-detect?** Explicit
    knob (Q2 = B). Operator picks; failure messages stay precise.
-3. **One env var or two for credentials?** Two — `R7_BASIC_USER` and
+3. **One env var or two for credentials?** Two -- `R7_BASIC_USER` and
    `R7_BASIC_PASSWORD` (Q3 = A). Mirrors the existing `R7_API_KEY`
    pattern.

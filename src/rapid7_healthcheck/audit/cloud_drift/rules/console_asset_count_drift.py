@@ -19,12 +19,12 @@ class ConsoleAssetCountDriftRule(AuditRule):
         "console-to-cloud sync keeps these within a small percentage; "
         "large divergence usually indicates broken connector configuration. "
         "If exactly one side reports 0 assets and the other reports any "
-        "non-zero count, the finding is upgraded to fail — that is a "
+        "non-zero count, the finding is upgraded to fail -- that is a "
         "broken sync, not a skew."
     )
     default_severity = "warn"
     expensive = False
-    # Tuple, not list — class-level mutable defaults are a footgun even
+    # Tuple, not list -- class-level mutable defaults are a footgun even
     # when nothing currently mutates them.
     sources: tuple[str, ...] = (
         "https://insight.help.rapid7.com/docs/api-overview",
@@ -42,7 +42,7 @@ class ConsoleAssetCountDriftRule(AuditRule):
         drift_percent: float | None = None
 
         if console_total == 0 and cloud_total == 0:
-            # No assets on either side — vacuously consistent.
+            # No assets on either side -- vacuously consistent.
             pass
         elif console_total == 0 or cloud_total == 0:
             findings.append(Finding(

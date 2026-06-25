@@ -16,7 +16,7 @@ def _is_external_auth(user: dict) -> bool:
 
     Mirrors the `local_account_when_sso_configured` rule's contract: anything
     other than `authentication.type == "normal"` is treated as external. A
-    missing `authentication` field (or empty `type`) is treated as local —
+    missing `authentication` field (or empty `type`) is treated as local --
     conservative; preserves prior behavior on malformed user objects.
     """
     auth = user.get("authentication") or {}
@@ -34,7 +34,7 @@ class PrivilegedUserWithoutMfaRule(AuditRule):
         "Flags Global Administrator or superuser accounts that authenticate "
         "against InsightVM's local credential store and do not have two-factor "
         "authentication configured. Accounts whose `authentication.type` is "
-        "`saml`, `ldap`, or `kerberos` are excluded — MFA enforcement for "
+        "`saml`, `ldap`, or `kerberos` are excluded -- MFA enforcement for "
         "those is the upstream IdP's responsibility, and a single aggregate "
         "info finding lists them so they can be verified at the IdP. Service "
         "accounts that need to authenticate via HTTP Basic Auth necessarily "
@@ -72,7 +72,7 @@ class PrivilegedUserWithoutMfaRule(AuditRule):
         users_without_mfa = 0
         users_exempt = 0
         users_succeeded = 0       # at least one 2FA call returned a status
-        users_auth_denied: list[dict] = []  # 401s — disambiguated post-pass
+        users_auth_denied: list[dict] = []  # 401s -- disambiguated post-pass
         external_auth_users: list[dict] = []  # NEW: {login, auth_type} per external user
 
         for u in examined:
@@ -81,7 +81,7 @@ class PrivilegedUserWithoutMfaRule(AuditRule):
                 users_exempt += 1
                 continue
             if _is_external_auth(u):
-                # External-auth users delegate MFA to the IdP — do NOT call
+                # External-auth users delegate MFA to the IdP -- do NOT call
                 # the 2FA endpoint; collect for the aggregate info finding.
                 auth_type = (u.get("authentication") or {}).get("type") or ""
                 external_auth_users.append({"login": login, "auth_type": auth_type})
@@ -97,7 +97,7 @@ class PrivilegedUserWithoutMfaRule(AuditRule):
                 raise
             users_succeeded += 1
             if mfa is None:
-                # Endpoint not available on this console at all — skip the rule honestly.
+                # Endpoint not available on this console at all -- skip the rule honestly.
                 endpoint_unavailable = True
                 break
             if mfa is False:
@@ -118,7 +118,7 @@ class PrivilegedUserWithoutMfaRule(AuditRule):
                     },
                 ))
 
-        # 404: endpoint absent on this console — preserve existing behavior.
+        # 404: endpoint absent on this console -- preserve existing behavior.
         if endpoint_unavailable:
             return RuleResult(
                 rule_id=self.rule_id,
@@ -129,7 +129,7 @@ class PrivilegedUserWithoutMfaRule(AuditRule):
                 findings=[Finding(
                     severity="info",
                     message=(
-                        "MFA-status endpoint /api/3/users/{id}/2FA returned 404 — "
+                        "MFA-status endpoint /api/3/users/{id}/2FA returned 404 -- "
                         "this console does not expose 2FA state via API. Audit MFA in the UI."
                     ),
                     details={"reason": "2FA endpoint unavailable"},
@@ -145,7 +145,7 @@ class PrivilegedUserWithoutMfaRule(AuditRule):
             )
 
         # 401 disambiguation: if at least one local user was queried and NONE
-        # succeeded, the calling key likely lacks Global Administrator — every
+        # succeeded, the calling key likely lacks Global Administrator -- every
         # 2FA call is ambiguous, so self-skip. External-auth users do not
         # affect this: the 2FA endpoint is never called for them, so their
         # presence proves nothing about the calling key's privilege. A pure-401
@@ -182,7 +182,7 @@ class PrivilegedUserWithoutMfaRule(AuditRule):
             )
 
         # At least one user succeeded (or at least one external user existed)
-        # — 401s on others mean "no MFA configured".
+        # -- 401s on others mean "no MFA configured".
         for u in users_auth_denied:
             login = (u.get("login") or "").strip()
             users_without_mfa += 1
@@ -210,7 +210,7 @@ class PrivilegedUserWithoutMfaRule(AuditRule):
                 message=(
                     f"{len(external_auth_users)} privileged users authenticate via "
                     f"external sources (SAML / LDAP / Kerberos). MFA enforcement for "
-                    f"these accounts is delegated to the upstream identity provider — "
+                    f"these accounts is delegated to the upstream identity provider -- "
                     f"verify it is enforced there. Local InsightVM 2FA does not apply "
                     f"to these accounts."
                 ),

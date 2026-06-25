@@ -32,7 +32,7 @@ _TEMPLATE_RULE_REGISTRY: dict[str, type[Rule]] = {}
 # Appended to the message of any finding raised against a built-in scan
 # template. Built-ins are not editable, so the remediation is indirect.
 _BUILTIN_REMEDIATION = (
-    " (Built-in template — remediate by cloning it, fixing the clone, and "
+    " (Built-in template -- remediate by cloning it, fixing the clone, and "
     "rebinding the affected site.)"
 )
 
@@ -52,7 +52,7 @@ def _label_finding_if_builtin(finding: Finding) -> Finding:
     if not (isinstance(tid, str) and EnvSnapshot.is_builtin_template({"id": tid})):
         return finding
     if details.get("builtin") is True:
-        return finding  # already labelled — idempotent
+        return finding  # already labelled -- idempotent
     return replace(
         finding,
         message=finding.message + _BUILTIN_REMEDIATION,
@@ -65,7 +65,7 @@ def label_builtin_findings(rule_results: list[RuleResult]) -> list[RuleResult]:
 
     Built-in templates stay in scope but their findings are marked rather than
     suppressed (see docs/adr/0003-audit-builtin-templates-but-label-them.md).
-    Applied once at the ``TemplateAuditCheck`` seam — keeps the shared
+    Applied once at the ``TemplateAuditCheck`` seam -- keeps the shared
     ``AuditRunner`` and the ~17 rule files untouched, since every template
     finding already carries ``details['template_id']``. Rebuilds each
     ``RuleResult`` with re-stamped findings; status/severity/summary are
@@ -120,7 +120,7 @@ class TemplateAuditCheck:
 
         def build_snapshot(client, config, _cloud) -> EnvSnapshot:
             # Accept an outer-owned snapshot when the caller provides one (future
-            # cleanup path — see __main__._run_checks). Otherwise build our own,
+            # cleanup path -- see __main__._run_checks). Otherwise build our own,
             # which keeps sampling settings scoped to this audit's config block.
             # TemplateAuditConfig has no agents_timeout_seconds field yet; the
             # builder supplies DEFAULT_AGENTS_TIMEOUT. See CONTEXT.md
@@ -148,7 +148,7 @@ class TemplateAuditCheck:
         # Label (don't suppress) findings on built-in scan templates. Applied
         # here at the category seam so the shared AuditRunner and the rule
         # files stay untouched (see docs/adr/0003). A skipped category carries
-        # no rule_results — nothing to label.
+        # no rule_results -- nothing to label.
         if result.rule_results:
             result.rule_results = label_builtin_findings(result.rule_results)
             result.findings = flatten_findings(result.rule_results)
@@ -156,7 +156,7 @@ class TemplateAuditCheck:
 
 
 # Register every template-audit rule at package-import time. The directory is
-# the single source of truth — see CONTEXT.md "Rule registration".
+# the single source of truth -- see CONTEXT.md "Rule registration".
 from rapid7_healthcheck._rule_loader import load_rules  # noqa: E402
 
 load_rules("rapid7_healthcheck.audit.template.rules")

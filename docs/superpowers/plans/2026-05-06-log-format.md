@@ -16,16 +16,16 @@
 
 **Files modified:**
 
-- `src/rapid7_healthcheck/_log.py` — add `PlainFormatter`, `CMTraceFormatter`, `JsonFormatter`, `make_file_formatter()`. Existing `FlushingFileHandler` unchanged.
-- `src/rapid7_healthcheck/config.py` — extend `ReportConfig` dataclass with `log_format`; extend `_build_report_config` validator (lines 486–520).
-- `src/rapid7_healthcheck/__main__.py` — add `--log-format` argument; thread `log_format` through `_setup_logging` and `_resolve_log_file`; resolve effective format (CLI > config) before second logging-setup pass.
-- `docs/examples/config.yaml` — document the new `report.log_format` key.
-- `tests/test_logging_setup.py` — extend with format-aware path resolution and `_setup_logging` formatter selection.
-- `tests/test_config.py` — extend with `report.log_format` validation cases.
+- `src/rapid7_healthcheck/_log.py` -- add `PlainFormatter`, `CMTraceFormatter`, `JsonFormatter`, `make_file_formatter()`. Existing `FlushingFileHandler` unchanged.
+- `src/rapid7_healthcheck/config.py` -- extend `ReportConfig` dataclass with `log_format`; extend `_build_report_config` validator (lines 486-520).
+- `src/rapid7_healthcheck/__main__.py` -- add `--log-format` argument; thread `log_format` through `_setup_logging` and `_resolve_log_file`; resolve effective format (CLI > config) before second logging-setup pass.
+- `docs/examples/config.yaml` -- document the new `report.log_format` key.
+- `tests/test_logging_setup.py` -- extend with format-aware path resolution and `_setup_logging` formatter selection.
+- `tests/test_config.py` -- extend with `report.log_format` validation cases.
 
 **Files created:**
 
-- `tests/test_log_formatters.py` — unit tests for the three formatter classes.
+- `tests/test_log_formatters.py` -- unit tests for the three formatter classes.
 
 **Layer boundaries (do not violate):** All changes are inside the logging/config/CLI layer. No HTTP code is touched. The read-only verb allowlist in `client.py` is unaffected. No new module issues HTTP.
 
@@ -37,7 +37,7 @@
 - Modify: `src/rapid7_healthcheck/_log.py`
 - Test: `tests/test_log_formatters.py` (new)
 
-This is a no-op refactor — the format string moves from `_setup_logging`'s `logging.basicConfig(format=...)` call into a `Formatter` class. Subsequent tasks will then use this class explicitly so the format string lives in one place.
+This is a no-op refactor -- the format string moves from `_setup_logging`'s `logging.basicConfig(format=...)` call into a `Formatter` class. Subsequent tasks will then use this class explicitly so the format string lives in one place.
 
 - [ ] **Step 1: Create the test file with a failing test**
 
@@ -89,7 +89,7 @@ def test_plain_formatter_matches_legacy_format_string():
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `pytest tests/test_log_formatters.py::test_plain_formatter_matches_legacy_format_string -v`
-Expected: FAIL — `ImportError: cannot import name 'PlainFormatter'`.
+Expected: FAIL -- `ImportError: cannot import name 'PlainFormatter'`.
 
 - [ ] **Step 3: Add `PlainFormatter` to `_log.py`**
 
@@ -212,7 +212,7 @@ def test_cmtrace_time_offset_format():
 - [ ] **Step 2: Run the new tests to verify they fail**
 
 Run: `pytest tests/test_log_formatters.py -v -k cmtrace`
-Expected: FAIL — `ImportError: cannot import name 'CMTraceFormatter'`.
+Expected: FAIL -- `ImportError: cannot import name 'CMTraceFormatter'`.
 
 - [ ] **Step 3: Implement `CMTraceFormatter`**
 
@@ -376,7 +376,7 @@ def test_json_formatter_each_line_is_valid_json():
 - [ ] **Step 2: Run the JSON tests to verify they fail**
 
 Run: `pytest tests/test_log_formatters.py -v -k json`
-Expected: FAIL — `ImportError: cannot import name 'JsonFormatter'`.
+Expected: FAIL -- `ImportError: cannot import name 'JsonFormatter'`.
 
 - [ ] **Step 3: Implement `JsonFormatter`**
 
@@ -459,7 +459,7 @@ def test_make_file_formatter_rejects_unknown():
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `pytest tests/test_log_formatters.py -v -k make_file_formatter`
-Expected: FAIL — `AttributeError: module 'rapid7_healthcheck._log' has no attribute 'make_file_formatter'`.
+Expected: FAIL -- `AttributeError: module 'rapid7_healthcheck._log' has no attribute 'make_file_formatter'`.
 
 - [ ] **Step 3: Implement the selector**
 
@@ -469,7 +469,7 @@ Append to `src/rapid7_healthcheck/_log.py`:
 def make_file_formatter(log_format: str) -> logging.Formatter:
     """Return the file-log formatter matching the requested string.
 
-    Defensive — config validation should have caught unknown values upstream.
+    Defensive -- config validation should have caught unknown values upstream.
     """
     if log_format == "plain":
         return PlainFormatter()
@@ -503,7 +503,7 @@ git commit -m "feat(_log): add make_file_formatter switch for log_format string"
 
 - [ ] **Step 1: Add failing tests**
 
-Append to `tests/test_config.py` (no need to read full file — these tests construct fresh fixtures):
+Append to `tests/test_config.py` (no need to read full file -- these tests construct fresh fixtures):
 
 ```python
 def test_report_log_format_defaults_to_plain(tmp_path, monkeypatch):
@@ -579,16 +579,16 @@ def test_report_log_format_rejects_unknown_value(tmp_path):
         load_config(str(cfg_path))
 ```
 
-> If `tests/test_config.py` already has helpers for building a minimal valid config dict, prefer those over inline YAML strings — but don't refactor for it; either approach works.
+> If `tests/test_config.py` already has helpers for building a minimal valid config dict, prefer those over inline YAML strings -- but don't refactor for it; either approach works.
 
 - [ ] **Step 2: Run the new tests to verify they fail**
 
 Run: `pytest tests/test_config.py -v -k log_format`
-Expected: FAIL — `AttributeError: 'ReportConfig' object has no attribute 'log_format'`.
+Expected: FAIL -- `AttributeError: 'ReportConfig' object has no attribute 'log_format'`.
 
 - [ ] **Step 3: Extend `ReportConfig` dataclass**
 
-Edit `src/rapid7_healthcheck/config.py` lines 32–38. Replace:
+Edit `src/rapid7_healthcheck/config.py` lines 32-38. Replace:
 
 ```python
 @dataclass(frozen=True)
@@ -613,9 +613,9 @@ class ReportConfig:
 
 - [ ] **Step 4: Extend `_build_report_config` validator**
 
-Edit `src/rapid7_healthcheck/config.py` lines 486–520. Update three pieces:
+Edit `src/rapid7_healthcheck/config.py` lines 486-520. Update three pieces:
 
-a) The `expected` set (line 501) — add `"log_format"`:
+a) The `expected` set (line 501) -- add `"log_format"`:
 
 ```python
     expected = {"output_dir", "filename_pattern", "title", "delta_max_age_days", "log_format"}
@@ -730,11 +730,11 @@ def test_setup_logging_default_format_is_plain(tmp_path):
 - [ ] **Step 2: Run the new tests to verify they fail**
 
 Run: `pytest tests/test_logging_setup.py -v -k formatter`
-Expected: FAIL — `_setup_logging() got an unexpected keyword argument 'log_format'`.
+Expected: FAIL -- `_setup_logging() got an unexpected keyword argument 'log_format'`.
 
 - [ ] **Step 3: Modify `_setup_logging`**
 
-Edit `src/rapid7_healthcheck/__main__.py` lines 59–76. Replace:
+Edit `src/rapid7_healthcheck/__main__.py` lines 59-76. Replace:
 
 ```python
 def _setup_logging(verbose: bool, log_file: str | None) -> None:
@@ -819,7 +819,7 @@ git commit -m "feat(__main__): thread log_format through _setup_logging; file ha
 - Modify: `src/rapid7_healthcheck/__main__.py:79-98` (`_resolve_log_file`)
 - Test: `tests/test_logging_setup.py`
 
-Auto-derived path (precedence step 4) gains `.jsonl` suffix when format is json. Steps 1–3 unchanged.
+Auto-derived path (precedence step 4) gains `.jsonl` suffix when format is json. Steps 1-3 unchanged.
 
 - [ ] **Step 1: Append failing tests**
 
@@ -855,7 +855,7 @@ def test_auto_derived_log_path_uses_log_for_cmtrace_format():
 
 
 def test_auto_derived_log_path_uses_log_for_plain_format():
-    """Regression — default format keeps the .log suffix."""
+    """Regression -- default format keeps the .log suffix."""
     from rapid7_healthcheck.__main__ import _resolve_log_file
     args = MagicMock()
     args.no_log_file = False
@@ -902,11 +902,11 @@ Update the four pre-existing tests in `tests/test_logging_setup.py` (the ones at
 - [ ] **Step 2: Run the new tests to verify they fail**
 
 Run: `pytest tests/test_logging_setup.py -v -k log_path`
-Expected: FAIL — `_resolve_log_file() got an unexpected keyword argument 'log_format'`.
+Expected: FAIL -- `_resolve_log_file() got an unexpected keyword argument 'log_format'`.
 
 - [ ] **Step 3: Modify `_resolve_log_file`**
 
-Edit `src/rapid7_healthcheck/__main__.py` lines 79–98. Replace:
+Edit `src/rapid7_healthcheck/__main__.py` lines 79-98. Replace:
 
 ```python
 def _resolve_log_file(args: argparse.Namespace, cfg: AppConfig) -> Path | None:
@@ -924,7 +924,7 @@ def _resolve_log_file(args: argparse.Namespace, cfg: AppConfig) -> Path | None:
         return Path(args.log_file)
     if getattr(args, "output", None):
         return Path(args.output).with_suffix(".log")
-    # Derive from config — mirror what write_report does for the default path.
+    # Derive from config -- mirror what write_report does for the default path.
     timestamp = datetime.now().strftime("%Y-%m-%d_%H%M")
     base = cfg.report.filename_pattern.replace("{timestamp}", timestamp)
     log_name = Path(base).with_suffix(".log").name
@@ -953,7 +953,7 @@ def _resolve_log_file(args: argparse.Namespace, cfg: AppConfig, log_format: str)
         return Path(args.log_file)
     if getattr(args, "output", None):
         return Path(args.output).with_suffix(".log")
-    # Derive from config — mirror what write_report does for the default path.
+    # Derive from config -- mirror what write_report does for the default path.
     timestamp = datetime.now().strftime("%Y-%m-%d_%H%M")
     base = cfg.report.filename_pattern.replace("{timestamp}", timestamp)
     suffix = ".jsonl" if log_format == "json" else ".log"
@@ -986,7 +986,7 @@ CLI flag overrides config. The two-pass logging setup (first stderr-only, then w
 
 - [ ] **Step 1: Append failing tests**
 
-Append to `tests/test_main.py` (no need to read full file — these tests stub the heavy parts):
+Append to `tests/test_main.py` (no need to read full file -- these tests stub the heavy parts):
 
 ```python
 def test_cli_log_format_overrides_config(tmp_path, monkeypatch):
@@ -1055,11 +1055,11 @@ def test_cli_log_format_falls_back_to_config(tmp_path, monkeypatch):
 - [ ] **Step 2: Run the new tests to verify they fail**
 
 Run: `pytest tests/test_main.py -v -k log_format`
-Expected: FAIL — argparse rejects unknown argument `--log-format`.
+Expected: FAIL -- argparse rejects unknown argument `--log-format`.
 
 - [ ] **Step 3: Add `--log-format` to `_parse_args`**
 
-Edit `src/rapid7_healthcheck/__main__.py` lines 49–56. Replace:
+Edit `src/rapid7_healthcheck/__main__.py` lines 49-56. Replace:
 
 ```python
 def _parse_args(argv: list[str]) -> argparse.Namespace:
@@ -1093,7 +1093,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
 
 - [ ] **Step 4: Resolve effective format and pass it through `run()`**
 
-Edit `src/rapid7_healthcheck/__main__.py` lines 174–188. Replace:
+Edit `src/rapid7_healthcheck/__main__.py` lines 174-188. Replace:
 
 ```python
 def run(argv: list[str] | None = None) -> int:
@@ -1149,7 +1149,7 @@ Expected: PASS for both new tests.
 - [ ] **Step 6: Run the full test suite**
 
 Run: `pytest -v`
-Expected: All tests PASS. Watch for any pre-existing test that calls `_resolve_log_file` or `_setup_logging` without the new kwarg — Task 7 already covered the ones in `test_logging_setup.py`, but if `test_main.py` has integration tests that go through `run()` with a real config, they should keep working because `_setup_logging`'s and `_resolve_log_file`'s new params have defaults (`log_format="plain"` / required-positional with one supplied).
+Expected: All tests PASS. Watch for any pre-existing test that calls `_resolve_log_file` or `_setup_logging` without the new kwarg -- Task 7 already covered the ones in `test_logging_setup.py`, but if `test_main.py` has integration tests that go through `run()` with a real config, they should keep working because `_setup_logging`'s and `_resolve_log_file`'s new params have defaults (`log_format="plain"` / required-positional with one supplied).
 
 > **Watch out:** `_resolve_log_file` made `log_format` a *required* positional. If `pytest -v` flags a `TypeError: missing argument log_format` from a place outside the files we've changed, find that call site, decide whether it should pass `"plain"` (most likely) or the effective format, and fix it before committing.
 
@@ -1173,11 +1173,11 @@ Edit `docs/examples/config.yaml`. Find the `report:` block (starts around line 2
 
 ```yaml
   # File-log format. Stderr stays human-readable plain regardless.
-  #   plain   — current default; "<ts> <LEVEL> <logger>: <msg>" lines.
-  #   cmtrace — SCCM/MECM CMTrace viewer format. Useful on Windows when ops
+  #   plain   -- current default; "<ts> <LEVEL> <logger>: <msg>" lines.
+  #   cmtrace -- SCCM/MECM CMTrace viewer format. Useful on Windows when ops
   #             open run logs in cmtrace.exe and want severity colorization
   #             and the component filter.
-  #   json    — JSON Lines (one object per line). Useful when shipping logs
+  #   json    -- JSON Lines (one object per line). Useful when shipping logs
   #             into Splunk/Loki/OpenSearch. Auto-derived path uses .jsonl.
   # Override at runtime with `--log-format {plain,cmtrace,json}`.
   log_format: plain
@@ -1186,7 +1186,7 @@ Edit `docs/examples/config.yaml`. Find the `report:` block (starts around line 2
 - [ ] **Step 2: Verify the example config still parses**
 
 Run: `python -c "from rapid7_healthcheck.config import load_config; load_config('docs/examples/config.yaml'); print('OK')"`
-Expected: `OK` (no exception). The default `log_format: plain` matches the in-code default — no behavior change for users who don't touch the new key.
+Expected: `OK` (no exception). The default `log_format: plain` matches the in-code default -- no behavior change for users who don't touch the new key.
 
 - [ ] **Step 3: Commit**
 
@@ -1202,14 +1202,14 @@ git commit -m "docs(config): document report.log_format option"
 - [ ] **Step 1: Run full test suite**
 
 Run: `pytest -v`
-Expected: All tests PASS, including the new ones from Tasks 1–8.
+Expected: All tests PASS, including the new ones from Tasks 1-8.
 
 - [ ] **Step 2: Smoke-test each format end-to-end**
 
 Run a fast no-network check that exercises the CLI flag without hitting Rapid7. The simplest path: invoke with a deliberately bad config so we exit at startup but still go through `_setup_logging` once with the format active.
 
 ```bash
-# Plain (current behavior — regression check)
+# Plain (current behavior -- regression check)
 python -m rapid7_healthcheck --config /does/not/exist --log-format plain --no-log-file 2>&1 | head -5
 
 # CMTrace
@@ -1232,7 +1232,7 @@ Then grep for any sneak-in of disallowed verbs:
 grep -rnE 'PUT|PATCH|DELETE|client\.(put|patch|delete)' src/
 ```
 
-Expected: zero matches (or only matches in `client.py`'s rejection logic — `_ALLOWED_VERBS`, `ReadOnlyViolationError`, etc.).
+Expected: zero matches (or only matches in `client.py`'s rejection logic -- `_ALLOWED_VERBS`, `ReadOnlyViolationError`, etc.).
 
 - [ ] **Step 4: Check the `backlog.md` file**
 
@@ -1253,40 +1253,40 @@ git commit -m "chore(backlog): note deferred log-format follow-ups"
 
 **Spec coverage:**
 
-- §"User-facing surface / CLI" — Task 8 (`--log-format` flag). ✓
-- §"User-facing surface / Config" — Task 5 (`ReportConfig.log_format` field + validation). ✓
-- §"Precedence" — Task 8 (`args.log_format or cfg.report.log_format`). ✓
-- §"plain format" — Task 1 (`PlainFormatter`). ✓
-- §"cmtrace format" — Task 2 (`CMTraceFormatter` including severity mapping, time/date, component, exception inline). ✓
-- §"json format" — Task 3 (`JsonFormatter` including UTC ISO-8601, fixed key set, exception field, non-ASCII). ✓
-- §"Architecture / `make_file_formatter`" — Task 4. ✓
-- §"`__main__.py` changes / `_setup_logging`" — Task 6. ✓
-- §"`__main__.py` changes / `_resolve_log_file`" — Task 7. ✓
-- §"`__main__.py` changes / `run()`" — Task 8 (effective-format resolution and second-pass call). ✓
-- §"`config.py` changes" — Task 5 (`expected` set, validator block, constructor). ✓
-- §"`docs/examples/config.yaml`" — Task 9. ✓
-- §"Testing / formatter unit tests" — Tasks 1–4. ✓
-- §"Testing / `_setup_logging` integration" — Task 6. ✓
-- §"Testing / `_resolve_log_file`" — Task 7. ✓
-- §"Testing / config validation" — Task 5. ✓
-- §"Read-only safety" — Task 10 (verification). ✓
-- §"Out of scope" items — explicitly NOT implemented (run-id, rotation, console-format, `extra={}`, top-level `logging:` block). ✓
+- §"User-facing surface / CLI" -- Task 8 (`--log-format` flag). ✓
+- §"User-facing surface / Config" -- Task 5 (`ReportConfig.log_format` field + validation). ✓
+- §"Precedence" -- Task 8 (`args.log_format or cfg.report.log_format`). ✓
+- §"plain format" -- Task 1 (`PlainFormatter`). ✓
+- §"cmtrace format" -- Task 2 (`CMTraceFormatter` including severity mapping, time/date, component, exception inline). ✓
+- §"json format" -- Task 3 (`JsonFormatter` including UTC ISO-8601, fixed key set, exception field, non-ASCII). ✓
+- §"Architecture / `make_file_formatter`" -- Task 4. ✓
+- §"`__main__.py` changes / `_setup_logging`" -- Task 6. ✓
+- §"`__main__.py` changes / `_resolve_log_file`" -- Task 7. ✓
+- §"`__main__.py` changes / `run()`" -- Task 8 (effective-format resolution and second-pass call). ✓
+- §"`config.py` changes" -- Task 5 (`expected` set, validator block, constructor). ✓
+- §"`docs/examples/config.yaml`" -- Task 9. ✓
+- §"Testing / formatter unit tests" -- Tasks 1-4. ✓
+- §"Testing / `_setup_logging` integration" -- Task 6. ✓
+- §"Testing / `_resolve_log_file`" -- Task 7. ✓
+- §"Testing / config validation" -- Task 5. ✓
+- §"Read-only safety" -- Task 10 (verification). ✓
+- §"Out of scope" items -- explicitly NOT implemented (run-id, rotation, console-format, `extra={}`, top-level `logging:` block). ✓
 
 **Placeholder scan:** No "TBD" / "implement later" / "similar to Task N" in any step. Every code step shows the actual code; every command step shows the actual command and expected output.
 
 **Type/signature consistency:**
 
-- `_setup_logging(verbose, log_file, log_format="plain")` — Tasks 6, 8 use the same signature.
-- `_resolve_log_file(args, cfg, log_format)` — Tasks 7, 8 use the same signature (positional, required).
-- `make_file_formatter(log_format: str) -> logging.Formatter` — Tasks 4, 6 match.
-- `ReportConfig.log_format: str = "plain"` — Tasks 5, 8 (`cfg.report.log_format`) match.
+- `_setup_logging(verbose, log_file, log_format="plain")` -- Tasks 6, 8 use the same signature.
+- `_resolve_log_file(args, cfg, log_format)` -- Tasks 7, 8 use the same signature (positional, required).
+- `make_file_formatter(log_format: str) -> logging.Formatter` -- Tasks 4, 6 match.
+- `ReportConfig.log_format: str = "plain"` -- Tasks 5, 8 (`cfg.report.log_format`) match.
 
 **One issue caught and fixed inline:** The `CMTraceFormatter` implementation in Task 2 originally had a redundant `file_field` assignment (the second overwrote the first). Removed; the canonical form `f"{record.module}.py:{record.lineno}"` is the only assignment now. The CMTrace regex tests still pass because they match `file="[^"]*"` and the `_make_record` fixture uses `pathname="/abs/path/scan_engines.py"` which makes `record.module == "scan_engines"`.
 
 Plan complete and saved to `docs/superpowers/plans/2026-05-06-log-format.md`. Two execution options:
 
-**1. Subagent-Driven (recommended)** — I dispatch a fresh subagent per task, review between tasks, fast iteration.
+**1. Subagent-Driven (recommended)** -- I dispatch a fresh subagent per task, review between tasks, fast iteration.
 
-**2. Inline Execution** — Execute tasks in this session using executing-plans, batch execution with checkpoints.
+**2. Inline Execution** -- Execute tasks in this session using executing-plans, batch execution with checkpoints.
 
 Which approach?

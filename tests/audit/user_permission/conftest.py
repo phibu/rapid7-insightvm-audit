@@ -7,7 +7,7 @@ class FakeUserSnapshot:
     """Test double for `UserSnapshot`. Each accessor is backed by a settable
     store; tests register the data their rule consumes.
 
-    Mirrors only the user-domain slice — six members — instead of the whole
+    Mirrors only the user-domain slice -- six members -- instead of the whole
     38-accessor EnvSnapshot. This is the testability payoff of extracting
     UserSnapshot: a user-rule test learns six methods, not thirty-eight.
     """

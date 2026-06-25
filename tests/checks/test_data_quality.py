@@ -9,7 +9,7 @@ from rapid7_healthcheck.config import DataQualityThresholds
 
 def _snap(fake_client) -> EnvSnapshot:
     """Build a real EnvSnapshot over the test's fake client. The snapshot's
-    lazy accessors hit fake_client transparently — same fake-URL maps tests
+    lazy accessors hit fake_client transparently -- same fake-URL maps tests
     already use continue to work without modification."""
     return EnvSnapshot(fake_client, full_scan=False, sample_size=500)
 
@@ -284,7 +284,7 @@ def test_per_rule_failure_isolated_other_rules_still_run(fake_client, app_config
     assert missing.status == "error"
     assert "Read timed out" in (missing.error or "")
     # The other rules still ran successfully (empty_sites and stale_assets use
-    # different code paths — paginate / post_one for stale, but stale's
+    # different code paths -- paginate / post_one for stale, but stale's
     # post_one is also affected; only empty_sites uses pure GET so it always
     # passes here).
     empty = _rule(result, "op.data_quality.empty_sites")
@@ -412,7 +412,7 @@ def test_duplicate_detection_runs_when_total_equals_threshold(fake_client, app_c
 
     host = _rule(result, "op.data_quality.duplicate_hostnames")
     assert host.status == "warn"
-    # Paginate was called — strict > means the boundary value runs the rule.
+    # Paginate was called -- strict > means the boundary value runs the rule.
     assert any(c[0] == "paginate" and c[1] == "/api/3/assets" for c in fake_client.calls)
 
 
@@ -476,7 +476,7 @@ def test_duplicate_detection_skipped_when_both_flags_off_does_not_peek(fake_clie
         flag_duplicate_ips=False,
         duplicate_detection_max_assets=50000,
     )
-    # No GET /api/3/assets registered — if called, fake_client raises.
+    # No GET /api/3/assets registered -- if called, fake_client raises.
 
     result = DataQualityCheck().run(fake_client, cfg)
 
@@ -489,7 +489,7 @@ def test_duplicate_detection_skipped_when_both_flags_off_does_not_peek(fake_clie
 
 def test_duplicate_detection_uses_snapshot_total_not_peek(fake_client, app_config):
     """When duplicate detection runs, total_asset_count comes from the
-    shared snapshot — not from a separate _peek_total_assets call. Locks in
+    shared snapshot -- not from a separate _peek_total_assets call. Locks in
     the head-fetch consolidation: at most one GET /api/3/assets?size=1
     across the op-check, regardless of how many duplicate-detection paths
     execute."""

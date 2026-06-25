@@ -13,7 +13,7 @@ class TemplateInventorySummaryRule(AuditRule):
     description = (
         "Informational inventory of scan templates on the Security Console: "
         "total count plus a breakdown by vulnerability-enabled, "
-        "policy-enabled, and discovery-only. Emits no findings — this rule "
+        "policy-enabled, and discovery-only. Emits no findings -- this rule "
         "is context for the rest of the Template Configuration Audit and "
         "always passes."
     )

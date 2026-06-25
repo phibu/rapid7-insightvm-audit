@@ -5,10 +5,10 @@ and an *inner* scope (an audit category's rules). The two used to share one
 flat counter, producing the confusing ``[1/8]…[1/11]…[5/8]`` interleave. Now a
 check renders a global-percent line and its rules indent one level beneath it
 with human-readable names and a real status (duration / skipped / cached / n/a)
-— never a misleading ``0ms``.
+-- never a misleading ``0ms``.
 
 Writes directly to a stream (default stderr), bypassing the logging system.
-Status updates are UX, not diagnostic data — they should not pollute the
+Status updates are UX, not diagnostic data -- they should not pollute the
 default-on log file. On a TTY, status lines overwrite themselves via ``\\r`` and
 an ANSI clear-line; on a non-TTY (file, CI), each status emits its own line so
 the output is greppable.
@@ -57,7 +57,7 @@ class ProgressReporter:
         else:
             self._enabled = enabled
             # Explicit enabled=True on a non-TTY stream uses the line-per-call
-            # format — never blast \r\x1b[K into a redirected file or pipe.
+            # format -- never blast \r\x1b[K into a redirected file or pipe.
             self._tty = enabled and is_tty
         self._last_was_status = False
 
@@ -112,7 +112,7 @@ class ProgressReporter:
     def finish_rule(self, name: str, *, status_text: str) -> None:
         """Announce a rule finished, indented under the current check.
         ``status_text`` is a duration or one of ``skipped`` / ``cached`` /
-        ``n/a`` — never a misleading ``0ms``."""
+        ``n/a`` -- never a misleading ``0ms``."""
         self._emit(f"{_RULE_INDENT}{name} ({status_text})", transient=False)
 
     def newline_if_needed(self) -> None:

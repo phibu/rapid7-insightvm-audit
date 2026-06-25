@@ -48,7 +48,7 @@ def _minimal_context() -> ReportContext:
 def test_severity_filter_uses_child_combinator_not_descendant():
     """Every body[data-filter-severity=...] rule must use `section.check > details`,
     not bare `section.check details`. The bare descendant form was the bug fixed
-    in a91f6d1 — it would hide inner finding-details too."""
+    in a91f6d1 -- it would hide inner finding-details too."""
     html = render_report(_minimal_context())
 
     pattern = re.compile(
@@ -63,7 +63,7 @@ def test_severity_filter_uses_child_combinator_not_descendant():
     for combinator in matches:
         assert combinator.strip().startswith(">"), (
             "filter rule must use `section.check > details` (child combinator). "
-            "The descendant form (no `>`) hides inner finding-details too — "
+            "The descendant form (no `>`) hides inner finding-details too -- "
             "regression of a91f6d1."
         )
 

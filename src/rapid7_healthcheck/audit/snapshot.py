@@ -11,7 +11,7 @@ from rapid7_healthcheck.client import Rapid7ClientError
 logger = logging.getLogger(__name__)
 
 # The agents-endpoint read timeout an EnvSnapshot uses when a caller doesn't
-# tune one. Lives once, here — the lone home of the literal so the
+# tune one. Lives once, here -- the lone home of the literal so the
 # EnvSnapshot-construction sites can't drift to a stray hardcoded value (see
 # `build_env_snapshot`). `AuditConfig` exposes this as a tunable field;
 # `TemplateAuditConfig` does not yet, so it inherits this default through the
@@ -29,7 +29,7 @@ DEFAULT_AGENTS_TIMEOUT = 180
 # Only `full-audit-without-web-spider` and `discovery` are confirmed by the
 # committed v3 spec's id examples; the rest are the long-stable Nexpose/
 # InsightVM built-in slugs and MUST be confirmed against a live console
-# (GET /api/3/scan_templates) — a refresh is a one-line edit here. Failure is
+# (GET /api/3/scan_templates) -- a refresh is a one-line edit here. Failure is
 # safe: an unrecognised built-in is audited *unlabelled* (degrades to
 # pre-feature behaviour); a user template is never mislabelled as built-in.
 BUILTIN_TEMPLATE_IDS = frozenset({
@@ -90,9 +90,9 @@ def _expand_target(entry: str, *, range_cap: int = 1024) -> tuple[list[IPv4Netwo
     Accepts CIDR blocks ('10.0.0.0/24'), single IPs ('10.0.0.5'), and
     Rapid7-style ranges ('10.0.0.1-10.0.0.10'). Ranges are expanded into
     literal IPs up to `range_cap` addresses; oversized ranges record only
-    the two endpoint IPs as literals so memory stays bounded — callers may
+    the two endpoint IPs as literals so memory stays bounded -- callers may
     miss interior IPs from oversized ranges but won't OOM. Invalid entries
-    return ([], set()) — caller logs and skips.
+    return ([], set()) -- caller logs and skips.
     """
     networks: list[IPv4Network | IPv6Network] = []
     literals: set[str] = set()
@@ -113,7 +113,7 @@ def _expand_target(entry: str, *, range_cap: int = 1024) -> tuple[list[IPv4Netwo
                 for i in range(span):
                     literals.add(str(cls(int(lo) + i)))
                 return networks, literals
-            # Oversized range — fall back to the broadest covering network.
+            # Oversized range -- fall back to the broadest covering network.
             # Conservative: include both endpoints as literals so callers don't lose them.
             literals.add(str(lo))
             literals.add(str(hi))
@@ -212,7 +212,7 @@ class EnvSnapshot:
         Single GET, no pagination. The v3 OpenAPI spec
         (``docs/research/api-v3.json``) shows this endpoint accepts no
         ``page``/``size`` parameters and its response schema
-        (``CollectionModelScanEngine``) has no ``page`` envelope — it
+        (``CollectionModelScanEngine``) has no ``page`` envelope -- it
         returns the full collection in one response. If a future console
         ever returns a paginated envelope (response includes a ``page``
         key with ``totalPages``), this accessor will silently truncate to
@@ -231,14 +231,14 @@ class EnvSnapshot:
 
         Used to detect pool-mediated site assignments: an engine assigned to
         sites only through a pool will have ``ScanEngine.sites == []`` but is
-        still effectively paired. Single GET, no pagination — the v3 OpenAPI
+        still effectively paired. Single GET, no pagination -- the v3 OpenAPI
         spec (``docs/research/api-v3.json``) shows this endpoint accepts no
         ``page``/``size`` parameters and its response schema
         (``CollectionModelEnginePool``) has no ``page`` envelope.
 
         Returns ``[]`` on:
             - 404 (older console without pool support);
-            - 502 / 503 / 504 or pre-response failure (``status_code is None``) —
+            - 502 / 503 / 504 or pre-response failure (``status_code is None``) --
               gateway-level transient failures. ``EngineUnpairedRule`` then
               falls back to direct-only pairing, which is the 0.6.5 behavior,
               so an unreachable endpoint produces a partial-but-correct result
@@ -292,7 +292,7 @@ class EnvSnapshot:
         return self._site_included_targets[site_id]
 
     def _resolve_prefetch_workers(self) -> int:
-        """Worker count for batch prefetch — reuses the client's `parallel_pages`.
+        """Worker count for batch prefetch -- reuses the client's `parallel_pages`.
 
         Falls back to 1 when the client does not expose the property (e.g.
         a test double), which makes prefetch degrade to a sequential loop
@@ -321,7 +321,7 @@ class EnvSnapshot:
         Concurrency is read-only and safe: every `fetch_one` issues a GET,
         `requests.Session` is documented thread-safe for reads, and the
         client's read-only verb check runs per-call. A `Rapid7ClientError`
-        on any one site is swallowed and that site simply stays uncached —
+        on any one site is swallowed and that site simply stays uncached --
         the later per-site accessor will retry it sequentially and surface
         the error in context. Other exceptions propagate.
         """
@@ -354,7 +354,7 @@ class EnvSnapshot:
         Turns the N sequential `GET /api/3/sites/{id}/scan_schedules` calls
         into `ceil(N / parallel_pages)` parallel batches. After this returns,
         `site_schedules(sid)` for any `sid` in `site_ids` is a cache hit.
-        Idempotent — already-cached sites are skipped.
+        Idempotent -- already-cached sites are skipped.
         """
         def _fetch(sid: int) -> list[dict]:
             body = self._client.get(f"/api/3/sites/{sid}/scan_schedules")
@@ -413,9 +413,9 @@ class EnvSnapshot:
 
         Inline-first: ``GET /api/3/sites`` returns each ``Site`` object with
         an ``assets`` integer field ("the number of assets that belong to
-        the site" — see the v3 spec). When ``sites()`` has already been
+        the site" -- see the v3 spec). When ``sites()`` has already been
         loaded this turn (every audit/op-check run primes it), that inline
-        value is used directly — **no per-site HTTP call**. This collapses
+        value is used directly -- **no per-site HTTP call**. This collapses
         what used to be one ``GET /api/3/sites/{id}/assets?size=1`` per site
         into zero extra requests; on consoles with hundreds of sites the
         empty-sites rule went from ~19 min to the cost of the single
@@ -433,7 +433,7 @@ class EnvSnapshot:
             return self._site_asset_count[site_id]
 
         # Inline path: read the count off the already-cached Site listing.
-        # Only consult the cache if sites() has actually been loaded — calling
+        # Only consult the cache if sites() has actually been loaded -- calling
         # sites() here would trigger the pagination as a side effect, which is
         # fine, but the explicit None check keeps the accessor's HTTP behavior
         # predictable for callers that never load sites().
@@ -445,7 +445,7 @@ class EnvSnapshot:
                 if isinstance(inline, int) and not isinstance(inline, bool):
                     self._site_asset_count[site_id] = inline
                     return inline
-                break  # found the site but no numeric inline count — fall through
+                break  # found the site but no numeric inline count -- fall through
 
         body = self._client.get(f"/api/3/sites/{site_id}/assets", params={"size": 1})
         self._site_asset_count[site_id] = int(body.get("page", {}).get("totalResources", 0))
@@ -466,7 +466,7 @@ class EnvSnapshot:
         ScanTemplate envelope per the v3 OpenAPI schema.
 
         Distinct from `scan_template(id)`, which fetches a single template
-        by ID for callers that already know the ID — template_audit rules
+        by ID for callers that already know the ID -- template_audit rules
         walk the full list and benefit from one paginated fetch.
         """
         if self._templates_full is None:
@@ -490,7 +490,7 @@ class EnvSnapshot:
         Used by rules that need to break out of the iteration early (e.g. on
         first agent-managed asset found). Distinct from `asset_sample()`, which
         materializes the whole sample and caches it for repeat use. Honors the
-        underlying client's pagination — caller decides when to stop.
+        underlying client's pagination -- caller decides when to stop.
 
         Yields:
             dict: each asset record from /api/3/sites/{id}/assets, in API order.
@@ -522,7 +522,7 @@ class EnvSnapshot:
         GET /api/3/asset_groups/{id}/assets and returns the length of the
         `resources` array (the endpoint is unpaginated per v3 spec).
 
-        Returns None when the underlying call raises Rapid7ClientError —
+        Returns None when the underlying call raises Rapid7ClientError --
         callers surface a per-group info finding rather than aborting the
         rule. We branch on `e.status_code` only; never substring-match the
         error message (CLAUDE.md guidance).
@@ -625,11 +625,11 @@ class EnvSnapshot:
         - Newer / Rapid7-hosted: top-level `template["vulnerabilityEnabled"]`.
 
         This helper reads whichever the response provides. Returns False when
-        neither is present (conservative — a template with no signal is
+        neither is present (conservative -- a template with no signal is
         assumed not to have vulnerability assessment).
 
         When both shapes are present, the top-level `vulnerabilityEnabled`
-        is authoritative — older nested shapes are read only as a fallback.
+        is authoritative -- older nested shapes are read only as a fallback.
         """
         if not isinstance(template, dict):
             return False
@@ -647,7 +647,7 @@ class EnvSnapshot:
 
         Detection is by known `id` (see `BUILTIN_TEMPLATE_IDS`): the v3 object
         has no built-in flag and an id-shape test is unsound. Returns False for
-        a missing/empty/non-string id — the safe direction (never label a
+        a missing/empty/non-string id -- the safe direction (never label a
         template built-in without a positive id match).
         """
         if not isinstance(template, dict):
@@ -672,7 +672,7 @@ class EnvSnapshot:
         return None
 
     def total_asset_count(self) -> int:
-        """Total assets in the deployment. Reads page metadata only — does not
+        """Total assets in the deployment. Reads page metadata only -- does not
         enumerate the asset list.
         """
         if self._total_asset_count is None:
@@ -683,7 +683,7 @@ class EnvSnapshot:
     def scans_total(self) -> int:
         """Total scans across the deployment from /api/3/scans page metadata.
 
-        Reads page.totalResources only — does not enumerate the scan list.
+        Reads page.totalResources only -- does not enumerate the scan list.
         Mirrors total_asset_count(). Cached on first call.
         """
         if self._scans_total is None:
@@ -693,7 +693,7 @@ class EnvSnapshot:
 
     def _mark_agents_unavailable_from_gateway_error(self, e: Rapid7ClientError) -> bool:
         """Return True if `e` is a gateway/transient failure on /api/3/agents
-        worth swallowing — and flip the `_agents_unavailable` flag + reset the
+        worth swallowing -- and flip the `_agents_unavailable` flag + reset the
         count cache to 0 so the invariant `unavailable ⇒ count is 0` holds.
 
         Mirrors the head-probe swallow in `agent_count()`: 502/503/504 and
@@ -717,7 +717,7 @@ class EnvSnapshot:
         """Return (sample_list, total_count) for the Insight Agent fleet.
 
         Lazily fetched and cached on first call. Honors `sample_size` when
-        `full_scan` is False — `total_count` comes from `page.totalResources`,
+        `full_scan` is False -- `total_count` comes from `page.totalResources`,
         `sample_list` is capped at `sample_size`. Returns `([], 0)` cleanly
         when /api/3/agents is unavailable: 404 (older consoles / non-GA keys)
         on the head probe, or 502/503/504/network-error either on the head
@@ -751,7 +751,7 @@ class EnvSnapshot:
         return self._agents_cache
 
     def is_agents_unavailable(self) -> bool:
-        """True if /api/3/agents returned 404 — pure read of the cached flag.
+        """True if /api/3/agents returned 404 -- pure read of the cached flag.
 
         The flag is primed as a side effect of any agent accessor:
         `agent_count()`, `agents()`, or `agent_asset_ids_sampled()`. Callers
@@ -765,7 +765,7 @@ class EnvSnapshot:
         Returns 0 when the agents endpoint is unavailable. "Unavailable"
         is treated broadly: a 404 (older console / non-GA key), or any
         non-HTTP-status failure like a read timeout or network error
-        (status_code is None) — /api/3/agents is well-known to be slow
+        (status_code is None) -- /api/3/agents is well-known to be slow
         on consoles with large agent fleets even at size=1, and a single
         slow endpoint should not abort the whole audit run. The
         `_agents_unavailable` flag is set so dependent rules self-skip
@@ -784,7 +784,7 @@ class EnvSnapshot:
             # 502/503/504 are gateway-level timeouts/overload responses from a
             # proxy in front of the console. /api/3/agents is well-known to be
             # slow on consoles with large fleets; treat these the same as a
-            # local timeout (status_code is None) — mark unavailable so
+            # local timeout (status_code is None) -- mark unavailable so
             # dependent rules self-skip rather than render as red errors.
             if e.status_code is None or e.status_code in (502, 503, 504):
                 logger.warning(
@@ -805,13 +805,13 @@ class EnvSnapshot:
         of `sample_size` / `full_scan`. The agents endpoint returns a light
         payload per agent and is the authoritative inventory used by rules
         like `agent_unauth_collision` to do membership checks against
-        site-asset listings — sampling here would silently re-introduce the
+        site-asset listings -- sampling here would silently re-introduce the
         false-negative class of bug those rules are designed to detect.
 
         The Agent payload exposes the asset id under either `id` (top-level)
         or nested under `links` (`rel: Asset`); we read whatever shape the
         console returns. Returns an empty set cleanly when the agents endpoint
-        is unavailable — callers should check `is_agents_unavailable()` to
+        is unavailable -- callers should check `is_agents_unavailable()` to
         distinguish "no agents" from "no signal".
         """
         if self._agent_asset_ids_cache is not None:
@@ -851,7 +851,7 @@ class EnvSnapshot:
         ``sample_size`` when some records carry neither a top-level ``id`` nor
         a valid ``links[rel=Asset]`` href. Page fetches: at most
         ``ceil(sample_size / 100)``.
-        Independent of ``full_scan`` — always samples.
+        Independent of ``full_scan`` -- always samples.
 
         Returns ``([], 0)`` cleanly when ``/api/3/agents`` is unavailable
         (404), and sets the same ``_agents_unavailable`` flag that
@@ -895,7 +895,7 @@ class _SamplingConfig(Protocol):
     """The slice of an audit category's config block the snapshot builder reads.
 
     Structurally satisfied by `AuditConfig`, `UserAuditConfig`, and
-    `TemplateAuditConfig` — every audit sampling-config dataclass carries
+    `TemplateAuditConfig` -- every audit sampling-config dataclass carries
     these two fields. The builder duck-types on this shape rather than on
     one concrete config class so all three categories share one construction
     path. (`AuditConfig` additionally has `agents_timeout_seconds`; the
@@ -920,13 +920,13 @@ def build_env_snapshot(
     `TemplateAuditConfig`) onto `EnvSnapshot`, defaulting the agents timeout
     to `DEFAULT_AGENTS_TIMEOUT`.
 
-    Every site that needs an `EnvSnapshot` — `__main__` (for the operational
+    Every site that needs an `EnvSnapshot` -- `__main__` (for the operational
     checks and the Configuration audit's shared snapshot) and the Template
-    audit category — goes through here, so the construction-kwarg list and the
+    audit category -- goes through here, so the construction-kwarg list and the
     timeout default live in exactly one place. Categories whose config block
     carries a tuned `agents_timeout_seconds` (today only `AuditConfig`) pass it
     explicitly; the rest inherit the default. The User & Permission category
-    does not use this builder — it constructs a `UserSnapshot`, which carries
+    does not use this builder -- it constructs a `UserSnapshot`, which carries
     no sampling and no agents timeout. See CONTEXT.md "build_env_snapshot".
     """
     return EnvSnapshot(

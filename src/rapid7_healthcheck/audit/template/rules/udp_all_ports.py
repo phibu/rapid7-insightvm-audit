@@ -19,7 +19,7 @@ class UdpAllPortsRule(AuditRule):
     description = (
         "Discovery-active templates whose UDP service discovery is set to "
         "`all` (`discovery.service.udp.ports == \"all\"`). Rapid7 explicitly "
-        "warns never to scan all 65,535 UDP ports — UDP scan duration can "
+        "warns never to scan all 65,535 UDP ports -- UDP scan duration can "
         "exceed a month. The API default is `well-known`; templates without "
         "the field set use that default and are not examined (skip-absent)."
     )
@@ -45,7 +45,7 @@ class UdpAllPortsRule(AuditRule):
                 severity=severity,
                 message=(
                     f"Template '{t.get('name')}' scans all UDP ports "
-                    f"(udp.ports = 'all') — UDP scans of all 65,535 ports can "
+                    f"(udp.ports = 'all') -- UDP scans of all 65,535 ports can "
                     f"run for weeks. Rapid7 recommends 'well-known'."
                 ),
                 details={

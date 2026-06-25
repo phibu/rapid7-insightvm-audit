@@ -37,7 +37,7 @@ class MultipleGlobalAdministratorsRule(AuditRule):
 
         findings: list[Finding] = []
         if len(gas) == 0:
-            # No enabled Global Administrator at all — a console no one can
+            # No enabled Global Administrator at all -- a console no one can
             # administer. Hard-coded "fail" regardless of configured
             # severity: this is unambiguously broken, not a tuning matter.
             findings.append(Finding(

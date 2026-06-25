@@ -1,7 +1,7 @@
 # Parallel page fetching, page size 250, 60s default timeout
 
 **Target version:** 0.2.8
-**Status:** approved (brainstorming) — pending implementation
+**Status:** approved (brainstorming) -- pending implementation
 **Owner:** Phibu
 **Date:** 2026-05-04
 
@@ -16,7 +16,7 @@ production runs:
    large filtered searches).
 2. Default request timeout 30s → **60s** (matches the README troubleshooting
    guidance for hosted consoles).
-3. New opt-in **parallel page fetching** (default off — `parallel_pages: 1`),
+3. New opt-in **parallel page fetching** (default off -- `parallel_pages: 1`),
    tunable in `config.yaml` and at the per-call level.
 
 The InsightVM API documents up to 8 parallel requests per console. The
@@ -64,7 +64,7 @@ Single change to `Rapid7Client._paginate` in
 [client.py](../../../src/rapid7_healthcheck/client.py). The current
 `while page < total_pages` loop becomes a two-phase walk:
 
-### Phase 1 — probe (page 0)
+### Phase 1 -- probe (page 0)
 
 Fetch page 0 sequentially exactly as today. Read `page.totalPages` from the
 response. Yield page 0's resources to the caller.
@@ -72,12 +72,12 @@ response. Yield page 0's resources to the caller.
 This phase is required: we don't know `totalPages` until page 0 lands, so we
 can't dispatch parallel work without knowing how many pages exist.
 
-### Phase 2 — parallel batches (pages 1..N-1)
+### Phase 2 -- parallel batches (pages 1..N-1)
 
 If `total_pages > 1` and `effective_parallel > 1`:
 
 - Open a `concurrent.futures.ThreadPoolExecutor(max_workers=effective_parallel)`
-  scoped to the call (`with` block — torn down at end of iteration).
+  scoped to the call (`with` block -- torn down at end of iteration).
 - Submit pages in **batches of size `effective_parallel`**: pages 1..K, then
   K+1..2K, etc. Within each batch, submit all `K` futures simultaneously.
 - Collect results in **strict page-index order**: maintain a
@@ -94,7 +94,7 @@ fan-out yields page 0..K resources before pages K+1..2K are even submitted.
 
 If `effective_parallel == 1` *or* `total_pages == 1`, the executor is never
 created. The function falls through to today's sequential `while` loop. This
-is the **safe default** for 0.2.8 — every existing config preserves bit-for-bit
+is the **safe default** for 0.2.8 -- every existing config preserves bit-for-bit
 behavior.
 
 ### Error handling
@@ -117,7 +117,7 @@ outcomes (success or final raise).
 
 `_ALLOWED_VERBS` and `_ALLOWED_POST_PATHS` are unchanged. Every page fetch
 goes through `_request`, which performs the verb/path check before any
-network I/O. The check is stateless — concurrency does not weaken it.
+network I/O. The check is stateless -- concurrency does not weaken it.
 
 `tests/test_readonly_invariant.py` (the static-scan suite) continues to pass
 unchanged: no new `.put(`/`.patch(`/`.delete(` calls, no new `client.post(...)`
@@ -133,15 +133,15 @@ rapid7:
   auth_mode: "api_key"
   request_timeout_seconds: 60   # was 30
   max_retries: 3
-  parallel_pages: 1             # NEW — pages fetched concurrently per paginate call
-  page_size: 250                # NEW — default page size for paginated calls
+  parallel_pages: 1             # NEW -- pages fetched concurrently per paginate call
+  page_size: 250                # NEW -- default page size for paginated calls
 ```
 
 ### Validation (`config.py`)
 
 - `parallel_pages`: int, range 1..16. Default 1. Values >8 emit a warning log
   on startup ("InsightVM documents 8 parallel requests as the supported limit;
-  N exceeds this — proceed at your own risk").
+  N exceeds this -- proceed at your own risk").
 - `page_size`: int, range 1..500. Default 250.
 - `request_timeout_seconds`: existing field, default value bumped from 30 to 60.
 
@@ -188,7 +188,7 @@ def paginate_post(
 Note: `paginate` and `paginate_post` *currently* default `page_size=500`
 positionally. The new behavior is "default = instance default". To preserve
 backwards compatibility for any external caller passing `page_size=500`
-explicitly, the kwarg still accepts an explicit int — only the *implicit*
+explicitly, the kwarg still accepts an explicit int -- only the *implicit*
 default changes.
 
 `post_one` is unaffected (single request, no pagination).
@@ -200,7 +200,7 @@ default changes.
   `_request`. Timestamps in the formatter let operators reconstruct ordering.
 - One new INFO line per `_paginate` call when `effective_parallel > 1`:
   `paginating <path> with N pages, parallel=K`.
-- No new redaction rules — `_summarize_params` already handles sensitive
+- No new redaction rules -- `_summarize_params` already handles sensitive
   query params.
 - The progress status-line in `__main__` (`[i/N] <name>`) is unaffected: it
   fires per-rule, not per-page.
@@ -228,17 +228,17 @@ Three new tests in [tests/test_client.py](../../../tests/test_client.py):
 
 Plus a config validator test:
 
-4. **`test_config_parallel_pages_validation`** — `parallel_pages: 0` rejected,
+4. **`test_config_parallel_pages_validation`** -- `parallel_pages: 0` rejected,
    `parallel_pages: 17` rejected, `parallel_pages: 9` accepted with a warning
    log line, `parallel_pages: 6` accepted silently. Same shape for `page_size`
    bounds (1..500).
 
-5. **`test_config_request_timeout_default_is_60`** — loading a `config.yaml`
+5. **`test_config_request_timeout_default_is_60`** -- loading a `config.yaml`
    without `request_timeout_seconds` sets the field to 60.
 
 The existing 419 tests must continue to pass with the default `parallel_pages=1`
 (behavior bit-for-bit identical) and with the bumped page-size / timeout
-defaults (no test asserts on the literal values 500 or 30 — verified before
+defaults (no test asserts on the literal values 500 or 30 -- verified before
 implementation).
 
 ## Documentation
@@ -250,7 +250,7 @@ implementation).
 - [docs/examples/config.yaml](../../../docs/examples/config.yaml): both new
   keys included with explanatory comments.
 - [CLAUDE.md](../../../CLAUDE.md): "Layer rules" section gains a sentence
-  noting that `_paginate` may run concurrently — `requests.Session` is
+  noting that `_paginate` may run concurrently -- `requests.Session` is
   thread-safe for read operations and we do not add explicit locks.
 - [CHANGELOG.md](../../../CHANGELOG.md): entry under `[Unreleased]`
   documenting all three changes plus the default-bump as **breaking**
@@ -278,13 +278,13 @@ None. All decisions made during brainstorming:
 
 ## Out-of-scope items captured for later
 
-- Rule-level parallelism (Q1.b) — would need a global concurrency cap to
+- Rule-level parallelism (Q1.b) -- would need a global concurrency cap to
   avoid `parallel_pages * num_concurrent_rules` exceeding the documented
   8-parallel limit.
-- Adaptive `parallel_pages` backoff on 429 — current `_retry_delay` handles
+- Adaptive `parallel_pages` backoff on 429 -- current `_retry_delay` handles
   per-request rate-limiting; tool-wide concurrency adaptation is more
   complex and not warranted yet.
-- `httpx` / asyncio migration — would touch ~30 files (every check + every
+- `httpx` / asyncio migration -- would touch ~30 files (every check + every
   rule) and the entire test surface; not justified by the parallelism scope.
 
 ## Files touched (forecast)

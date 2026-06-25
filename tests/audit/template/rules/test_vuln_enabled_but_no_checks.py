@@ -8,7 +8,7 @@ from rapid7_healthcheck.audit.template.rules.vuln_enabled_but_no_checks import (
 def test_issue_29_template_configured_via_disabled_and_individual_passes(fake_snapshot):
     """Issue #29: the built-in 'Denial of service' template enables a huge
     check set via ``categories.disabled`` (454/455 enabled = 1 disabled) and
-    ``individual.enabled`` (1.78M checks) — its ``*.enabled`` category/type
+    ``individual.enabled`` (1.78M checks) -- its ``*.enabled`` category/type
     lists are empty, but it absolutely runs checks. The old rule read only the
     two ``.enabled`` lists and false-flagged it ``fail``. It must NOT flag.
     """
@@ -32,7 +32,7 @@ def test_issue_29_template_configured_via_disabled_and_individual_passes(fake_sn
 
 def test_flags_truly_blank_template_as_warn(fake_snapshot):
     """All five enable/disable lists empty → provably 'no check configuration'.
-    Flagged, but at warn (not the old fail) — the baseline is unknowable.
+    Flagged, but at warn (not the old fail) -- the baseline is unknowable.
     """
     fake_snapshot.set_templates_full([
         {

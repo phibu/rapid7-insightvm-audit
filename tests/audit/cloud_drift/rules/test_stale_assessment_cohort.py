@@ -42,7 +42,7 @@ def test_above_percent_threshold_warns():
 
 def test_above_count_threshold_warns():
     rule = StaleAssessmentCohortRule()
-    snap = _snapshot(total=10000, stale=600)  # 6% — under default percent threshold
+    snap = _snapshot(total=10000, stale=600)  # 6% -- under default percent threshold
     result = rule.run(
         snap, "warn", False, 500,
         {"stale_after_days": 30, "max_stale_percent": 10, "max_stale_count": 500},
@@ -84,7 +84,7 @@ def test_threshold_datetime_passed_to_snapshot():
     rule.run(snap, "warn", False, 500, {"stale_after_days": 30})
     args, kwargs = snap.cloud_assets_stale.call_args
     threshold = args[0] if args else kwargs["since"]
-    # threshold should be ~30 days ago, not "today" — sanity check the math
+    # threshold should be ~30 days ago, not "today" -- sanity check the math
     from datetime import datetime, timezone, timedelta
     expected = datetime.now(timezone.utc) - timedelta(days=30)
     assert abs((threshold - expected).total_seconds()) < 60
@@ -126,7 +126,7 @@ def test_zero_max_stale_percent_falls_back_to_default():
     """max_stale_percent=0 would fire on any stale asset at all. Reject it
     and fall back to the default 10.0 rather than always-warning."""
     rule = StaleAssessmentCohortRule()
-    snap = _snapshot(total=1000, stale=1)  # 0.1% stale — well under default 10%
+    snap = _snapshot(total=1000, stale=1)  # 0.1% stale -- well under default 10%
     result = rule.run(snap, "warn", False, 500, {"stale_after_days": 30, "max_stale_percent": 0})
     assert result.summary["max_stale_percent"] == 10.0
     assert result.status == "pass"

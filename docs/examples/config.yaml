@@ -1,12 +1,12 @@
 # =============================================================================
-# Rapid7 InsightVM Environment Health Check — example configuration
+# Rapid7 InsightVM Environment Health Check -- example configuration
 #
 # Every key is documented inline below and, in more detail, in README.md.
 # This file is the canonical template: copy it, adjust values, pass via --config.
 # =============================================================================
 
 # -----------------------------------------------------------------------------
-# Connection — Security Console (v3 API)
+# Connection -- Security Console (v3 API)
 # -----------------------------------------------------------------------------
 rapid7:
   base_url: https://us.api.insight.rapid7.com  # Security Console URL (self-hosted: https://<host>:3780)
@@ -15,8 +15,8 @@ rapid7:
   max_retries: 3                               # retries on transient errors before a call fails
   parallel_pages: 1                            # pages fetched concurrently per paginated call (1-16; 1 = sequential)
   page_size: 250                               # page size for paginated calls (1-500)
-  # auth_mode: api_key                         # optional, default — reads R7_API_KEY
-  # auth_mode: basic                           # optional — reads R7_BASIC_USER + R7_BASIC_PASSWORD
+  # auth_mode: api_key                         # optional, default -- reads R7_API_KEY
+  # auth_mode: basic                           # optional -- reads R7_BASIC_USER + R7_BASIC_PASSWORD
 
 # -----------------------------------------------------------------------------
 # Report output
@@ -29,7 +29,7 @@ report:
   log_format: plain                                    # file-log format: plain | cmtrace | json
 
 # -----------------------------------------------------------------------------
-# Thresholds — operational health checks
+# Thresholds -- operational health checks
 # -----------------------------------------------------------------------------
 thresholds:
   scan_engines:
@@ -58,7 +58,7 @@ thresholds:
     duplicate_detection_max_assets: 50000  # skip duplicate detection above this asset count; 0 always skips
 
 # -----------------------------------------------------------------------------
-# Check toggles — enable or disable each vertical
+# Check toggles -- enable or disable each vertical
 # -----------------------------------------------------------------------------
 checks:
   scan_engines: true            # operational check: scan engine health
@@ -246,10 +246,10 @@ template_audit:
       max_timeout_ceiling_ms: 500   # flag when timeout.maximum (ceiling after retries) exceeds this
     template.windows_services_disabled:
       enabled: true             # enable/disable this rule
-      severity: info            # finding severity: info | warn | fail (unscoped — verify bound sites are Windows)
+      severity: info            # finding severity: info | warn | fail (unscoped -- verify bound sites are Windows)
 
 # -----------------------------------------------------------------------------
-# Cloud Integration — Insight Platform (v4 API), required for Cloud Drift Audit
+# Cloud Integration -- Insight Platform (v4 API), required for Cloud Drift Audit
 # -----------------------------------------------------------------------------
 cloud_integration:
   enabled: false                              # master toggle for the Cloud Drift Audit connection

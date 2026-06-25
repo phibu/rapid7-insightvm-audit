@@ -14,7 +14,7 @@ class ParallelAssetsExtremeRule(AuditRule):
         "([min, max], default [2, 50]). Extremely low values (1) serialize "
         "scans and inflate scan duration; extremely high values can starve "
         "the engine of resources and produce timeouts. Templates without "
-        "the field set are not examined — they use the engine default, "
+        "the field set are not examined -- they use the engine default, "
         "which is by definition not extreme."
     )
     default_severity = "info"
@@ -29,7 +29,7 @@ class ParallelAssetsExtremeRule(AuditRule):
 
         templates = snapshot.templates_full()
         # Only templates with `maxParallelAssets` set are applicable to this
-        # rule. Templates without the field run with the engine default —
+        # rule. Templates without the field run with the engine default --
         # not "extreme" by definition. Counting them as "examined" would
         # inflate the passed denominator with irrelevant population.
         templates_with_value = [

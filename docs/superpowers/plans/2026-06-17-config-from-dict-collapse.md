@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- **Read-only contract (CLAUDE.md):** `config.py` feeds the HTTP client. This refactor adds NO HTTP calls and NO new verbs. After every task, the pre-commit grep `grep -nE 'PUT|PATCH|DELETE|client\.(put|patch|delete)' src/` must return zero matches (it will — nothing here touches HTTP).
+- **Read-only contract (CLAUDE.md):** `config.py` feeds the HTTP client. This refactor adds NO HTTP calls and NO new verbs. After every task, the pre-commit grep `grep -nE 'PUT|PATCH|DELETE|client\.(put|patch|delete)' src/` must return zero matches (it will -- nothing here touches HTTP).
 - **Behavior-preserving:** This is a pure refactor. Every config that validates today must still validate; every config rejected today must still be rejected, with a message that still satisfies the test suite's substring `match=` assertions. NO loosening or tightening of any validation rule. Specifically:
   - `rapid7.max_retries` and `cloud_integration.max_retries`: 0 is REJECTED today (positive-int). Keep rejecting 0.
   - `rapid7.request_timeout_seconds`, `cloud_integration.timeout_seconds`, `*.sample_size`, `agents_timeout_seconds`: positive-int (reject 0).
@@ -26,10 +26,10 @@
 
 ## File Structure
 
-- **Modify:** `src/rapid7_healthcheck/config.py` — the only production file touched. All changes are internal to it; `load_config` and `AppConfig` public surface are unchanged.
-- **Modify:** `tests/test_config.py` — add characterization tests up front (Task 1), then per-task assertions as builders migrate.
+- **Modify:** `src/rapid7_healthcheck/config.py` -- the only production file touched. All changes are internal to it; `load_config` and `AppConfig` public surface are unchanged.
+- **Modify:** `tests/test_config.py` -- add characterization tests up front (Task 1), then per-task assertions as builders migrate.
 
-No new files. No public-interface changes — `load_config(path) -> AppConfig` and every dataclass keep their exact shape, so `__main__.py` and all callers are untouched.
+No new files. No public-interface changes -- `load_config(path) -> AppConfig` and every dataclass keep their exact shape, so `__main__.py` and all callers are untouched.
 
 ---
 
@@ -41,7 +41,7 @@ Pin the current observable validation behavior BEFORE any refactor, so every lat
 - Test: `tests/test_config.py` (append a new `class TestConfigCharacterization` or module-level tests)
 
 **Interfaces:**
-- Consumes: `rapid7_healthcheck.config.load_config`, `ConfigError`, and a minimal valid config dict fixture (reuse the existing `app_config`/valid-config fixture in `tests/test_config.py` — locate it first; do not invent a new one if one exists).
+- Consumes: `rapid7_healthcheck.config.load_config`, `ConfigError`, and a minimal valid config dict fixture (reuse the existing `app_config`/valid-config fixture in `tests/test_config.py` -- locate it first; do not invent a new one if one exists).
 - Produces: a frozen record of which int values each field accepts/rejects. Later tasks must keep these green.
 
 - [ ] **Step 1: Locate the existing valid-config fixture**
@@ -142,7 +142,7 @@ def test_char_bool_rejected_for_int_field():
 - [ ] **Step 3: Run the characterization tests against CURRENT (unmodified) code**
 
 Run: `pytest tests/test_config.py -k char -v`
-Expected: ALL PASS. If any fail, the test encodes a wrong assumption about current behavior — fix the test to match reality (read the relevant builder), not the code. This is the baseline; it must be green before touching `config.py`.
+Expected: ALL PASS. If any fail, the test encodes a wrong assumption about current behavior -- fix the test to match reality (read the relevant builder), not the code. This is the baseline; it must be green before touching `config.py`.
 
 - [ ] **Step 4: Commit the safety net**
 
@@ -165,8 +165,8 @@ Decouple type checking from value checking. `_check_scalar` keeps its current si
 **Interfaces:**
 - Consumes: nothing new.
 - Produces:
-  - `_check_scalar(field_name: str, value: Any, expected: type, path: str, *, positive_int: bool = True) -> None` — when `expected is int` and `positive_int=False`, only type (int-not-bool) is checked; the `<= 0` rule is skipped. Default `True` preserves every current caller's behavior verbatim.
-  - `_from_dict(cls, data, path, *, post_validate: Callable[[Any], Any] | None = None) -> Any` — does schema + TYPE-only checks (calls `_check_scalar(..., positive_int=False)` for int fields), constructs the dataclass, then returns `post_validate(obj)` if given (which may raise `ConfigError` or return a possibly-`replace`d object), else the object.
+  - `_check_scalar(field_name: str, value: Any, expected: type, path: str, *, positive_int: bool = True) -> None` -- when `expected is int` and `positive_int=False`, only type (int-not-bool) is checked; the `<= 0` rule is skipped. Default `True` preserves every current caller's behavior verbatim.
+  - `_from_dict(cls, data, path, *, post_validate: Callable[[Any], Any] | None = None) -> Any` -- does schema + TYPE-only checks (calls `_check_scalar(..., positive_int=False)` for int fields), constructs the dataclass, then returns `post_validate(obj)` if given (which may raise `ConfigError` or return a possibly-`replace`d object), else the object.
 
 - [ ] **Step 1: Write the failing test for `_check_scalar` type-only mode**
 
@@ -196,7 +196,7 @@ def test_check_scalar_default_still_positive():
 - [ ] **Step 2: Run to verify it fails**
 
 Run: `pytest tests/test_config.py -k check_scalar -v`
-Expected: FAIL — `_check_scalar() got an unexpected keyword argument 'positive_int'`.
+Expected: FAIL -- `_check_scalar() got an unexpected keyword argument 'positive_int'`.
 
 - [ ] **Step 3: Implement the `_check_scalar` split**
 
@@ -278,7 +278,7 @@ def test_from_dict_post_validate_can_replace():
 - [ ] **Step 6: Run to verify it fails**
 
 Run: `pytest tests/test_config.py -k from_dict -v`
-Expected: FAIL — `_from_dict()` has no `post_validate` kwarg; `test_from_dict_is_type_only_allows_zero` fails because current `_from_dict` rejects 0.
+Expected: FAIL -- `_from_dict()` has no `post_validate` kwarg; `test_from_dict_is_type_only_allows_zero` fails because current `_from_dict` rejects 0.
 
 - [ ] **Step 7: Implement `_from_dict` type-only + post_validate**
 
@@ -314,7 +314,7 @@ def _from_dict(cls: type, data: Any, path: str, *, post_validate=None) -> Any:
 - [ ] **Step 8: Run `_from_dict` tests + full config suite**
 
 Run: `pytest tests/test_config.py -v`
-Expected: The new `from_dict`/`check_scalar` tests PASS. **`_build_thresholds` tests may now FAIL** because `_from_dict` no longer enforces positive-int on threshold fields like `sample_size`-style positives — this is expected and fixed in Task 3. If ONLY threshold-positive-int tests fail, proceed. If characterization tests from Task 1 fail, STOP and reassess.
+Expected: The new `from_dict`/`check_scalar` tests PASS. **`_build_thresholds` tests may now FAIL** because `_from_dict` no longer enforces positive-int on threshold fields like `sample_size`-style positives -- this is expected and fixed in Task 3. If ONLY threshold-positive-int tests fail, proceed. If characterization tests from Task 1 fail, STOP and reassess.
 
 - [ ] **Step 9: Commit**
 
@@ -327,7 +327,7 @@ git commit -m "refactor(config): split _check_scalar type/value; add _from_dict 
 
 ## Task 3: Migrate `_build_thresholds` value checks into `post_validate`; delete the pop-reattach workarounds
 
-`_from_dict` is now type-only, so the threshold builders need their positive-int rules restored via `post_validate`. The reward: the two `dead_groups_fallback_cap` / `duplicate_detection_max_assets` pop-validate-reattach dances (lines 440-497) can be deleted — those existed only because `_check_scalar` coupled type and value.
+`_from_dict` is now type-only, so the threshold builders need their positive-int rules restored via `post_validate`. The reward: the two `dead_groups_fallback_cap` / `duplicate_detection_max_assets` pop-validate-reattach dances (lines 440-497) can be deleted -- those existed only because `_check_scalar` coupled type and value.
 
 **Files:**
 - Modify: `src/rapid7_healthcheck/config.py:429-504` (`_build_thresholds`)
@@ -335,11 +335,11 @@ git commit -m "refactor(config): split _check_scalar type/value; add _from_dict 
 
 **Interfaces:**
 - Consumes: `_from_dict(..., post_validate=...)` from Task 2.
-- Produces: per-threshold `post_validate` functions enforcing the same rules the dataclasses imply. The four threshold dataclasses (`ScanEngineThresholds`, `ScanActivityThresholds`, `AssetCoverageThresholds`, `DataQualityThresholds`) define which fields are positive vs non-negative — read each dataclass to enumerate its int fields before writing the hook.
+- Produces: per-threshold `post_validate` functions enforcing the same rules the dataclasses imply. The four threshold dataclasses (`ScanEngineThresholds`, `ScanActivityThresholds`, `AssetCoverageThresholds`, `DataQualityThresholds`) define which fields are positive vs non-negative -- read each dataclass to enumerate its int fields before writing the hook.
 
 - [ ] **Step 1: Read the four threshold dataclasses**
 
-Read `src/rapid7_healthcheck/config.py` lines ~140-240 (the `*Thresholds` dataclasses). Enumerate every int field and classify: positive-only vs non-negative. The two known non-negative fields are `AssetCoverageThresholds.dead_groups_fallback_cap` and `DataQualityThresholds.duplicate_detection_max_assets` (0 allowed). Treat all other int threshold fields as positive-only (current behavior — verify against existing threshold tests, do not assume).
+Read `src/rapid7_healthcheck/config.py` lines ~140-240 (the `*Thresholds` dataclasses). Enumerate every int field and classify: positive-only vs non-negative. The two known non-negative fields are `AssetCoverageThresholds.dead_groups_fallback_cap` and `DataQualityThresholds.duplicate_detection_max_assets` (0 allowed). Treat all other int threshold fields as positive-only (current behavior -- verify against existing threshold tests, do not assume).
 
 - [ ] **Step 2: Write the failing test (zero allowed where it should be, rejected where it shouldn't)**
 
@@ -458,8 +458,8 @@ git commit -m "refactor(config): thresholds value-checks via post_validate; dele
 These three share a shape: `None -> defaults`, schema (`enabled`/`full_scan`/`sample_size`[/`agents_timeout_seconds`]/`rules`), positive-int on `sample_size` (and `agents_timeout_seconds`), then the rules block via the existing `_validate_rules_block`. Route the schema+type through `_from_dict`; keep `None->default`, the positive-int rule, and the rules-block validation as the per-block tail.
 
 **Files:**
-- Modify: `src/rapid7_healthcheck/config.py:173-187` (`AuditConfig`, `UserAuditConfig` dataclasses — make `rules` optional)
-- Modify: `src/rapid7_healthcheck/config.py:226-235` (`CloudDriftConfig` dataclass — make `rules` optional, for Task 5 consistency)
+- Modify: `src/rapid7_healthcheck/config.py:173-187` (`AuditConfig`, `UserAuditConfig` dataclasses -- make `rules` optional)
+- Modify: `src/rapid7_healthcheck/config.py:226-235` (`CloudDriftConfig` dataclass -- make `rules` optional, for Task 5 consistency)
 - Modify: `src/rapid7_healthcheck/config.py:507-585` (`_build_audit_config`, `_build_user_audit_config`)
 - Modify: `src/rapid7_healthcheck/config.py:672-706` (`_build_template_audit_config`)
 - Test: `tests/test_config.py`
@@ -467,8 +467,8 @@ These three share a shape: `None -> defaults`, schema (`enabled`/`full_scan`/`sa
 **Interfaces:**
 - Consumes: `_from_dict(..., post_validate=...)`, `_registry_rule_ids()`, `_validate_rules_block(raw_rules, valid_rule_ids, path)`, the `_positive_int_fields` helper from Task 3.
 - Produces: three migrated builders returning the same `AuditConfig` / `UserAuditConfig` / `TemplateAuditConfig` shapes.
-- **Constraint 1 — `rules` is a required dict on `AuditConfig`/`UserAuditConfig` (config.py:178,187), but only `TemplateAuditConfig.rules` has a `default_factory` (config.py:249).** The migration pops `rules` before `_from_dict` and re-attaches via `replace`. For `replace` to work after popping, `_from_dict` must be able to construct the object WITHOUT `rules` — which requires `rules` to be optional. **Prerequisite step: give `AuditConfig.rules`, `UserAuditConfig.rules`, and `CloudDriftConfig.rules` a `default_factory=dict`** (matching `TemplateAuditConfig`). This is safe: every builder always supplies `rules` via `replace`, and the `_default_*` factory functions already pass `rules={}` explicitly, so no observable behavior changes. The `field` import is already present (used by `TemplateAuditConfig`).
-- **Constraint 2 — the `dict` hint crash.** `_from_dict` calls `_check_scalar` only for int/bool/str hints; a `dict` hint hits the `else` branch and raises "unsupported declared type". After popping `rules` from the input data, `_from_dict` never sees it in `data`, so it never type-checks it — but `get_type_hints(cls)` still includes `rules: dict`. Confirm `_from_dict` only calls `_check_scalar` for fields **present in `data`** (it does — `if f.name in data:` at the current line 348). Since `rules` is popped from `data`, the dict hint is never checked. Safe. Do NOT extend `_check_scalar` to understand `dict`.
+- **Constraint 1 -- `rules` is a required dict on `AuditConfig`/`UserAuditConfig` (config.py:178,187), but only `TemplateAuditConfig.rules` has a `default_factory` (config.py:249).** The migration pops `rules` before `_from_dict` and re-attaches via `replace`. For `replace` to work after popping, `_from_dict` must be able to construct the object WITHOUT `rules` -- which requires `rules` to be optional. **Prerequisite step: give `AuditConfig.rules`, `UserAuditConfig.rules`, and `CloudDriftConfig.rules` a `default_factory=dict`** (matching `TemplateAuditConfig`). This is safe: every builder always supplies `rules` via `replace`, and the `_default_*` factory functions already pass `rules={}` explicitly, so no observable behavior changes. The `field` import is already present (used by `TemplateAuditConfig`).
+- **Constraint 2 -- the `dict` hint crash.** `_from_dict` calls `_check_scalar` only for int/bool/str hints; a `dict` hint hits the `else` branch and raises "unsupported declared type". After popping `rules` from the input data, `_from_dict` never sees it in `data`, so it never type-checks it -- but `get_type_hints(cls)` still includes `rules: dict`. Confirm `_from_dict` only calls `_check_scalar` for fields **present in `data`** (it does -- `if f.name in data:` at the current line 348). Since `rules` is popped from `data`, the dict hint is never checked. Safe. Do NOT extend `_check_scalar` to understand `dict`.
 
 - [ ] **Step 0: Make `rules` optional on AuditConfig / UserAuditConfig / CloudDriftConfig**
 
@@ -494,7 +494,7 @@ class UserAuditConfig:
 And in `CloudDriftConfig` (config.py:226-235), change `rules: dict` to `rules: dict = field(default_factory=dict)`.
 
 Run: `pytest tests/test_config.py -v`
-Expected: ALL PASS (no behavior change — builders always supply `rules`). If any test constructs these dataclasses positionally relying on `rules` being required, it still works (optional field with default is constructor-compatible). Commit this as its own step is unnecessary; fold into Task 4's final commit.
+Expected: ALL PASS (no behavior change -- builders always supply `rules`). If any test constructs these dataclasses positionally relying on `rules` being required, it still works (optional field with default is constructor-compatible). Commit this as its own step is unnecessary; fold into Task 4's final commit.
 
 - [ ] **Step 1: Write the failing test (behavior parity for audit block)**
 
@@ -519,7 +519,7 @@ def test_audit_sample_size_zero_rejected_after_migration():
         _build_app_config(cfg)
 ```
 
-- [ ] **Step 2: Run to verify current state (should PASS pre-migration — these pin behavior to preserve)**
+- [ ] **Step 2: Run to verify current state (should PASS pre-migration -- these pin behavior to preserve)**
 
 Run: `pytest tests/test_config.py -k "audit_block or audit_unknown or audit_sample_size_zero" -v`
 Expected: PASS against current code. These lock the behavior the migration must keep.
@@ -553,7 +553,7 @@ Note: `AuditConfig.rules` was made optional in Step 0, so popping it before `_fr
 
 - [ ] **Step 4: Migrate `_build_user_audit_config` and `_build_template_audit_config` identically**
 
-Same pattern, swapping the dataclass (`UserAuditConfig` / `TemplateAuditConfig`), the path string, the positive-int field tuple (`("sample_size",)` — neither has `agents_timeout_seconds`), and the registry slot (`_, valid_user_ids, _, _` / `_, _, _, valid_template_ids`).
+Same pattern, swapping the dataclass (`UserAuditConfig` / `TemplateAuditConfig`), the path string, the positive-int field tuple (`("sample_size",)` -- neither has `agents_timeout_seconds`), and the registry slot (`_, valid_user_ids, _, _` / `_, _, _, valid_template_ids`).
 
 ```python
 def _build_user_audit_config(data: dict | None) -> UserAuditConfig:
@@ -595,7 +595,7 @@ def _build_template_audit_config(data: dict | None) -> TemplateAuditConfig:
 - [ ] **Step 5: Run the full config suite**
 
 Run: `pytest tests/test_config.py -v`
-Expected: ALL PASS. Watch for: (a) message-wording mismatches on `match=` (reconcile the test to the new accurate phrasing); (b) the `enabled`/`full_scan` bool checks — `_from_dict` now enforces them via `_check_scalar(bool)`, confirm the messages still satisfy `match=`.
+Expected: ALL PASS. Watch for: (a) message-wording mismatches on `match=` (reconcile the test to the new accurate phrasing); (b) the `enabled`/`full_scan` bool checks -- `_from_dict` now enforces them via `_check_scalar(bool)`, confirm the messages still satisfy `match=`.
 
 - [ ] **Step 6: Commit**
 
@@ -608,7 +608,7 @@ git commit -m "refactor(config): route audit/user_audit/template_audit blocks th
 
 ## Task 5: Migrate `cloud_drift` (rules-only) and decide `cloud_integration` / `report` / `rapid7`
 
-`cloud_drift` is rules-only and migrates trivially. `cloud_integration`, `report`, and `rapid7` carry cross-field rules (`enabled->base_url required`, HTTPS prefix), enum membership (`log_format`, `auth_mode`), nullable (`delta_max_age_days`), and range checks (`parallel_pages`, `page_size`) — all expressible as `post_validate`. Migrate them; the value rules live in the hook.
+`cloud_drift` is rules-only and migrates trivially. `cloud_integration`, `report`, and `rapid7` carry cross-field rules (`enabled->base_url required`, HTTPS prefix), enum membership (`log_format`, `auth_mode`), nullable (`delta_max_age_days`), and range checks (`parallel_pages`, `page_size`) -- all expressible as `post_validate`. Migrate them; the value rules live in the hook.
 
 **Files:**
 - Modify: `src/rapid7_healthcheck/config.py:647-669` (`_build_cloud_drift_config`)
@@ -620,9 +620,9 @@ git commit -m "refactor(config): route audit/user_audit/template_audit blocks th
 **Interfaces:**
 - Consumes: `_from_dict(..., post_validate=...)`, `_positive_int_fields`, `_non_negative_int_fields`, `_registry_rule_ids`, `_validate_rules_block`, `_VALID_AUTH_MODES`.
 - Produces: migrated builders, same return shapes.
-- **Constraint:** `report.delta_max_age_days` is `int | None`. `_from_dict` calls `get_type_hints`, which resolves the hint to `Optional[int]` / `int | None` — `_check_scalar`'s `if expected is int` will NOT match `int | None`, hitting the `else` "unsupported declared type" branch and raising. So `delta_max_age_days` MUST be popped before `_from_dict` (like `rules`), validated by hand (non-negative-or-None), and re-attached via `replace`. Confirm the exact hint type by reading the `ReportConfig` dataclass first.
+- **Constraint:** `report.delta_max_age_days` is `int | None`. `_from_dict` calls `get_type_hints`, which resolves the hint to `Optional[int]` / `int | None` -- `_check_scalar`'s `if expected is int` will NOT match `int | None`, hitting the `else` "unsupported declared type" branch and raising. So `delta_max_age_days` MUST be popped before `_from_dict` (like `rules`), validated by hand (non-negative-or-None), and re-attached via `replace`. Confirm the exact hint type by reading the `ReportConfig` dataclass first.
 
-- [ ] **Step 1: Migrate `_build_cloud_drift_config` (trivial — rules-only)**
+- [ ] **Step 1: Migrate `_build_cloud_drift_config` (trivial -- rules-only)**
 
 ```python
 def _build_cloud_drift_config(data: dict | None) -> CloudDriftConfig:
@@ -639,7 +639,7 @@ def _build_cloud_drift_config(data: dict | None) -> CloudDriftConfig:
     return CloudDriftConfig(rules=rules)
 ```
 
-Note: `cloud_drift` is a single-field (`rules: dict`) block. `_from_dict` cannot validate a dict field, and the only field IS the dict — so `_from_dict` adds nothing here. **Leave `_build_cloud_drift_config` essentially as-is** (it is already minimal). Document that it does not route through `_from_dict` because its sole field is the rules dict. This is a deliberate non-migration, not an oversight.
+Note: `cloud_drift` is a single-field (`rules: dict`) block. `_from_dict` cannot validate a dict field, and the only field IS the dict -- so `_from_dict` adds nothing here. **Leave `_build_cloud_drift_config` essentially as-is** (it is already minimal). Document that it does not route through `_from_dict` because its sole field is the rules dict. This is a deliberate non-migration, not an oversight.
 
 - [ ] **Step 2: Write failing tests for `cloud_integration` cross-field + range via post_validate**
 
@@ -691,7 +691,7 @@ def _build_cloud_integration_config(data: dict | None) -> CloudIntegrationConfig
     return _from_dict(CloudIntegrationConfig, data, "cloud_integration", post_validate=pv)
 ```
 
-**Caution:** Confirm `max_retries` is positive-only here (Step from Global Constraints says reject 0). If the current `_build_cloud_integration_config` used `_check_scalar(... int)` (default positive) for `max_retries`, then 0 was rejected — preserve that with `_positive_int_fields`. Verify against the characterization test.
+**Caution:** Confirm `max_retries` is positive-only here (Step from Global Constraints says reject 0). If the current `_build_cloud_integration_config` used `_check_scalar(... int)` (default positive) for `max_retries`, then 0 was rejected -- preserve that with `_positive_int_fields`. Verify against the characterization test.
 
 - [ ] **Step 5: Migrate `_build_report_config` (pop the nullable field)**
 
@@ -700,7 +700,7 @@ def _build_report_config(data: Any) -> ReportConfig:
     if not isinstance(data, dict):
         raise ConfigError(f"report: expected mapping, got {type(data).__name__}")
     raw = dict(data)
-    # delta_max_age_days is int | None — _from_dict/_check_scalar can't type a
+    # delta_max_age_days is int | None -- _from_dict/_check_scalar can't type a
     # union, so validate and re-attach it by hand.
     delta = raw.pop("delta_max_age_days", 30)
     if delta is not None and (not isinstance(delta, int) or isinstance(delta, bool) or delta < 0):
@@ -743,7 +743,7 @@ def _build_rapid7_config(data: Any) -> Rapid7Config:
     return _from_dict(Rapid7Config, data, "rapid7", post_validate=pv)
 ```
 
-**Caution:** Current `_build_rapid7_config` checks `max_retries` as positive-int via `_check_scalar` (rejects 0 — confirmed by characterization test). Preserve. The `base_url` HTTPS check lives in `_build_app_config` (line 786), NOT here — leave it there; do not duplicate.
+**Caution:** Current `_build_rapid7_config` checks `max_retries` as positive-int via `_check_scalar` (rejects 0 -- confirmed by characterization test). Preserve. The `base_url` HTTPS check lives in `_build_app_config` (line 786), NOT here -- leave it there; do not duplicate.
 
 - [ ] **Step 7: Run the full config suite**
 
@@ -768,7 +768,7 @@ git commit -m "refactor(config): route cloud_integration/report/rapid7 through _
 - [ ] **Step 1: Find now-dead helpers**
 
 Run: `grep -n "_validate_dict_schema\|replace(" src/rapid7_healthcheck/config.py`
-`_validate_dict_schema` is still used only by `_build_cloud_drift_config` (Task 5 Step 1 kept it). If any other builder still references it, leave it. If it is now used by zero or one caller and the one caller is trivial, consider inlining — but only if it does not change wording. When unsure, leave it (YAGNI on deletion).
+`_validate_dict_schema` is still used only by `_build_cloud_drift_config` (Task 5 Step 1 kept it). If any other builder still references it, leave it. If it is now used by zero or one caller and the one caller is trivial, consider inlining -- but only if it does not change wording. When unsure, leave it (YAGNI on deletion).
 
 - [ ] **Step 2: Remove unused imports**
 
@@ -795,7 +795,7 @@ print("done")
 PY
 ```
 
-Remove anything flagged (e.g. `replace` if Tasks 3-5 left it unused — but they use it, so confirm).
+Remove anything flagged (e.g. `replace` if Tasks 3-5 left it unused -- but they use it, so confirm).
 
 - [ ] **Step 3: Run the FULL suite**
 
@@ -818,9 +818,9 @@ git commit -m "refactor(config): prune dead validation helpers after _from_dict 
 
 ## Self-Review notes (resolved during planning)
 
-- **Spec coverage:** All five hand-written builders with duplicated schema (`audit`, `user_audit`, `template_audit`, `cloud_integration`, `report`) plus `rapid7` are migrated (Tasks 4-5). `cloud_drift` is a documented deliberate non-migration (single dict field — `_from_dict` adds nothing). `_build_thresholds` migrated and its workarounds deleted (Task 3). The `_check_scalar` type/value split (the prerequisite enabling all of it) is Task 2.
+- **Spec coverage:** All five hand-written builders with duplicated schema (`audit`, `user_audit`, `template_audit`, `cloud_integration`, `report`) plus `rapid7` are migrated (Tasks 4-5). `cloud_drift` is a documented deliberate non-migration (single dict field -- `_from_dict` adds nothing). `_build_thresholds` migrated and its workarounds deleted (Task 3). The `_check_scalar` type/value split (the prerequisite enabling all of it) is Task 2.
 - **The zero-int trap** (delta_max_age_days, max_retries, threshold caps) is handled explicitly: Task 1 pins the current boundaries, Task 2 makes `_from_dict` type-only, Tasks 3-5 restore the exact per-field value rules via `post_validate`. `max_retries=0` stays REJECTED (preserved, not "fixed").
-- **Union/dict field hazard:** `rules` (dict) and `delta_max_age_days` (int|None) cannot pass through `_check_scalar` — both are popped before `_from_dict` and re-attached via `replace`. Flagged in Tasks 4 and 5.
+- **Union/dict field hazard:** `rules` (dict) and `delta_max_age_days` (int|None) cannot pass through `_check_scalar` -- both are popped before `_from_dict` and re-attached via `replace`. Flagged in Tasks 4 and 5.
 - **Wording fidelity:** substring-compatible; reconcile `match=` to new accurate phrasing where it drifts. No message-override params (don't preserve dead strings).
 - **Type consistency:** `post_validate` signature is `(obj) -> obj` everywhere; `_positive_int_fields`/`_non_negative_int_fields` helpers have a single definition used across Tasks 3-5.
 - **Open verification for the implementer:** read each dataclass (`*Thresholds`, `AuditConfig`, `ReportConfig`, `Rapid7Config`, `CloudIntegrationConfig`) to confirm field defaults and the exact int-field classification before writing each `post_validate`. The plan names the known cases; the dataclass is the authority.

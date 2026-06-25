@@ -28,7 +28,7 @@ def skipped_rule(
     description: str,
     sources: Iterable[str] = (),
 ) -> RuleResult:
-    """Build a skipped RuleResult — used when a concept's threshold flag is off."""
+    """Build a skipped RuleResult -- used when a concept's threshold flag is off."""
     return RuleResult(
         rule_id=rule_id,
         rule_name=rule_name,
@@ -95,7 +95,7 @@ def safe_run(
     identity and the rule method's own constants is caught by per-check
     unit tests that assert rule_id stability.
 
-    `default_severity` is the rule's own severity tag — used by the
+    `default_severity` is the rule's own severity tag -- used by the
     state-blob/delta logic; surfaces in the synthesized error_rule when
     the producer raises.
     """
@@ -114,11 +114,11 @@ def safe_run(
             default_severity=default_severity,
         )
     duration_ms = int((time.monotonic() - rule_start) * 1000)
-    # If the rule producer didn't set its own timing (the common case —
+    # If the rule producer didn't set its own timing (the common case --
     # make_rule_result() defaults duration_ms=None), stamp the wall-clock
     # elapsed so the per-rule card in the report shows a real timing.
     # A rule that explicitly set duration_ms=0 (measured sub-millisecond)
-    # is preserved as-is — None is the unambiguous "not measured" sentinel.
+    # is preserved as-is -- None is the unambiguous "not measured" sentinel.
     if result.duration_ms is None:
         return replace(result, duration_ms=duration_ms)
     return result
@@ -144,7 +144,7 @@ def safe_run_rule(rule, fn: Callable[[], RuleResult]) -> RuleResult:
 
 
 # The result-build and the three terminal rollups are shared with the audit
-# runner — one implementation each in `audit.rule_rollup`, imported here under
+# runner -- one implementation each in `audit.rule_rollup`, imported here under
 # the op-side names the op-check runner and tests already use.
 # `make_rule_result` lives in `rule_rollup` (both verticals share it) and is
 # re-exported here so the operational checks' existing imports are unchanged;

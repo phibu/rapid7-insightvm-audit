@@ -34,11 +34,11 @@ class SiteCredentialCentralizationCandidatesRule(AuditRule):
     description = (
         "Surfaces opportunities to centralize credential management. Flags "
         "(a) site-specific credentials whose identity (service / username / "
-        "domain / host / port — never the secret, which the API does not "
+        "domain / host / port -- never the secret, which the API does not "
         "return) matches a credential in one or more OTHER sites, so they "
         "could become a single shared credential; and (b) shared credentials "
         "assigned to only one site, which are 'shared' in name only. "
-        "Informational governance guidance — credentials named to match the "
+        "Informational governance guidance -- credentials named to match the "
         "intentional-local pattern (default `^LOCAL_`, tunable via "
         "`local_name_pattern`) are excluded. Site-specific credentials remain "
         "valid for segregated environments; this rule only points out "
@@ -82,7 +82,7 @@ class SiteCredentialCentralizationCandidatesRule(AuditRule):
                 severity=severity,
                 message=(
                     f"Credential {ex['key_label']} is configured site-locally "
-                    f"in {len(site_ids)} sites — consider converting it to a "
+                    f"in {len(site_ids)} sites -- consider converting it to a "
                     f"single shared credential."
                 ),
                 details={
@@ -105,7 +105,7 @@ class SiteCredentialCentralizationCandidatesRule(AuditRule):
                     severity=severity,
                     message=(
                         f"Shared credential '{cred.get('name')}' is assigned to "
-                        f"only one site — 'shared' in name only. Either bind it "
+                        f"only one site -- 'shared' in name only. Either bind it "
                         f"to the sites that need it or make it site-local."
                     ),
                     details={

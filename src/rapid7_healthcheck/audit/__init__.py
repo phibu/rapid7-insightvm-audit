@@ -42,7 +42,7 @@ def _extract_diagnostics(e: Exception) -> tuple[str | None, int | None]:
 class RuleResult:
     """Result of running one audit rule or operational-check concept.
 
-    `card_summary` — three canonical counts the report renders uniformly
+    `card_summary` -- three canonical counts the report renders uniformly
     in the rule card header: ``{"examined": int, "passed": int, "failed": int}``.
     Set when the rule has a meaningful per-item population it examined;
     leave None for rules where "examined" is genuinely ambiguous
@@ -85,7 +85,7 @@ class Rule(Protocol):
 
 
 class AuditRule:
-    """Base for the four audit categories' concrete rules — the single owner of
+    """Base for the four audit categories' concrete rules -- the single owner of
     the findings -> ``RuleResult`` build (see CONTEXT.md "AuditRule").
 
     Subclasses declare their identity as class attributes (``rule_id``,
@@ -93,8 +93,8 @@ class AuditRule:
     ``sources``) and call ``self.result(...)`` at each return point instead of
     hand-rolling the ``fail > warn > pass`` status derivation, the
     ``card_summary`` shape, and the ``RuleResult(...)`` metadata wrap. The build
-    delegates to ``rule_rollup.make_rule_result`` — the same builder the
-    operational checks use — so both verticals share one result-build.
+    delegates to ``rule_rollup.make_rule_result`` -- the same builder the
+    operational checks use -- so both verticals share one result-build.
 
     ``AuditRule`` *structurally* satisfies the ``Rule`` protocol; inheritance
     leaves the registry and ``AuditRunner`` dispatch untouched (``@register``
@@ -123,7 +123,7 @@ class AuditRule:
         """Build this rule's ``RuleResult`` from its findings.
 
         ``severity`` is the config-overridden run-time severity (passed
-        explicitly, not read from ``self.default_severity`` — the two diverge
+        explicitly, not read from ``self.default_severity`` -- the two diverge
         under an operator override and ``RuleResult.severity`` feeds the state
         blob). Status is derived from the findings; ``card_summary`` is built
         from ``examined``/``failed`` when both are given, or passed through when
@@ -198,7 +198,7 @@ class ConfigurationAuditCheck:
 
 # Register every audit rule at package-import time by importing each module
 # under `audit/rules/` so its @register decorator fires. The directory is the
-# single source of truth — adding a new rule is just a new decorated file under
+# single source of truth -- adding a new rule is just a new decorated file under
 # `audit/rules/`, no import line to maintain. See CONTEXT.md "Rule registration".
 from rapid7_healthcheck._rule_loader import load_rules  # noqa: E402
 

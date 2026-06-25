@@ -1,12 +1,12 @@
-# Privileged-MFA SSO + Severity Bumps + Insight Agent Modes + Bounded Agent-Unauth-Collision — Implementation Plan
+# Privileged-MFA SSO + Severity Bumps + Insight Agent Modes + Bounded Agent-Unauth-Collision -- Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Ship four targeted audit-rule corrections in one coherent change: SSO-aware privileged-MFA, severity bumps for two RBAC-hygiene rules, three-mode Insight Agent version currency, and bounded per-site asset enumeration to fix the agent-unauth-collision timeout.
 
-**Architecture:** Each rule lives in its own file under `audit/rules/` or `audit/user_permission/rules/`, self-registers via a decorator, and reads through `EnvSnapshot`. One new snapshot accessor (`iter_site_assets`) is added for the bounded-pagination use case. No HTTP-layer changes (`client.py` untouched). Read-only contract unchanged — no new POSTs or other verbs.
+**Architecture:** Each rule lives in its own file under `audit/rules/` or `audit/user_permission/rules/`, self-registers via a decorator, and reads through `EnvSnapshot`. One new snapshot accessor (`iter_site_assets`) is added for the bounded-pagination use case. No HTTP-layer changes (`client.py` untouched). Read-only contract unchanged -- no new POSTs or other verbs.
 
-**Tech Stack:** Python 3.11+, pytest, dataclasses, Jinja2 (report — not touched here).
+**Tech Stack:** Python 3.11+, pytest, dataclasses, Jinja2 (report -- not touched here).
 
 ---
 
@@ -15,7 +15,7 @@
 - [ ] **Step 0.1: Confirm baseline tests pass before any edits**
 
 Run: `pytest -v`
-Expected: all green. If anything is red on `main`, stop and surface to the user — don't layer changes on a broken baseline.
+Expected: all green. If anything is red on `main`, stop and surface to the user -- don't layer changes on a broken baseline.
 
 - [ ] **Step 0.2: Read-only invariant baseline**
 
@@ -24,7 +24,7 @@ Expected: no matches (CLAUDE.md "Read-only safety" section). Establishes the lin
 
 ---
 
-## Task 1: SSO-aware `privileged_user_without_mfa` — failing test for the SAML skip
+## Task 1: SSO-aware `privileged_user_without_mfa` -- failing test for the SAML skip
 
 **Files:**
 - Test: `tests/audit/user_permission/rules/test_privileged_user_without_mfa.py`
@@ -51,7 +51,7 @@ def test_external_saml_user_skipped_no_2fa_call(fake_snapshot):
     """SAML-authenticated privileged user must NOT trigger a 2FA endpoint call;
     they appear in a single aggregate info finding instead."""
     fake_snapshot.set_users([_user_with_auth(1, "saml-admin", "saml")])
-    # Deliberately do NOT set_user_2fa_enabled — if the rule calls it, the fake
+    # Deliberately do NOT set_user_2fa_enabled -- if the rule calls it, the fake
     # returns False (default) and we'd see a fail finding. We assert there is none.
     r = PrivilegedUserWithoutMfaRule().run(fake_snapshot, "fail", False, 500, {})
     assert r.status == "pass"
@@ -69,11 +69,11 @@ def test_external_saml_user_skipped_no_2fa_call(fake_snapshot):
 - [ ] **Step 1.2: Run the new test to verify it fails**
 
 Run: `pytest tests/audit/user_permission/rules/test_privileged_user_without_mfa.py::test_external_saml_user_skipped_no_2fa_call -v`
-Expected: FAIL — current rule will call `user_2fa_enabled(1)` (gets `False`), emit a `fail` finding, status `fail`. The `users_external_auth` summary key won't exist, raising `KeyError`. Either failure mode is fine; we just need RED.
+Expected: FAIL -- current rule will call `user_2fa_enabled(1)` (gets `False`), emit a `fail` finding, status `fail`. The `users_external_auth` summary key won't exist, raising `KeyError`. Either failure mode is fine; we just need RED.
 
 ---
 
-## Task 2: SSO-aware `privileged_user_without_mfa` — implementation
+## Task 2: SSO-aware `privileged_user_without_mfa` -- implementation
 
 **Files:**
 - Modify: `src/rapid7_healthcheck/audit/user_permission/rules/privileged_user_without_mfa.py`
@@ -101,7 +101,7 @@ def _is_external_auth(user: dict) -> bool:
 
     Mirrors the `local_account_when_sso_configured` rule's contract: anything
     other than `authentication.type == "normal"` is treated as external. A
-    missing `authentication` field (or empty `type`) is treated as local —
+    missing `authentication` field (or empty `type`) is treated as local --
     conservative; preserves prior behavior on malformed user objects.
     """
     auth = user.get("authentication") or {}
@@ -119,7 +119,7 @@ class PrivilegedUserWithoutMfaRule:
         "Flags Global Administrator or superuser accounts that authenticate "
         "against InsightVM's local credential store and do not have two-factor "
         "authentication configured. Accounts whose `authentication.type` is "
-        "`saml`, `ldap`, or `kerberos` are excluded — MFA enforcement for "
+        "`saml`, `ldap`, or `kerberos` are excluded -- MFA enforcement for "
         "those is the upstream IdP's responsibility, and a single aggregate "
         "info finding lists them so they can be verified at the IdP. Service "
         "accounts that need to authenticate via HTTP Basic Auth necessarily "
@@ -157,7 +157,7 @@ class PrivilegedUserWithoutMfaRule:
         users_without_mfa = 0
         users_exempt = 0
         users_succeeded = 0       # at least one 2FA call returned a status
-        users_auth_denied: list[dict] = []  # 401s — disambiguated post-pass
+        users_auth_denied: list[dict] = []  # 401s -- disambiguated post-pass
         external_auth_users: list[dict] = []  # NEW: {login, auth_type} per external user
 
         for u in examined:
@@ -166,7 +166,7 @@ class PrivilegedUserWithoutMfaRule:
                 users_exempt += 1
                 continue
             if _is_external_auth(u):
-                # External-auth users delegate MFA to the IdP — do NOT call
+                # External-auth users delegate MFA to the IdP -- do NOT call
                 # the 2FA endpoint; collect for the aggregate info finding.
                 auth_type = (u.get("authentication") or {}).get("type") or ""
                 external_auth_users.append({"login": login, "auth_type": auth_type})
@@ -182,7 +182,7 @@ class PrivilegedUserWithoutMfaRule:
                 raise
             users_succeeded += 1
             if mfa is None:
-                # Endpoint not available on this console at all — skip the rule honestly.
+                # Endpoint not available on this console at all -- skip the rule honestly.
                 endpoint_unavailable = True
                 break
             if mfa is False:
@@ -203,7 +203,7 @@ class PrivilegedUserWithoutMfaRule:
                     },
                 ))
 
-        # 404: endpoint absent on this console — preserve existing behavior.
+        # 404: endpoint absent on this console -- preserve existing behavior.
         if endpoint_unavailable:
             return RuleResult(
                 rule_id=self.rule_id,
@@ -214,7 +214,7 @@ class PrivilegedUserWithoutMfaRule:
                 findings=[Finding(
                     severity="info",
                     message=(
-                        "MFA-status endpoint /api/3/users/{id}/2FA returned 404 — "
+                        "MFA-status endpoint /api/3/users/{id}/2FA returned 404 -- "
                         "this console does not expose 2FA state via API. Audit MFA in the UI."
                     ),
                     details={"reason": "2FA endpoint unavailable"},
@@ -232,7 +232,7 @@ class PrivilegedUserWithoutMfaRule:
         # 401 disambiguation: if no user succeeded AND no external user was
         # processed, the calling key likely lacks GA. (External users do NOT
         # count toward "succeeded" because we never called the endpoint for
-        # them — but their presence proves we got past role/auth filtering,
+        # them -- but their presence proves we got past role/auth filtering,
         # so a pure-401 outcome with external users present is ambiguous in
         # a different way and falls through to the per-user 401-as-no-MFA
         # branch below.)
@@ -267,7 +267,7 @@ class PrivilegedUserWithoutMfaRule:
             )
 
         # At least one user succeeded (or at least one external user existed)
-        # — 401s on others mean "no MFA configured".
+        # -- 401s on others mean "no MFA configured".
         for u in users_auth_denied:
             login = (u.get("login") or "").strip()
             users_without_mfa += 1
@@ -295,7 +295,7 @@ class PrivilegedUserWithoutMfaRule:
                 message=(
                     f"{len(external_auth_users)} privileged users authenticate via "
                     f"external sources (SAML / LDAP / Kerberos). MFA enforcement for "
-                    f"these accounts is delegated to the upstream identity provider — "
+                    f"these accounts is delegated to the upstream identity provider -- "
                     f"verify it is enforced there. Local InsightVM 2FA does not apply "
                     f"to these accounts."
                 ),
@@ -332,7 +332,7 @@ class PrivilegedUserWithoutMfaRule:
         )
 ```
 
-- [ ] **Step 2.2: Run the failing test — should now pass**
+- [ ] **Step 2.2: Run the failing test -- should now pass**
 
 Run: `pytest tests/audit/user_permission/rules/test_privileged_user_without_mfa.py::test_external_saml_user_skipped_no_2fa_call -v`
 Expected: PASS.
@@ -351,7 +351,7 @@ git commit -m "feat(audit): SSO-aware privileged_user_without_mfa rule"
 
 ---
 
-## Task 3: Privileged-MFA — remaining test cases
+## Task 3: Privileged-MFA -- remaining test cases
 
 **Files:**
 - Test: `tests/audit/user_permission/rules/test_privileged_user_without_mfa.py`
@@ -406,7 +406,7 @@ def test_all_privileged_external_no_2fa_calls(fake_snapshot):
         _user_with_auth(1, "krb-admin-1", "kerberos"),
         _user_with_auth(2, "krb-admin-2", "kerberos"),
     ])
-    # Configure user_2fa_enabled to RAISE if called — proves no call happened.
+    # Configure user_2fa_enabled to RAISE if called -- proves no call happened.
     from rapid7_healthcheck.client import Rapid7ClientError
     fake_snapshot.set_user_2fa_raises(1, Rapid7ClientError("must not be called", status_code=500))
     fake_snapshot.set_user_2fa_raises(2, Rapid7ClientError("must not be called", status_code=500))
@@ -443,7 +443,7 @@ git commit -m "test(audit): add SSO-aware privileged-MFA test coverage"
 
 ---
 
-## Task 4: Severity bump — `disabled_user_with_role_bindings`
+## Task 4: Severity bump -- `disabled_user_with_role_bindings`
 
 **Files:**
 - Modify: `src/rapid7_healthcheck/audit/user_permission/rules/disabled_user_with_role_bindings.py`
@@ -469,7 +469,7 @@ To:
 
 (One-line change. Do not touch any other line.)
 
-- [ ] **Step 4.3: Run existing tests — they should fail on severity assertions**
+- [ ] **Step 4.3: Run existing tests -- they should fail on severity assertions**
 
 Run: `pytest tests/audit/user_permission/rules/test_disabled_user_with_role_bindings.py -v`
 Expected: failures on any assertion that compares finding severity to `"info"` or expects exit-code/status `"pass"` when findings exist.
@@ -480,7 +480,7 @@ For every failing assertion in `tests/audit/user_permission/rules/test_disabled_
 - Replace `severity="info"` (or `severity == "info"`) with `severity="warn"` / `== "warn"`.
 - Replace any status assertion that expected `"pass"` with `"warn"` when findings are present.
 
-Be careful: tests that pass an explicit `severity` argument (e.g. `Rule().run(snapshot, "fail", ...)`) override the default — only update assertions that read finding severities or rule status, not the call sites.
+Be careful: tests that pass an explicit `severity` argument (e.g. `Rule().run(snapshot, "fail", ...)`) override the default -- only update assertions that read finding severities or rule status, not the call sites.
 
 - [ ] **Step 4.5: Re-run the file**
 
@@ -496,7 +496,7 @@ git commit -m "feat(audit): bump disabled_user_with_role_bindings severity to wa
 
 ---
 
-## Task 5: Severity bump — `user_with_role_but_no_access`
+## Task 5: Severity bump -- `user_with_role_but_no_access`
 
 **Files:**
 - Modify: `src/rapid7_healthcheck/audit/user_permission/rules/user_with_role_but_no_access.py`
@@ -522,7 +522,7 @@ Expected: failures on info-severity assertions.
 
 - [ ] **Step 5.3: Update test assertions**
 
-Same pattern as Step 4.4 — `info` → `warn` for severity assertions, `pass` → `warn` for status assertions where findings are present.
+Same pattern as Step 4.4 -- `info` → `warn` for severity assertions, `pass` → `warn` for status assertions where findings are present.
 
 - [ ] **Step 5.4: Re-run the file**
 
@@ -538,7 +538,7 @@ git commit -m "feat(audit): bump user_with_role_but_no_access severity to warn"
 
 ---
 
-## Task 6: Insight Agent — add `LATEST_KNOWN_INSIGHT_AGENT_VERSION` constant
+## Task 6: Insight Agent -- add `LATEST_KNOWN_INSIGHT_AGENT_VERSION` constant
 
 **Files:**
 - Modify: `src/rapid7_healthcheck/audit/rules/_agent_version.py`
@@ -567,7 +567,7 @@ git commit -m "feat(audit): add LATEST_KNOWN_INSIGHT_AGENT_VERSION constant"
 
 ---
 
-## Task 7: Insight Agent — failing test for pinned-mode exact match
+## Task 7: Insight Agent -- failing test for pinned-mode exact match
 
 **Files:**
 - Test: `tests/audit/rules/test_insight_agent_version_currency.py`
@@ -604,11 +604,11 @@ from rapid7_healthcheck.audit.rules.insight_agent_version_currency import (
 - [ ] **Step 7.2: Run the test to verify it fails**
 
 Run: `pytest tests/audit/rules/test_insight_agent_version_currency.py::test_pinned_mode_exact_match_passes -v`
-Expected: FAIL — current rule has no `reference_mode` summary key (KeyError) and computes drift against fleet-newest.
+Expected: FAIL -- current rule has no `reference_mode` summary key (KeyError) and computes drift against fleet-newest.
 
 ---
 
-## Task 8: Insight Agent — three-mode implementation
+## Task 8: Insight Agent -- three-mode implementation
 
 **Files:**
 - Modify: `src/rapid7_healthcheck/audit/rules/insight_agent_version_currency.py`
@@ -634,7 +634,7 @@ def _format_version(v: tuple[int, int, int, int]) -> str:
 
 def _parse_version_string(s: str) -> tuple[int, int, int, int] | None:
     """Parse a 4-part dotted version string into a tuple. Returns None on
-    any malformedness — the caller decides whether to skip or fall back."""
+    any malformedness -- the caller decides whether to skip or fall back."""
     if not isinstance(s, str):
         return None
     parts = s.strip().split(".")
@@ -656,7 +656,7 @@ def _resolve_mode(rule_config: dict) -> tuple[str, tuple[int, int, int, int] | N
             reference is the parsed version tuple, or None for fleet_newest
                 (computed later from the fleet) or pinned-with-bad-input.
             raw is the original pinned_version string when mode is "pinned"
-                with unparseable input — used in the skip message.
+                with unparseable input -- used in the skip message.
     """
     pinned_raw = rule_config.get("pinned_version")
     if pinned_raw is not None:
@@ -673,12 +673,12 @@ class InsightAgentVersionCurrencyRule:
     rule_name = "Insight Agent Version Currency"
     description = (
         "Flags Insight Agents whose version is out of step with a reference. "
-        "Three modes, in precedence order: (1) pinned — `pinned_version: "
+        "Three modes, in precedence order: (1) pinned -- `pinned_version: "
         "\"4.1.0.2\"` requires every agent to match exactly; both behind-pin "
         "and ahead-of-pin agents are flagged (the latter is a change-control "
-        "gap). (2) latest-known — `use_latest_known: true` compares against "
+        "gap). (2) latest-known -- `use_latest_known: true` compares against "
         "a tool-maintained 'current latest' version, with `version_drift_minor` "
-        "tolerance. (3) fleet-newest (default) — self-bootstrapping comparison "
+        "tolerance. (3) fleet-newest (default) -- self-bootstrapping comparison "
         "against the newest version observed in the fleet, with "
         "`version_drift_minor` tolerance. Does NOT detect uniform fleet "
         "staleness in fleet-newest mode (different rule territory)."
@@ -698,7 +698,7 @@ class InsightAgentVersionCurrencyRule:
 
         mode, reference, raw_pinned = _resolve_mode(rule_config)
 
-        # Pinned mode with unparseable input — skip loudly.
+        # Pinned mode with unparseable input -- skip loudly.
         if mode == "pinned" and reference is None:
             return RuleResult(
                 rule_id=self.rule_id,
@@ -736,7 +736,7 @@ class InsightAgentVersionCurrencyRule:
                 findings=[Finding(
                     severity="info",
                     message=(
-                        "/api/3/agents returned 404 — this console does not expose "
+                        "/api/3/agents returned 404 -- this console does not expose "
                         "the Insight Agent fleet via API. Audit agent versions via "
                         "the Security Console UI."
                     ),
@@ -759,7 +759,7 @@ class InsightAgentVersionCurrencyRule:
                 status="skipped",
                 findings=[Finding(
                     severity="info",
-                    message="No Insight Agents deployed — nothing to compare.",
+                    message="No Insight Agents deployed -- nothing to compare.",
                     details={"reason": "empty fleet"},
                 )],
                 summary={
@@ -827,14 +827,14 @@ class InsightAgentVersionCurrencyRule:
                     direction = "ahead"
                     msg = (
                         f"Insight Agent on '{host}' is running "
-                        f"{_format_version(version)} — ahead of pinned version "
+                        f"{_format_version(version)} -- ahead of pinned version "
                         f"{_format_version(reference)} (change-control gap)."
                     )
                 else:
                     direction = "behind"
                     msg = (
                         f"Insight Agent on '{host}' is running "
-                        f"{_format_version(version)} — behind pinned version "
+                        f"{_format_version(version)} -- behind pinned version "
                         f"{_format_version(reference)}."
                     )
                 findings.append(Finding(
@@ -849,21 +849,21 @@ class InsightAgentVersionCurrencyRule:
                     },
                 ))
             else:
-                # fleet_newest or latest_known — minor-drift logic.
+                # fleet_newest or latest_known -- minor-drift logic.
                 minor_drift = (reference[0] - version[0]) * 1000 + (reference[1] - version[1])
                 if minor_drift > drift_threshold:
                     drifted += 1
                     if mode == "latest_known":
                         msg = (
                             f"Insight Agent on '{host}' is running "
-                            f"{_format_version(version)} — behind known-current "
+                            f"{_format_version(version)} -- behind known-current "
                             f"{_format_version(reference)} by {minor_drift} minor "
                             f"version(s)."
                         )
                     else:  # fleet_newest
                         msg = (
                             f"Insight Agent on '{host}' is running "
-                            f"{_format_version(version)} — {minor_drift} minor "
+                            f"{_format_version(version)} -- {minor_drift} minor "
                             f"version(s) behind newest "
                             f"({_format_version(reference)})."
                         )
@@ -911,7 +911,7 @@ class InsightAgentVersionCurrencyRule:
         )
 ```
 
-- [ ] **Step 8.2: Re-run the failing test — should now pass**
+- [ ] **Step 8.2: Re-run the failing test -- should now pass**
 
 Run: `pytest tests/audit/rules/test_insight_agent_version_currency.py::test_pinned_mode_exact_match_passes -v`
 Expected: PASS.
@@ -928,7 +928,7 @@ For every failing assertion in `tests/audit/rules/test_insight_agent_version_cur
 - `details["newest_version"]` → `details["reference_version"]`
 - If a test asserts `summary["reference_mode"]` does NOT exist, change it to expect `"fleet_newest"`.
 
-Don't change behavior — only rename keys in assertions.
+Don't change behavior -- only rename keys in assertions.
 
 - [ ] **Step 8.5: Re-run**
 
@@ -944,7 +944,7 @@ git commit -m "feat(audit): three-mode insight_agent_version_currency (pinned/la
 
 ---
 
-## Task 9: Insight Agent — remaining test coverage
+## Task 9: Insight Agent -- remaining test coverage
 
 **Files:**
 - Test: `tests/audit/rules/test_insight_agent_version_currency.py`
@@ -1002,7 +1002,7 @@ def test_pinned_mode_mixed_behind_match_ahead(fake_snapshot):
 def test_pinned_mode_unparseable_pin_skipped(fake_snapshot):
     """Bad pinned_version → skipped with a clear info finding; no agent
     pagination happens (we never get to snapshot.agents())."""
-    # Deliberately do NOT set any agents — proves the rule short-circuits.
+    # Deliberately do NOT set any agents -- proves the rule short-circuits.
     r = InsightAgentVersionCurrencyRule().run(
         fake_snapshot, "warn", False, 500, {"pinned_version": "garbage"},
     )
@@ -1087,12 +1087,12 @@ def test_fleet_newest_default_mode_unchanged(fake_snapshot):
     assert r.summary["reference_version"] == "4.5.0.0"
 ```
 
-Note on agent payload shape: `find_agent_version` (in `_agent_version.py`) is the same parser used today; the existing tests in this file already use whichever agent dict shape makes it return a parsed tuple. If `version` as a top-level string doesn't parse, look at how the existing tests in the file populate agents (search for `set_agents` calls) and mirror that exact shape. Do not modify `find_agent_version` — that's out of scope.
+Note on agent payload shape: `find_agent_version` (in `_agent_version.py`) is the same parser used today; the existing tests in this file already use whichever agent dict shape makes it return a parsed tuple. If `version` as a top-level string doesn't parse, look at how the existing tests in the file populate agents (search for `set_agents` calls) and mirror that exact shape. Do not modify `find_agent_version` -- that's out of scope.
 
 - [ ] **Step 9.2: Run all new tests**
 
 Run: `pytest tests/audit/rules/test_insight_agent_version_currency.py -v`
-Expected: all green. If `find_agent_version` doesn't recognize the `version` key, adjust the test fixtures' agent dict shape (add whatever field the parser reads — typically nested under `software` or similar; look at the existing-test fixtures in the file for the canonical shape).
+Expected: all green. If `find_agent_version` doesn't recognize the `version` key, adjust the test fixtures' agent dict shape (add whatever field the parser reads -- typically nested under `software` or similar; look at the existing-test fixtures in the file for the canonical shape).
 
 - [ ] **Step 9.3: Commit**
 
@@ -1103,7 +1103,7 @@ git commit -m "test(audit): cover all three Insight Agent version-currency modes
 
 ---
 
-## Task 10: Snapshot — add `iter_site_assets` generator
+## Task 10: Snapshot -- add `iter_site_assets` generator
 
 **Files:**
 - Modify: `src/rapid7_healthcheck/audit/snapshot.py`
@@ -1120,7 +1120,7 @@ Open `src/rapid7_healthcheck/audit/snapshot.py`. Find the existing `asset_sample
         Used by rules that need to break out of the iteration early (e.g. on
         first agent-managed asset found). Distinct from `asset_sample()`, which
         materializes the whole sample and caches it for repeat use. Honors the
-        underlying client's pagination — caller decides when to stop.
+        underlying client's pagination -- caller decides when to stop.
 
         Yields:
             dict: each asset record from /api/3/sites/{id}/assets, in API order.
@@ -1168,7 +1168,7 @@ git commit -m "feat(snapshot): add iter_site_assets generator for bounded per-si
 
 ---
 
-## Task 11: `agent_unauth_collision` — failing test for short-circuit
+## Task 11: `agent_unauth_collision` -- failing test for short-circuit
 
 **Files:**
 - Test: `tests/audit/rules/test_agent_unauth_collision.py`
@@ -1224,14 +1224,14 @@ def test_short_circuits_on_first_agent_match(fake_snapshot):
     assert f.details["short_circuited"] is True
 ```
 
-- [ ] **Step 11.2: Run — expect FAIL**
+- [ ] **Step 11.2: Run -- expect FAIL**
 
 Run: `pytest tests/audit/rules/test_agent_unauth_collision.py::test_short_circuits_on_first_agent_match -v`
-Expected: FAIL — current rule still uses `asset_sample` and doesn't expose `examined` or `short_circuited` in details.
+Expected: FAIL -- current rule still uses `asset_sample` and doesn't expose `examined` or `short_circuited` in details.
 
 ---
 
-## Task 12: `agent_unauth_collision` — bounded implementation
+## Task 12: `agent_unauth_collision` -- bounded implementation
 
 **Files:**
 - Modify: `src/rapid7_healthcheck/audit/rules/agent_unauth_collision.py`
@@ -1354,7 +1354,7 @@ class AgentUnauthCollisionRule:
                 message=(
                     f"{len(truncated_sites)} sites exceeded the per-site sample "
                     f"cap ({per_site_cap} assets) without finding an Insight "
-                    f"Agent — verify in the Security Console UI: "
+                    f"Agent -- verify in the Security Console UI: "
                     f"{', '.join(s['name'] for s in truncated_sites[:20])}."
                 ),
                 details={
@@ -1388,12 +1388,12 @@ class AgentUnauthCollisionRule:
         )
 ```
 
-- [ ] **Step 12.2: Run the new test — should now pass**
+- [ ] **Step 12.2: Run the new test -- should now pass**
 
 Run: `pytest tests/audit/rules/test_agent_unauth_collision.py::test_short_circuits_on_first_agent_match -v`
 Expected: PASS.
 
-- [ ] **Step 12.3: Run the full file — many existing tests will fail because they used `set_asset_sample` and asserted on `details.agent_count`**
+- [ ] **Step 12.3: Run the full file -- many existing tests will fail because they used `set_asset_sample` and asserted on `details.agent_count`**
 
 Run: `pytest tests/audit/rules/test_agent_unauth_collision.py -v`
 Expected: failures on existing tests. They now need to:
@@ -1403,7 +1403,7 @@ Expected: failures on existing tests. They now need to:
 
 ---
 
-## Task 13: `agent_unauth_collision` — fix existing tests
+## Task 13: `agent_unauth_collision` -- fix existing tests
 
 **Files:**
 - Test: `tests/audit/rules/test_agent_unauth_collision.py`
@@ -1427,7 +1427,7 @@ For assertions:
 - `f.details["agent_count"] == N` → `f.details["examined"] >= 1` (we now stop at first hit; exact count is no longer counted past 1 unless the first asset itself is the only one yielded).
 - `f.details["sample_size"]` → `f.details["examined"]`
 - `f.details["total_assets"]` is unchanged.
-- For tests asserting `r.sampled` and `r.sample_info`: those properties are now `False` / `None` because the new rule doesn't set them — instead the truncation info finding carries the disclosure. Update those tests to assert on `r.summary["sites_truncated"]` and / or `r.summary["per_site_cap"]` as appropriate.
+- For tests asserting `r.sampled` and `r.sample_info`: those properties are now `False` / `None` because the new rule doesn't set them -- instead the truncation info finding carries the disclosure. Update those tests to assert on `r.summary["sites_truncated"]` and / or `r.summary["per_site_cap"]` as appropriate.
 
 The pre-existing `test_uses_cheap_agent_signal_when_available` test had two assets and asserted `agent_count == 2`. Under the new rule this becomes `examined == 1` (we break on the first cheap-signal asset). Update its assertion to `examined == 1` and add `short_circuited == True`.
 
@@ -1455,7 +1455,7 @@ details.examined and details.short_circuited)."
 
 ---
 
-## Task 14: `agent_unauth_collision` — new test cases
+## Task 14: `agent_unauth_collision` -- new test cases
 
 **Files:**
 - Test: `tests/audit/rules/test_agent_unauth_collision.py`
@@ -1575,7 +1575,7 @@ def test_truncated_aggregate_does_not_lift_status(fake_snapshot):
 
 
 def test_short_circuit_in_full_scan_mode(fake_snapshot):
-    """full_scan=True still short-circuits on first agent — pagination consumed
+    """full_scan=True still short-circuits on first agent -- pagination consumed
     exactly 1 item even with 5000 total assets."""
     fake_snapshot.set_sites([_site(1, "tpl-vuln", "Huge")])
     fake_snapshot.set_scan_template("tpl-vuln", {
@@ -1651,7 +1651,7 @@ git commit -m "test(audit): cover bounded agent_unauth_collision (cap, full_scan
 
 ---
 
-## Task 15: Documentation — README rule-table updates
+## Task 15: Documentation -- README rule-table updates
 
 **Files:**
 - Modify: `README.md`
@@ -1665,13 +1665,13 @@ Expected: at least one row per rule, plus possibly per-rule subsections.
 
 For each rule:
 
-- **`privileged_user_without_mfa`** — modify the description column (or its prose subsection) to mention: "External-auth users (SAML/LDAP/Kerberos) are excluded from local 2FA checks; their MFA enforcement is delegated to the IdP and they are surfaced in a single aggregate info finding."
-- **`disabled_user_with_role_bindings`** — change the default-severity column from `info` to `warn`.
-- **`user_with_role_but_no_access`** — change the default-severity column from `info` to `warn`.
-- **`insight_agent_version_currency`** — add a sentence: "Three modes (in precedence): `pinned_version: \"4.1.0.2\"` for exact match (flags both behind and ahead), `use_latest_known: true` for tool-maintained latest-known reference, otherwise self-bootstrapping fleet-newest."
-- **`agent_unauth_collision`** — add a sentence: "In fast mode, per-site enumeration is capped at `audit.sample_size` and short-circuits on first agent-managed asset; sites that hit the cap without a match are listed in a single aggregate info finding. Set `full_scan: true` to remove the cap."
+- **`privileged_user_without_mfa`** -- modify the description column (or its prose subsection) to mention: "External-auth users (SAML/LDAP/Kerberos) are excluded from local 2FA checks; their MFA enforcement is delegated to the IdP and they are surfaced in a single aggregate info finding."
+- **`disabled_user_with_role_bindings`** -- change the default-severity column from `info` to `warn`.
+- **`user_with_role_but_no_access`** -- change the default-severity column from `info` to `warn`.
+- **`insight_agent_version_currency`** -- add a sentence: "Three modes (in precedence): `pinned_version: \"4.1.0.2\"` for exact match (flags both behind and ahead), `use_latest_known: true` for tool-maintained latest-known reference, otherwise self-bootstrapping fleet-newest."
+- **`agent_unauth_collision`** -- add a sentence: "In fast mode, per-site enumeration is capped at `audit.sample_size` and short-circuits on first agent-managed asset; sites that hit the cap without a match are listed in a single aggregate info finding. Set `full_scan: true` to remove the cap."
 
-Be conservative — only modify the cells/sentences identified above. Do not restructure the README.
+Be conservative -- only modify the cells/sentences identified above. Do not restructure the README.
 
 - [ ] **Step 15.3: Commit**
 
@@ -1682,7 +1682,7 @@ git commit -m "docs(readme): describe SSO-aware MFA, severity bumps, agent rule 
 
 ---
 
-## Task 16: Documentation — example config
+## Task 16: Documentation -- example config
 
 **Files:**
 - Modify: `docs/examples/config.yaml`
@@ -1730,7 +1730,7 @@ Add a comment above (or near) the rule explaining the sample_size interaction:
 - [ ] **Step 16.5: Validate the example config still parses**
 
 Run: `python -c "from rapid7_healthcheck.config import load_config; load_config('docs/examples/config.yaml')"`
-Expected: no exceptions. (If the example file requires a Rapid7 URL or other field that the loader validates, the command will print an error indicating which field — that means the test loader needs the missing field; check the existing CI / test setup for how it loads the example.)
+Expected: no exceptions. (If the example file requires a Rapid7 URL or other field that the loader validates, the command will print an error indicating which field -- that means the test loader needs the missing field; check the existing CI / test setup for how it loads the example.)
 
 If `load_config` enforces fields the example doesn't have on its own, fall back to a YAML syntax check:
 Run: `python -c "import yaml; yaml.safe_load(open('docs/examples/config.yaml'))"`
@@ -1757,7 +1757,7 @@ Expected: section headers showing the project's CHANGELOG style (typically Keep-
 
 - [ ] **Step 17.2: Add the entry**
 
-Edit `CHANGELOG.md`. Add at the top (under the existing top-level header, above the most recent released version) — adapt the version number to whatever the project's "next release" target is (look at `backlog.md` or the most recent commit's `release: X.Y.Z` to infer):
+Edit `CHANGELOG.md`. Add at the top (under the existing top-level header, above the most recent released version) -- adapt the version number to whatever the project's "next release" target is (look at `backlog.md` or the most recent commit's `release: X.Y.Z` to infer):
 
 ```markdown
 ## [unreleased]
@@ -1775,9 +1775,9 @@ Edit `CHANGELOG.md`. Add at the top (under the existing top-level header, above 
   `warn`. Same exit-code impact.
 - **`insight_agent_version_currency`**: now supports three reference-version
   modes via new optional knobs.
-  - `pinned_version: "4.1.0.2"` — exact-match mode; flags both behind-pin
+  - `pinned_version: "4.1.0.2"` -- exact-match mode; flags both behind-pin
     and ahead-of-pin agents (the latter is a change-control gap).
-  - `use_latest_known: true` — compares against a tool-maintained constant
+  - `use_latest_known: true` -- compares against a tool-maintained constant
     (currently `4.1.0.2`); honors `version_drift_minor` tolerance.
   - Otherwise: existing fleet-newest behavior, unchanged.
   - **Summary key rename**: `newest_version` → `reference_version`. New keys
@@ -1830,12 +1830,12 @@ Expected: clean working tree (everything already committed in earlier tasks). If
 
 ## Notes for the implementer
 
-- **Why no `config.py` change despite the spec saying "extend validator":** the spec was over-broad. `RuleConfig.knobs` is built as `{k: v for k, v in rule_body.items() if k not in ("enabled", "severity")}` — a passthrough dict with no per-rule sub-key validation. Adding `pinned_version` / `use_latest_known` requires no validator changes; they're just two more passthrough keys. Don't touch `config.py`.
+- **Why no `config.py` change despite the spec saying "extend validator":** the spec was over-broad. `RuleConfig.knobs` is built as `{k: v for k, v in rule_body.items() if k not in ("enabled", "severity")}` -- a passthrough dict with no per-rule sub-key validation. Adding `pinned_version` / `use_latest_known` requires no validator changes; they're just two more passthrough keys. Don't touch `config.py`.
 
-- **TDD discipline:** Tasks 1, 7, 11 all follow the strict red-green pattern. Tasks 4, 5 are severity-only edits where the existing tests are the ones that go red — that's also TDD, just with the test as the canary.
+- **TDD discipline:** Tasks 1, 7, 11 all follow the strict red-green pattern. Tasks 4, 5 are severity-only edits where the existing tests are the ones that go red -- that's also TDD, just with the test as the canary.
 
 - **Why the rule rewrites are full-file replacements rather than surgical edits:** the changes touch the body of `run()` substantially. Replacing the whole file is easier to review (no chance of leaving stray old logic in place) and the rules are short enough (~150-200 lines) for whole-file replacement to be reasonable.
 
-- **`asset_sample()` still exists.** The new `iter_site_assets()` is additive. Other rules continue to use `asset_sample()`. Do not remove `asset_sample()` — it has other consumers.
+- **`asset_sample()` still exists.** The new `iter_site_assets()` is additive. Other rules continue to use `asset_sample()`. Do not remove `asset_sample()` -- it has other consumers.
 
-- **Avoid scope creep.** The spec's "Out of scope" section is binding: do NOT add `pinned_tolerance`, do NOT add `agent_asset_ids`, do NOT add per-truncated-site individual findings, do NOT cross-reference `/api/3/authentication_sources`. If you find yourself wanting any of these, stop and surface to the user — they're deliberate non-decisions.
+- **Avoid scope creep.** The spec's "Out of scope" section is binding: do NOT add `pinned_tolerance`, do NOT add `agent_asset_ids`, do NOT add per-truncated-site individual findings, do NOT cross-reference `/api/3/authentication_sources`. If you find yourself wanting any of these, stop and surface to the user -- they're deliberate non-decisions.

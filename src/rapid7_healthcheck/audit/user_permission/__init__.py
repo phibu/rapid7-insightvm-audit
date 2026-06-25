@@ -56,7 +56,7 @@ class UserPermissionAuditCheck:
         def build_snapshot(client, config, _cloud) -> UserSnapshot:
             # The user-audit accessors honour no sampling (they paginate the
             # full user population by design), so this category bypasses
-            # build_env_snapshot and constructs a UserSnapshot directly — it
+            # build_env_snapshot and constructs a UserSnapshot directly -- it
             # needs only the client. See CONTEXT.md "UserSnapshot".
             return UserSnapshot(client)
 
@@ -102,7 +102,7 @@ class UserPermissionAuditCheck:
 
 
 # Register every user-permission audit rule at package-import time. The
-# directory is the single source of truth — see CONTEXT.md "Rule registration".
+# directory is the single source of truth -- see CONTEXT.md "Rule registration".
 from rapid7_healthcheck._rule_loader import load_rules  # noqa: E402
 
 load_rules("rapid7_healthcheck.audit.user_permission.rules")

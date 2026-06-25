@@ -88,7 +88,7 @@ def _raising_paginate(status_code: int):
     page-by-page and a later page can raise 504 even though the first head
     probe succeeded."""
     def _gen(*_args, **_kwargs):
-        # Yield zero items, then raise on first .__next__() — equivalent to
+        # Yield zero items, then raise on first .__next__() -- equivalent to
         # the client retrying max_retries times on the first page and giving up.
         if False:
             yield {}
@@ -131,7 +131,7 @@ def test_agents_swallows_502_and_503_mid_pagination():
 
 def test_agents_swallows_network_error_mid_pagination():
     """status_code=None means a pre-response failure (timeout, network).
-    Same /api/3/agents-is-slow story as 504 — treat as unavailable."""
+    Same /api/3/agents-is-slow story as 504 -- treat as unavailable."""
     client = MagicMock()
     client.get.return_value = {"resources": [], "page": {"totalResources": 5000}}
 
@@ -307,7 +307,7 @@ def test_three_agent_accessors_share_one_head_request():
     snap.agent_count()
     snap.agents()
     snap.agent_asset_ids_sampled()
-    snap.agent_count()  # repeated — still cached
+    snap.agent_count()  # repeated -- still cached
 
     assert len(head_calls) == 1, (
         f"expected exactly one /api/3/agents?size=1 head request across "

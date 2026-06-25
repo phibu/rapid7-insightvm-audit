@@ -51,7 +51,7 @@ class DatabaseTargetsNoDbCredentialsRule(AuditRule):
     description = (
         "Templates configured to scan Oracle SIDs, Postgres, or DB2 databases "
         "bound to sites that have no matching database credentials. The "
-        "database checks will fail to authenticate and skip — producing no "
+        "database checks will fail to authenticate and skip -- producing no "
         "DB findings while appearing as a configured database scan."
     )
     default_severity = "warn"
@@ -103,7 +103,7 @@ class DatabaseTargetsNoDbCredentialsRule(AuditRule):
                     f"Template '{t.get('name')}' has database targets "
                     f"({sorted(tgts.keys())}) and is bound to {len(bound)} "
                     f"site(s), none of which have matching database "
-                    f"credentials — database checks will not authenticate."
+                    f"credentials -- database checks will not authenticate."
                 ),
                 details={
                     "template_id": tpl_id,

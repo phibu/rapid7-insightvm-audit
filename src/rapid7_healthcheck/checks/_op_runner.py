@@ -1,20 +1,20 @@
 """The single operational-check envelope, shared by all four op-checks.
 
 Scan Engines, Scan Activity, Asset Coverage and Data Quality each emit a list
-of ``RuleResult``s, but — unlike the audit categories — their rules do not
+of ``RuleResult``s, but -- unlike the audit categories -- their rules do not
 share a uniform contract: each rule takes its own positional args, checks share
 an upstream fetch through a closure, and gating is by *threshold* not by a
 ``rules:`` registry. So they cannot reuse ``AuditRunner`` verbatim; the shared
 spine is narrower.
 
-``OpCheckRunner`` owns that narrow spine once — the envelope every ``Check.run``
+``OpCheckRunner`` owns that narrow spine once -- the envelope every ``Check.run``
 repeats verbatim: start the timer, roll up the status, flatten the findings
 mirror, build the ``rules_*`` summary, and assemble the ``CheckResult``. It
 learns the per-check differences from an injected ``OpCheckDescriptor`` whose
 one behavioural callable, ``produce_rule_results``, holds everything that
 varies (the shared-fetch closures, the heterogeneous per-rule ``run`` calls,
 the ``safe_run_rule`` per-rule trap). The operational-vertical mirror of
-``AuditRunner`` / ``AuditCategory`` — thinner, because its descriptor needs one
+``AuditRunner`` / ``AuditCategory`` -- thinner, because its descriptor needs one
 callable where the audit descriptor needs three plus a registry. See CONTEXT.md
 ("Operational-check orchestration").
 """
@@ -38,13 +38,13 @@ class OpCheckDescriptor:
     """The seam: everything that differs between the four operational checks.
 
     Identity (``name``/``description``) plus one callable. All per-check
-    irreducible behaviour lives inside ``produce_rule_results`` — the shared
+    irreducible behaviour lives inside ``produce_rule_results`` -- the shared
     fetch memoized behind a closure, the peek/oversize/paginate dances, the
     heterogeneous ``rule.run(...)`` calls, and the per-rule exception trap
     (``safe_run_rule``). The runner owns only the envelope around it.
 
     ``produce_rule_results`` is expected to never raise for an individual
-    rule's failure — op-checks wrap each rule in ``safe_run_rule`` so one bad
+    rule's failure -- op-checks wrap each rule in ``safe_run_rule`` so one bad
     rule surfaces as a ``status="error"`` card rather than aborting the check.
     A failure that escapes (e.g. building the shared data the rules read)
     propagates to ``__main__``'s per-check isolation, exactly as a snapshot

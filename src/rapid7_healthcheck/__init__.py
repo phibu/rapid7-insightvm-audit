@@ -1,4 +1,4 @@
-"""rapid7-insightvm-audit — read-only audit + health check for InsightVM.
+"""rapid7-insightvm-audit -- read-only audit + health check for InsightVM.
 
 The package version is sourced from installed package metadata so
 pyproject.toml is the single declaration. Hard-coded duplicates here

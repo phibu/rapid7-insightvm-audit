@@ -4,7 +4,7 @@
 
 **Goal:** Remove three sources of duplicate HTTP requests in a single audit run, with no user-visible behavior change.
 
-**Architecture:** Three independent changes that converge on a single principle — fetch data once and share it. (1) Unify the `/api/3/agents?size=1` head probe across three `EnvSnapshot` accessors via the existing public `agent_count()`. (2) Delete `data_quality._peek_total_assets` and route through `EnvSnapshot.total_asset_count()`. (3) Thread the orchestrator's shared `EnvSnapshot` into `DataQualityCheck` and `ScanActivityCheck` so `EmptySitesRule` and `_fetch_parsed_sites` stop bypassing the snapshot.
+**Architecture:** Three independent changes that converge on a single principle -- fetch data once and share it. (1) Unify the `/api/3/agents?size=1` head probe across three `EnvSnapshot` accessors via the existing public `agent_count()`. (2) Delete `data_quality._peek_total_assets` and route through `EnvSnapshot.total_asset_count()`. (3) Thread the orchestrator's shared `EnvSnapshot` into `DataQualityCheck` and `ScanActivityCheck` so `EmptySitesRule` and `_fetch_parsed_sites` stop bypassing the snapshot.
 
 **Tech Stack:** Python 3.11+, stdlib `logging`, pytest. No new dependencies.
 
@@ -16,12 +16,12 @@
 
 **Files modified:**
 
-- `src/rapid7_healthcheck/audit/snapshot.py` — bodies of `agents()` and `agent_asset_ids_sampled()` updated to call `agent_count()` instead of issuing their own head requests. `agent_count()` itself unchanged.
-- `src/rapid7_healthcheck/checks/data_quality.py` — delete `_peek_total_assets`; widen `_run_duplicate_detection` and `EmptySitesRule.run` to take a snapshot; widen `DataQualityCheck.run` signature with `*, snapshot: "EnvSnapshot | None" = None` (mirrors `asset_coverage`).
-- `src/rapid7_healthcheck/checks/scan_activity.py` — widen `_fetch_parsed_sites` and `ScanActivityCheck.run` to take a snapshot; replace `client.paginate("/api/3/sites")` with `snapshot.sites()`. Per-site scan walk stays as-is (out of scope).
-- `tests/audit/test_snapshot_agents.py` — one new test: `test_three_agent_accessors_share_one_head_request`.
-- `tests/checks/test_data_quality.py` — every existing test that calls `DataQualityCheck().run(...)` updated to pass `snapshot=`. Two new tests for invariant locks.
-- `tests/checks/test_scan_activity.py` — every existing test that calls `ScanActivityCheck().run(...)` updated to pass `snapshot=`. One new test for invariant lock.
+- `src/rapid7_healthcheck/audit/snapshot.py` -- bodies of `agents()` and `agent_asset_ids_sampled()` updated to call `agent_count()` instead of issuing their own head requests. `agent_count()` itself unchanged.
+- `src/rapid7_healthcheck/checks/data_quality.py` -- delete `_peek_total_assets`; widen `_run_duplicate_detection` and `EmptySitesRule.run` to take a snapshot; widen `DataQualityCheck.run` signature with `*, snapshot: "EnvSnapshot | None" = None` (mirrors `asset_coverage`).
+- `src/rapid7_healthcheck/checks/scan_activity.py` -- widen `_fetch_parsed_sites` and `ScanActivityCheck.run` to take a snapshot; replace `client.paginate("/api/3/sites")` with `snapshot.sites()`. Per-site scan walk stays as-is (out of scope).
+- `tests/audit/test_snapshot_agents.py` -- one new test: `test_three_agent_accessors_share_one_head_request`.
+- `tests/checks/test_data_quality.py` -- every existing test that calls `DataQualityCheck().run(...)` updated to pass `snapshot=`. Two new tests for invariant locks.
+- `tests/checks/test_scan_activity.py` -- every existing test that calls `ScanActivityCheck().run(...)` updated to pass `snapshot=`. One new test for invariant lock.
 
 **No new files.**
 
@@ -75,7 +75,7 @@ def test_three_agent_accessors_share_one_head_request():
     snap.agent_count()
     snap.agents()
     snap.agent_asset_ids_sampled()
-    snap.agent_count()  # repeated — still cached
+    snap.agent_count()  # repeated -- still cached
 
     assert len(head_calls) == 1, (
         f"expected exactly one /api/3/agents?size=1 head request across "
@@ -87,18 +87,18 @@ def test_three_agent_accessors_share_one_head_request():
 
 Run: `pytest tests/audit/test_snapshot_agents.py::test_three_agent_accessors_share_one_head_request -v`
 
-Expected: FAIL — assertion `len(head_calls) == 3, got 3` (because each accessor still issues its own head request today).
+Expected: FAIL -- assertion `len(head_calls) == 3, got 3` (because each accessor still issues its own head request today).
 
 - [ ] **Step 3: Update `agents()` to call `agent_count()`**
 
-Edit `src/rapid7_healthcheck/audit/snapshot.py`. Find the `agents()` method (currently lines 432–465). Replace the entire method body with:
+Edit `src/rapid7_healthcheck/audit/snapshot.py`. Find the `agents()` method (currently lines 432-465). Replace the entire method body with:
 
 ```python
     def agents(self) -> tuple[list[dict], int]:
         """Return (sample_list, total_count) for the Insight Agent fleet.
 
         Lazily fetched and cached on first call. Honors `sample_size` when
-        `full_scan` is False — `total_count` comes from `page.totalResources`
+        `full_scan` is False -- `total_count` comes from `page.totalResources`
         (via `agent_count()`), `sample_list` is capped at `sample_size`.
         Returns `([], 0)` cleanly when /api/3/agents is unavailable (404 on
         older consoles or non-GA keys); the `_agents_unavailable` flag is set
@@ -129,7 +129,7 @@ The 404 path now lives entirely inside `agent_count()`; `agents()` reads the res
 
 - [ ] **Step 4: Update `agent_asset_ids_sampled()` to call `agent_count()`**
 
-Find `agent_asset_ids_sampled()` (currently lines 507–561). Replace the method body's head-fetch block. The new body:
+Find `agent_asset_ids_sampled()` (currently lines 507-561). Replace the method body's head-fetch block. The new body:
 
 ```python
     def agent_asset_ids_sampled(self) -> tuple[list[int], int]:
@@ -146,7 +146,7 @@ Find `agent_asset_ids_sampled()` (currently lines 507–561). Replace the method
         ``sample_size`` when some records carry neither a top-level ``id`` nor
         a valid ``links[rel=Asset]`` href. Page fetches: at most
         ``ceil(sample_size / 100)``.
-        Independent of ``full_scan`` — always samples.
+        Independent of ``full_scan`` -- always samples.
 
         Returns ``([], 0)`` cleanly when ``/api/3/agents`` is unavailable
         (404). The ``_agents_unavailable`` flag is set by ``agent_count()``,
@@ -187,7 +187,7 @@ Expected: PASS.
 
 Run: `pytest tests/audit/test_snapshot.py tests/audit/test_snapshot_agents.py tests/audit/test_snapshot_targets.py -v`
 
-Expected: all PASS. Pay particular attention to any test that asserts on the number of `client.get` calls — those may have been written assuming the *current* shape (one head per accessor) and may need a one-line update if they do.
+Expected: all PASS. Pay particular attention to any test that asserts on the number of `client.get` calls -- those may have been written assuming the *current* shape (one head per accessor) and may need a one-line update if they do.
 
 > **Watch out:** if existing tests like `test_agents_returns_zero_and_sets_unavailable_on_404` or similar were counting head requests at fine granularity and asserted ">= 1", they should still pass. If they asserted exact counts in a way that matched the *old* duplication, update those expected counts. Don't skip; investigate each failure individually.
 
@@ -209,7 +209,7 @@ git commit -m "perf(snapshot): unify /api/3/agents head probe across three acces
 ## Task 2: Delete `_peek_total_assets`, route through snapshot
 
 **Files:**
-- Modify: `src/rapid7_healthcheck/checks/data_quality.py:37-46` (`_peek_total_assets` — delete)
+- Modify: `src/rapid7_healthcheck/checks/data_quality.py:37-46` (`_peek_total_assets` -- delete)
 - Modify: `src/rapid7_healthcheck/checks/data_quality.py` (`_run_duplicate_detection` signature + body)
 - Modify: `src/rapid7_healthcheck/checks/data_quality.py:431` (`DataQualityCheck.run` signature + call site)
 - Test: `tests/checks/test_data_quality.py` (signature updates + one new invariant test)
@@ -226,7 +226,7 @@ from rapid7_healthcheck.audit.snapshot import EnvSnapshot
 
 def _snap(fake_client) -> EnvSnapshot:
     """Build a real EnvSnapshot over the test's fake client. The snapshot's
-    lazy accessors hit fake_client transparently — same fake-URL maps tests
+    lazy accessors hit fake_client transparently -- same fake-URL maps tests
     already use continue to work without modification."""
     return EnvSnapshot(fake_client, full_scan=False, sample_size=500)
 ```
@@ -236,7 +236,7 @@ Then append at the end of the file:
 ```python
 def test_duplicate_detection_uses_snapshot_total_not_peek(fake_client, app_config):
     """When duplicate detection runs, total_asset_count comes from the
-    shared snapshot — not from a separate _peek_total_assets call. Locks in
+    shared snapshot -- not from a separate _peek_total_assets call. Locks in
     the head-fetch consolidation: one GET /api/3/assets?size=1 across the
     op-check, regardless of how many duplicate-detection paths execute."""
     cfg = _all_off_except(
@@ -269,13 +269,13 @@ def test_duplicate_detection_uses_snapshot_total_not_peek(fake_client, app_confi
 
 > **Note:** the assertion is `<= 1` not `== 1` because the snapshot's `total_asset_count()` only fires when duplicate detection actually triggers. The point is: zero or one, never two.
 
-> **Note on the params:** the existing `EnvSnapshot.total_asset_count()` calls `self._client.get("/api/3/assets", params={"size": 1})` (per `snapshot.py:428`). The fake_client may record params slightly differently — check the existing test pattern in `test_data_quality.py` for how it inspects calls. If the params key is `{"size": 1}` rather than `{"page": 0, "size": 1}`, adjust the assertion accordingly. If the recording shape uses positional args, match that pattern. The intent is what matters: count the `/api/3/assets` head requests; assert ≤ 1.
+> **Note on the params:** the existing `EnvSnapshot.total_asset_count()` calls `self._client.get("/api/3/assets", params={"size": 1})` (per `snapshot.py:428`). The fake_client may record params slightly differently -- check the existing test pattern in `test_data_quality.py` for how it inspects calls. If the params key is `{"size": 1}` rather than `{"page": 0, "size": 1}`, adjust the assertion accordingly. If the recording shape uses positional args, match that pattern. The intent is what matters: count the `/api/3/assets` head requests; assert ≤ 1.
 
 - [ ] **Step 2: Run the new test to verify it FAILS**
 
 Run: `pytest tests/checks/test_data_quality.py::test_duplicate_detection_uses_snapshot_total_not_peek -v`
 
-Expected: FAIL — `DataQualityCheck().run(...)` rejects the unexpected keyword argument `snapshot`.
+Expected: FAIL -- `DataQualityCheck().run(...)` rejects the unexpected keyword argument `snapshot`.
 
 - [ ] **Step 3: Widen `DataQualityCheck.run` signature**
 
@@ -308,7 +308,7 @@ The `**_kwargs: object` stays so any forward-compat kwargs from the orchestrator
 
 - [ ] **Step 4: Widen `_run_duplicate_detection` to take and use the snapshot**
 
-Find `_run_duplicate_detection` in the same file. Update its signature and body — the change is:
+Find `_run_duplicate_detection` in the same file. Update its signature and body -- the change is:
 
 a) Add `snapshot: "EnvSnapshot"` to the signature (after `ip_rule`).
 b) Replace `total_assets = _peek_total_assets(client)` with `total_assets = snapshot.total_asset_count()`.
@@ -397,7 +397,7 @@ Find the call to `_run_duplicate_detection` inside `DataQualityCheck.run` (`rule
 
 - [ ] **Step 6: Delete `_peek_total_assets`**
 
-Find the function `_peek_total_assets(client)` (currently lines 37–46). Delete the entire function and any blank lines that become orphaned. Also delete its docstring.
+Find the function `_peek_total_assets(client)` (currently lines 37-46). Delete the entire function and any blank lines that become orphaned. Also delete its docstring.
 
 Verify no other callers exist:
 
@@ -417,7 +417,7 @@ For each match, the existing pattern is `DataQualityCheck().run(fake_client, cfg
 result = DataQualityCheck().run(fake_client, cfg, snapshot=_snap(fake_client))
 ```
 
-This is a mechanical edit across all call sites. Don't modify any other part of the test bodies — they continue to work because `_snap()` constructs a real `EnvSnapshot` over the same `fake_client` the tests already configured.
+This is a mechanical edit across all call sites. Don't modify any other part of the test bodies -- they continue to work because `_snap()` constructs a real `EnvSnapshot` over the same `fake_client` the tests already configured.
 
 - [ ] **Step 8: Run the full data-quality test surface**
 
@@ -427,7 +427,7 @@ Expected: all tests PASS, including the new `test_duplicate_detection_uses_snaps
 
 > **If a test fails** with something like "fake_client did not record GET /api/3/sites": the snapshot's lazy accessor needs that URL configured. The existing tests already configure it because the old `_peek_total_assets` and the old direct `client.paginate("/api/3/sites")` calls in `EmptySitesRule` need it. If they don't, that's a fixture gap to fix.
 >
-> **The new invariant test's params shape**: if `pytest` reports the assertion failed because `c[2]` was something other than `{"page": 0, "size": 1}`, inspect what shape `fake_client` actually records and update the assertion to match. Look at how `test_duplicate_detection_skipped_when_total_exceeds_threshold` (which already exists) extracts head calls — match that pattern.
+> **The new invariant test's params shape**: if `pytest` reports the assertion failed because `c[2]` was something other than `{"page": 0, "size": 1}`, inspect what shape `fake_client` actually records and update the assertion to match. Look at how `test_duplicate_detection_skipped_when_total_exceeds_threshold` (which already exists) extracts head calls -- match that pattern.
 
 - [ ] **Step 9: Commit**
 
@@ -455,7 +455,7 @@ Open `tests/checks/test_data_quality.py` and append at the end of the file:
 def test_data_quality_uses_snapshot_sites_not_paginate(fake_client, app_config):
     """When a snapshot is passed in, EmptySitesRule must NOT call
     client.paginate('/api/3/sites') directly. Locks in the snapshot
-    threading — guards against regression that re-introduces a bypass."""
+    threading -- guards against regression that re-introduces a bypass."""
     cfg = _all_off_except(
         app_config,
         flag_empty_sites=True,
@@ -499,7 +499,7 @@ def test_data_quality_uses_snapshot_sites_not_paginate(fake_client, app_config):
 
 Run: `pytest tests/checks/test_data_quality.py::test_data_quality_uses_snapshot_sites_not_paginate -v`
 
-Expected: FAIL — the additional paginate count is `1` (`EmptySitesRule.run` still calls `client.paginate("/api/3/sites")` directly).
+Expected: FAIL -- the additional paginate count is `1` (`EmptySitesRule.run` still calls `client.paginate("/api/3/sites")` directly).
 
 - [ ] **Step 3: Update `EmptySitesRule.run` to consume the snapshot**
 
@@ -632,7 +632,7 @@ def test_scan_activity_uses_snapshot_sites_not_paginate(fake_client, app_config)
 
 Run: `pytest tests/checks/test_scan_activity.py::test_scan_activity_uses_snapshot_sites_not_paginate -v`
 
-Expected: FAIL — `ScanActivityCheck().run(...)` rejects the unexpected keyword argument `snapshot`.
+Expected: FAIL -- `ScanActivityCheck().run(...)` rejects the unexpected keyword argument `snapshot`.
 
 - [ ] **Step 3: Widen `ScanActivityCheck.run` signature**
 
@@ -669,7 +669,7 @@ Find `_fetch_parsed_sites(client)` (currently line 91). Update its signature and
 def _fetch_parsed_sites(client, snapshot: "EnvSnapshot") -> list[_ParsedSiteScans]:
     """Single I/O pass: fetch each site's recent scans, parse once.
 
-    The result is consumed by every rule class in this module — each rule
+    The result is consumed by every rule class in this module -- each rule
     iterates the list and applies its own concept-specific predicate.
     Site list comes from the shared snapshot (no per-check site
     pagination); per-site scans are fetched directly here because no
@@ -689,7 +689,7 @@ def _fetch_parsed_sites(client, snapshot: "EnvSnapshot") -> list[_ParsedSiteScan
         # (parsing _ParsedScan, computing most_recent_finished, etc.) ...
 ```
 
-> **Note:** the implementer preserves the existing parsing logic in lines after the `for site in ...` loop body — only the loop's data source changes from `client.paginate("/api/3/sites")` to `snapshot.sites()`.
+> **Note:** the implementer preserves the existing parsing logic in lines after the `for site in ...` loop body -- only the loop's data source changes from `client.paginate("/api/3/sites")` to `snapshot.sites()`.
 
 - [ ] **Step 5: Update the call site in `ScanActivityCheck.run`**
 
@@ -781,13 +781,13 @@ Edit `CHANGELOG.md`. Find the `## [Unreleased]` section (it should be empty afte
 ```markdown
 ## [Unreleased]
 
-### Internal — efficiency
+### Internal -- efficiency
 
 Three changes that reduce redundant HTTP requests in a full audit run, with no user-visible behavior change:
 
 - **Unified the `/api/3/agents` head probe** across `EnvSnapshot.agent_count()`, `agents()`, and `agent_asset_ids_sampled()`. Saves 2 redundant requests per run when more than one agent-related rule fires.
 - **Replaced `data_quality._peek_total_assets()`** with `EnvSnapshot.total_asset_count()`. Saves 1 request per run when duplicate detection runs.
-- **Threaded the orchestrator's shared `EnvSnapshot`** into `DataQualityCheck` and `ScanActivityCheck`, so `EmptySitesRule` and the scan-activity site walker stop re-paginating `/api/3/sites` and stop re-issuing per-site asset-count head requests already cached on the snapshot. Saves 1–2 site paginations + N per-site head requests per run.
+- **Threaded the orchestrator's shared `EnvSnapshot`** into `DataQualityCheck` and `ScanActivityCheck`, so `EmptySitesRule` and the scan-activity site walker stop re-paginating `/api/3/sites` and stop re-issuing per-site asset-count head requests already cached on the snapshot. Saves 1-2 site paginations + N per-site head requests per run.
 ```
 
 - [ ] **Step 5: Commit the changelog**
@@ -807,10 +807,10 @@ Expected: 4 commits (Tasks 1, 2, 3, 4 each have one commit; Task 5 adds a fifth 
 
 ## Out of scope (explicitly NOT in this plan)
 
-- **Reviewer finding #2** (`agent_asset_ids()` re-paginates instead of reusing `agents()` cache). Medium risk — needs careful sampled-vs-full distinction. Deferred to 0.4.0.
+- **Reviewer finding #2** (`agent_asset_ids()` re-paginates instead of reusing `agents()` cache). Medium risk -- needs careful sampled-vs-full distinction. Deferred to 0.4.0.
 - **Reviewer finding #6** (audit checks build their own snapshot). Wider blast radius. Deferred to 0.4.0.
 - **Per-site scan pagination accessor** on `EnvSnapshot` (would let `_fetch_parsed_sites` share per-site scan walks). No second consumer exists today. Defer.
-- **Touching `client.py`** or any HTTP-layer code. Out of scope — this is internal call-routing only.
+- **Touching `client.py`** or any HTTP-layer code. Out of scope -- this is internal call-routing only.
 
 ---
 
@@ -818,34 +818,34 @@ Expected: 4 commits (Tasks 1, 2, 3, 4 each have one commit; Task 5 adds a fifth 
 
 **Spec coverage:**
 
-- §"Decisions / 1: shared snapshot reuse" — Tasks 3 and 4 (call sites consume `snapshot.sites()` etc.). ✓
-- §"Decisions / 2: cache shape (int total only)" — Task 1 (no new cache slot, reuses existing `_agent_count_cache`). ✓
-- §"Decisions / 3: keep agent_count() public" — Task 1 (no new private method). ✓
-- §"Decisions / 4: delete _peek_total_assets" — Task 2 Step 6. ✓
-- §"Decisions / 5: tests construct real EnvSnapshot" — Task 2 Step 1, Task 4 Step 1 (`_snap()` helper). ✓
-- §"Architecture / Change 1" — Task 1. ✓
-- §"Architecture / Change 2" — Task 2. ✓
-- §"Architecture / Change 3 / DataQualityCheck" — Task 2 (sig change) + Task 3 (EmptySitesRule). ✓
-- §"Architecture / Change 3 / ScanActivityCheck" — Task 4. ✓
-- §"Read-only safety" — Task 5 Step 2. ✓
-- §"New tests" — Tasks 1, 2, 3, 4 each add one. ✓
-- §"CHANGELOG entry" — Task 5 Step 4. ✓
+- §"Decisions / 1: shared snapshot reuse" -- Tasks 3 and 4 (call sites consume `snapshot.sites()` etc.). ✓
+- §"Decisions / 2: cache shape (int total only)" -- Task 1 (no new cache slot, reuses existing `_agent_count_cache`). ✓
+- §"Decisions / 3: keep agent_count() public" -- Task 1 (no new private method). ✓
+- §"Decisions / 4: delete _peek_total_assets" -- Task 2 Step 6. ✓
+- §"Decisions / 5: tests construct real EnvSnapshot" -- Task 2 Step 1, Task 4 Step 1 (`_snap()` helper). ✓
+- §"Architecture / Change 1" -- Task 1. ✓
+- §"Architecture / Change 2" -- Task 2. ✓
+- §"Architecture / Change 3 / DataQualityCheck" -- Task 2 (sig change) + Task 3 (EmptySitesRule). ✓
+- §"Architecture / Change 3 / ScanActivityCheck" -- Task 4. ✓
+- §"Read-only safety" -- Task 5 Step 2. ✓
+- §"New tests" -- Tasks 1, 2, 3, 4 each add one. ✓
+- §"CHANGELOG entry" -- Task 5 Step 4. ✓
 
-**Placeholder scan:** No "TBD"/"implement later"/"similar to Task N." Two "rest unchanged" notes in Task 3 Step 3 and Task 4 Step 4 — these are *intentional* and describe what NOT to change (the rule's finding-construction logic and the scan parsing logic), not placeholders for unspecified code. Both have explicit notes telling the implementer to preserve the existing logic byte-for-byte.
+**Placeholder scan:** No "TBD"/"implement later"/"similar to Task N." Two "rest unchanged" notes in Task 3 Step 3 and Task 4 Step 4 -- these are *intentional* and describe what NOT to change (the rule's finding-construction logic and the scan parsing logic), not placeholders for unspecified code. Both have explicit notes telling the implementer to preserve the existing logic byte-for-byte.
 
 **Type/signature consistency:**
 
-- `agent_count() -> int` — Task 1 keeps it intact, called from updated `agents()` and `agent_asset_ids_sampled()`. ✓
-- `EmptySitesRule.run(snapshot, t)` — Task 3 defines this signature; Task 3 Step 4 uses it. ✓
-- `_fetch_parsed_sites(client, snapshot)` — Task 4 defines; Task 4 Step 5 uses. ✓
-- `_run_duplicate_detection(client, t, host_rule, ip_rule, snapshot)` — Task 2 defines; Task 2 Step 5 uses. ✓
-- `*, snapshot: "EnvSnapshot | None" = None` — Tasks 2 and 4 use the same shape, mirroring `asset_coverage` from the existing codebase. ✓
-- `_snap(fake_client)` test helper — defined at top of `test_data_quality.py` (Task 2 Step 1) and `test_scan_activity.py` (Task 4 Step 1); same body in both. ✓
+- `agent_count() -> int` -- Task 1 keeps it intact, called from updated `agents()` and `agent_asset_ids_sampled()`. ✓
+- `EmptySitesRule.run(snapshot, t)` -- Task 3 defines this signature; Task 3 Step 4 uses it. ✓
+- `_fetch_parsed_sites(client, snapshot)` -- Task 4 defines; Task 4 Step 5 uses. ✓
+- `_run_duplicate_detection(client, t, host_rule, ip_rule, snapshot)` -- Task 2 defines; Task 2 Step 5 uses. ✓
+- `*, snapshot: "EnvSnapshot | None" = None` -- Tasks 2 and 4 use the same shape, mirroring `asset_coverage` from the existing codebase. ✓
+- `_snap(fake_client)` test helper -- defined at top of `test_data_quality.py` (Task 2 Step 1) and `test_scan_activity.py` (Task 4 Step 1); same body in both. ✓
 
 Plan complete and saved to `docs/superpowers/plans/2026-05-06-efficiency-bundle.md`. Two execution options:
 
-**1. Subagent-Driven (recommended)** — fresh subagent per task, review between tasks, fast iteration.
+**1. Subagent-Driven (recommended)** -- fresh subagent per task, review between tasks, fast iteration.
 
-**2. Inline Execution** — execute tasks in this session using executing-plans, batch execution with checkpoints.
+**2. Inline Execution** -- execute tasks in this session using executing-plans, batch execution with checkpoints.
 
 Which approach?

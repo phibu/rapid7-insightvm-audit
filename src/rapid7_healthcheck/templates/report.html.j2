@@ -253,7 +253,7 @@
     transition: transform 150ms;
   }
   details[open] summary::before { content: "▾"; }
-  /* Humanized rule summary box — replaces the old code-format key=value list. */
+  /* Humanized rule summary box -- replaces the old code-format key=value list. */
   dl.rule-summary {
     display: flex; flex-wrap: wrap; gap: 0.4rem;
     margin: 0.5rem 0 0.75rem 0;
@@ -314,7 +314,7 @@
     section.check:first-of-type { page-break-before: avoid; }
     details { page-break-inside: avoid; }
     details[open] summary { page-break-after: avoid; }
-    /* Force-expand all <details> for print — paper readers can't click. */
+    /* Force-expand all <details> for print -- paper readers can't click. */
     details { display: block; }
     details > summary { list-style: none; }
     details > *:not(summary) { display: block !important; }
@@ -329,7 +329,7 @@
   /* JS-disabled fallback: hide chrome that depends on JS to function. */
   .no-js .filter-bar,
   .no-js .theme-toggle { display: none; }
-  /* Theme toggle — three-state cycle (system / light / dark). */
+  /* Theme toggle -- three-state cycle (system / light / dark). */
   .theme-toggle {
     margin-left: auto;
     display: inline-flex;
@@ -347,7 +347,7 @@
   }
   .theme-toggle:hover { background: var(--info-bg); }
   .theme-toggle .theme-icon { display: block; }
-  /* Explicit overrides — declared after the prefers-color-scheme media query
+  /* Explicit overrides -- declared after the prefers-color-scheme media query
      so they win when a user has clicked the toggle to override system. */
   :root[data-theme="light"] {
     --neutral-fg: #1a1a1a; --neutral-muted: #5a5a5a;
@@ -365,7 +365,7 @@
     --fail-fg: #e6786b; --fail-bg: rgba(230,120,107,0.14);
     --info-fg: #6aa6ee; --info-bg: rgba(106,166,238,0.14);
   }
-  /* Filter bar — sticky from where it first appears in flow. */
+  /* Filter bar -- sticky from where it first appears in flow. */
   .filter-bar {
     position: sticky;
     top: 0;
@@ -415,7 +415,7 @@
     font: inherit;
     font-size: 13px;
   }
-  /* CSS-driven filtering — JS sets body attributes; CSS hides non-matching cards. */
+  /* CSS-driven filtering -- JS sets body attributes; CSS hides non-matching cards. */
   body[data-filter-severity="fail"]    section.check > details:not([data-severity="fail"]),
   body[data-filter-severity="warn"]    section.check > details:not([data-severity="warn"]),
   body[data-filter-severity="pass"]    section.check > details:not([data-severity="pass"]),
@@ -459,7 +459,7 @@
     }
   }
 
-  /* Status dot — reusable token, mapped to existing severity colors.
+  /* Status dot -- reusable token, mapped to existing severity colors.
      Used in the section rail and the summary table. */
   .status-dot {
     display: inline-block; width: 0.6rem; height: 0.6rem;
@@ -473,7 +473,7 @@
   .status-dot.error   { background: var(--fail-fg); }
   .status-dot.skipped { background: var(--info-fg); }
 
-  /* Section rail — persistent left-column wayfinding. */
+  /* Section rail -- persistent left-column wayfinding. */
   .section-rail { font-size: 13px; }
   .section-rail .rail-inner {
     max-height: calc(100vh - 1rem);
@@ -533,7 +533,7 @@
     .section-rail .rail-inner { display: block !important; }
   }
 
-  /* Card-state left accent — scan severity down the page without reading badges. */
+  /* Card-state left accent -- scan severity down the page without reading badges. */
   section.check > details[data-severity="fail"]  { border-left: 3px solid var(--fail-fg); padding-left: 0.6rem; }
   section.check > details[data-severity="warn"]  { border-left: 3px solid var(--warn-fg); padding-left: 0.6rem; }
   section.check > details[data-severity="error"] { border-left: 3px solid var(--fail-fg); padding-left: 0.6rem; }
@@ -543,7 +543,7 @@
   .inventory-totals .total-value { font-size: 18px; color: var(--neutral-muted); font-weight: 600; }
 
   /* No-JS: the rail's anchor links still work (plain <a href="#check-N">) and
-     the narrow-screen <details> is native — only the scroll-spy highlight and
+     the narrow-screen <details> is native -- only the scroll-spy highlight and
      filter-sync dimming are JS-enhanced, so the rail stays visible. */
 </style>
 </head>
@@ -868,7 +868,7 @@
   var initial = document.documentElement.getAttribute('data-theme');
   if (initial === 'light') apply(states[1]);
   else if (initial === 'dark') apply(states[2]);
-  // (no-op if 'system' — initial markup is already system)
+  // (no-op if 'system' -- initial markup is already system)
   btn.addEventListener('click', function(){
     var current = btn.getAttribute('data-theme-state');
     var idx = states.findIndex(function(s){ return s.name === current; });

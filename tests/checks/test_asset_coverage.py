@@ -22,7 +22,7 @@ def _paged_search_responder(stale: list[dict], never_scanned: list[dict], *, pag
     default fixture) and slices `resources` by `params["page"]`, mirroring how
     the real endpoint paginates. `page.totalResources` always reports the full
     match count so the rule's bounded fetch can read the exact total from
-    page 0 — which is the whole point of the perf fix.
+    page 0 -- which is the whole point of the perf fix.
     """
     def _responder(json_body: dict, params: dict | None) -> dict:
         text = str(json_body)
@@ -152,7 +152,7 @@ def test_unscanned_check_skipped_when_disabled(fake_client, app_config):
 
 
 def test_per_asset_findings_stale(fake_client, app_config):
-    """Stale path returns 25 assets — emit one Finding per asset so the report's
+    """Stale path returns 25 assets -- emit one Finding per asset so the report's
     Findings column reflects the true count."""
     from tests.conftest import FakeRapid7Client
     fc = FakeRapid7Client()
@@ -197,7 +197,7 @@ def test_per_asset_findings_capped_with_rollup(fake_client, app_config):
     assert rollup.details["remainder"] == 17
     assert rollup.details["total"] == overflow
     assert rollup.details["cap"] == _PER_ITEM_FINDING_CAP
-    # The rule fetched only the bounded head — not all `overflow` rows.
+    # The rule fetched only the bounded head -- not all `overflow` rows.
     # cap (500) == page size (500), so exactly one search POST.
     search_calls = [
         c for c in fc.calls
@@ -304,7 +304,7 @@ def test_r1_dead_asset_groups_errors_when_snapshot_missing(fake_client, app_conf
     result = AssetCoverageCheck().run(fake_client, app_config)  # no snapshot
     rule = _rule(result, "op.asset_coverage.dead_asset_groups")
     assert rule.status == "error"
-    # An error RuleResult carries no findings — the reason lives in summary,
+    # An error RuleResult carries no findings -- the reason lives in summary,
     # consistent with the error_rule() helper. A spurious warn-severity
     # finding inside an error rule would pollute flatten_findings / the
     # delta signature index.
@@ -325,7 +325,7 @@ def test_r1_dead_asset_groups_missing_inline_alive_via_fallback(fake_client, app
     result = AssetCoverageCheck().run(fake_client, app_config, snapshot=snap)
     rule = _rule(result, "op.asset_coverage.dead_asset_groups")
 
-    # Only group 11 is truly dead — group 10 has 42 members per fallback.
+    # Only group 11 is truly dead -- group 10 has 42 members per fallback.
     assert rule.summary["dead_groups_count"] == 1
     assert rule.summary["groups_with_missing_count"] == 2
     assert rule.summary["fallback_calls_made"] == 2
@@ -590,7 +590,7 @@ def test_r4_agent_site_name_is_configurable(fake_client, app_config):
 
 
 def test_r4_skipped_when_flag_off(fake_client, app_config):
-    """flag_agent_only_assets defaults to False — rule must skip."""
+    """flag_agent_only_assets defaults to False -- rule must skip."""
     snap = _FakeSnapshot(sites=[_AGENT_SITE, _SCAN_SITE_A])
     result = AssetCoverageCheck().run(fake_client, app_config, snapshot=snap)
     rule = _rule(result, "op.asset_coverage.agent_only_assets")
@@ -658,7 +658,7 @@ def test_optional_snapshot_kwarg_is_backwards_compatible(fake_client, app_config
     assert _rule(result, "op.asset_coverage.never_scanned_assets").status == "pass"
     # Snapshot-dependent rules error cleanly (don't crash)
     assert _rule(result, "op.asset_coverage.dead_asset_groups").status == "error"
-    # R4 is skipped because flag_agent_only_assets=False by default — toggle check fires before snapshot check
+    # R4 is skipped because flag_agent_only_assets=False by default -- toggle check fires before snapshot check
     assert _rule(result, "op.asset_coverage.agent_only_assets").status == "skipped"
 
 
@@ -697,7 +697,7 @@ def test_per_rule_failure_isolated_other_rules_still_run(fake_client, app_config
     assert stale.status == "error"
     assert "Read timed out" in (stale.error or "")
 
-    # Other rules still ran — exact status depends on fake_client setup, but
+    # Other rules still ran -- exact status depends on fake_client setup, but
     # they must not be 'error' from the same exception.
     for rid in (
         "op.asset_coverage.never_scanned_assets",
@@ -779,7 +779,7 @@ def test_rule_identity_matches_method_constants(fake_client, app_config):
     Without this guard, if a rule method's rule_id changes but the
     wrapper's stays the same, the report renders the wrapper's stale
     identity for the success path and the method's new identity for the
-    error path — confusing operators and breaking delta-blob signatures.
+    error path -- confusing operators and breaking delta-blob signatures.
     """
     snap = _FakeSnapshot(asset_groups=[])
     result = AssetCoverageCheck().run(fake_client, app_config, snapshot=snap)
@@ -808,7 +808,7 @@ def _ghost_responder(resources: list[dict], *, total: int | None = None):
     ``page.totalPages`` and loops). ``total`` overrides the reported
     ``totalResources`` so a test can simulate "more OS-empty assets exist
     than were returned in this page" (partial detection) without
-    materializing the full list — pass ``total > len(resources)``.
+    materializing the full list -- pass ``total > len(resources)``.
     """
     reported_total = len(resources) if total is None else total
 
@@ -931,7 +931,7 @@ def test_ghost_assets_bounded_fetch_caps_at_per_item_cap_and_discloses_partial(f
     assert "lower bound" in disclosure.message
     assert disclosure.details["os_empty_total"] == overflow
     assert disclosure.details["os_empty_examined"] == _PER_ITEM_FINDING_CAP
-    # Standardized card line suppressed when partial — passed would over-count.
+    # Standardized card line suppressed when partial -- passed would over-count.
     assert rule.card_summary is None
 
 
@@ -1000,7 +1000,7 @@ def test_ghost_assets_card_summary_uses_total_asset_count_as_denominator(fake_cl
 
 def test_ghost_assets_without_snapshot_reports_ghosts_but_no_card_summary(fake_client, app_config):
     """Snapshot absent (test fakes / edge cases): the rule cannot read the
-    honest denominator, so card_summary is suppressed — but ghost findings are
+    honest denominator, so card_summary is suppressed -- but ghost findings are
     still reported and the rule does NOT error out."""
     from tests.conftest import FakeRapid7Client
     fc = FakeRapid7Client()
@@ -1018,7 +1018,7 @@ def test_ghost_assets_without_snapshot_reports_ghosts_but_no_card_summary(fake_c
     assert rule.status != "error"
     assert rule.summary["ghost_count"] == 1
     assert rule.summary["ghost_detection_partial"] is False
-    assert rule.card_summary is None      # suppressed — no honest denominator
+    assert rule.card_summary is None      # suppressed -- no honest denominator
     assert len([f for f in rule.findings if f.severity == "fail"]) == 1
     assert rule.findings[0].severity == "fail"
     assert rule.findings[0].details["id"] == 1

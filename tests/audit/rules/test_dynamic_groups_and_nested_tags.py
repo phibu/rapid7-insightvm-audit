@@ -95,7 +95,7 @@ def test_dynamic_group_referencing_tag_emits_info_finding(fake_snapshot):
 
 
 def test_long_tag_chain_does_not_recurse(fake_snapshot):
-    """Chain of 1500 tags each referencing the next — would blow the
+    """Chain of 1500 tags each referencing the next -- would blow the
     default Python recursion limit if the cycle walker were recursive."""
     fake_snapshot.set_asset_groups([])
     chain = []

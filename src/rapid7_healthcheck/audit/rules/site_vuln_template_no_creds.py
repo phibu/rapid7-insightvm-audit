@@ -11,7 +11,7 @@ def _shared_credential_covers(shared: dict, site_id: int) -> bool:
     ``"all-sites"`` (applies to every current and future site; the
     ``sites`` list is ``null``) or ``"specific-sites"`` (applies only to
     the site IDs in ``sites``). A ``SharedCredential`` has **no**
-    ``enabled`` field — assignment alone determines coverage.
+    ``enabled`` field -- assignment alone determines coverage.
 
     Defensive on ``sites``: when ``siteAssignment`` is absent we fall
     back to the historical "``sites`` is None ⇒ all sites" reading, which
@@ -23,7 +23,7 @@ def _shared_credential_covers(shared: dict, site_id: int) -> bool:
     if sites_restriction is None:
         # all-sites shape (sites is null when siteAssignment is all-sites);
         # the explicit "all-sites" case already returned above, so reaching
-        # here with sites=None means siteAssignment was absent — an older
+        # here with sites=None means siteAssignment was absent -- an older
         # payload that omits it. Treat absent-assignment + null-sites as
         # all-sites coverage.
         return True
@@ -33,13 +33,13 @@ def _shared_credential_covers(shared: dict, site_id: int) -> bool:
 def _site_has_credentials(snapshot, site_id: int) -> bool:
     """True if ``site_id`` has any enabled credential for authenticated scans.
 
-    Checks shared credentials **first** — ``shared_credentials()`` is a
+    Checks shared credentials **first** -- ``shared_credentials()`` is a
     single cached GET held entirely in memory. Only when no shared
     credential covers the site does this fall through to the per-site
     ``site_credentials(site_id)`` call, which is an HTTP request the v3
     API offers no bulk equivalent for. On consoles with an ``all-sites``
     shared credential (the Rapid7-recommended setup) the per-site call is
-    never made — turning what was a ~15-minute N+1 sweep into one
+    never made -- turning what was a ~15-minute N+1 sweep into one
     ``shared_credentials()`` GET.
     """
     for shared in snapshot.shared_credentials():

@@ -13,7 +13,7 @@ class DisabledChecksInIndividualOverridesRule(AuditRule):
         "Templates with many individually disabled checks under "
         "`checks.individual.disabled`. A short list is normal (legitimate "
         "exceptions for false positives or known irrelevant checks); a long "
-        "list is a drift signal — operators have been silencing checks "
+        "list is a drift signal -- operators have been silencing checks "
         "without re-evaluating, building up technical debt that hides real "
         "findings. The threshold is configurable via the "
         "`max_disabled_individual_checks` knob (default 20)."
@@ -40,7 +40,7 @@ class DisabledChecksInIndividualOverridesRule(AuditRule):
                     severity=severity,
                     message=(
                         f"Template '{t.get('name')}' has {count} individually "
-                        f"disabled checks (threshold {threshold}) — review for "
+                        f"disabled checks (threshold {threshold}) -- review for "
                         f"silenced findings that should be re-evaluated."
                     ),
                     details={

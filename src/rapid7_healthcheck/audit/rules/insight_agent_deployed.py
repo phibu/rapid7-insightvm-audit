@@ -72,7 +72,7 @@ class InsightAgentDeployedRule(AuditRule):
                 message=(
                     f"Insight Agent coverage is {coverage_pct}% "
                     f"({agents_total:,} agents / {assets_total:,} assets). "
-                    f"Below the {warn_below}% threshold — agent-aware audit "
+                    f"Below the {warn_below}% threshold -- agent-aware audit "
                     f"rules will under-report on the uncovered slice."
                 ),
                 details={

@@ -1,7 +1,7 @@
 # Data Quality: Skip Duplicate Detection on Large Inventories
 
 **Date:** 2026-05-06
-**Status:** Approved — ready for implementation plan
+**Status:** Approved -- ready for implementation plan
 **Affects:** `src/rapid7_healthcheck/checks/data_quality.py`, `src/rapid7_healthcheck/config.py`, `docs/examples/config.yaml`, `README.md`, `CHANGELOG.md`, tests
 
 ## Problem
@@ -10,7 +10,7 @@ The `Data Quality` operational check's duplicate-hostname and duplicate-IP detec
 
 Earlier mitigation (parallel page fetches via `parallel_pages`) does not solve this at 500k scale: per-page latency is dominated by server-side join cost on the Rapid7 console, not network round-trip, and aggressive parallelism risks throttling.
 
-The v3 API spec (verified in `docs/research/api-v3.json`) confirms there is **no** group-by, distinct, or aggregation operator. `SearchCriteria` supports only `filters` + `match: all|any`. Available operators on `host-name` and `ip-address` are equality / containment / range — none allow asking the server "give me hostnames that appear more than once." Server-side duplicate detection is impossible with v3.
+The v3 API spec (verified in `docs/research/api-v3.json`) confirms there is **no** group-by, distinct, or aggregation operator. `SearchCriteria` supports only `filters` + `match: all|any`. Available operators on `host-name` and `ip-address` are equality / containment / range -- none allow asking the server "give me hostnames that appear more than once." Server-side duplicate detection is impossible with v3.
 
 Sampling is not an option: `CLAUDE.md` is explicit that operational checks run against the full population because sampling would produce misleading aggregate counts. That rule stands.
 
@@ -45,13 +45,13 @@ The default of `50,000` is conservative: at the observed ~45s/page on the user's
 Before invoking `_collect_duplicate_groups`, peek at the total asset count via a one-shot `GET /api/3/assets?page=0&size=1` (returns `page.totalResources` cheaply). Branch:
 
 1. **Both `flag_duplicate_hostnames` and `flag_duplicate_ips` are False.** Skip the peek, take the existing path (each rule emits a `skipped` `RuleResult` via the existing `skipped_rule()` helper). No new network call.
-2. **Peek raises.** Both duplicate rules become `error_rule()` — same fallback the existing code uses when `_collect_duplicate_groups` raises. The other three Data Quality rules are unaffected.
+2. **Peek raises.** Both duplicate rules become `error_rule()` -- same fallback the existing code uses when `_collect_duplicate_groups` raises. The other three Data Quality rules are unaffected.
 3. **`total_assets > duplicate_detection_max_assets` (or threshold is `0`).** Both duplicate rules emit a `pass`-status `RuleResult` containing one `info`-severity `Finding` whose message names the totals and points to Security Console → Assets. `_collect_duplicate_groups` is **not** called.
 4. **Otherwise.** Existing path: call `_collect_duplicate_groups`, run both rules normally.
 
 ### Why `pass` + info finding instead of `skipped` status
 
-The report's filter bar can hide skipped rules depending on user settings. The skip *reason* is the entire value of this rule at scale (it tells the user *we did not check, here is where to look*), so it must always be visible. A `pass` status with a single `info` finding renders as a normal rule card with the explanatory message — no special handling needed in the template, no risk of being filtered out, and it correctly reflects "the tool didn't fail; it intentionally deferred."
+The report's filter bar can hide skipped rules depending on user settings. The skip *reason* is the entire value of this rule at scale (it tells the user *we did not check, here is where to look*), so it must always be visible. A `pass` status with a single `info` finding renders as a normal rule card with the explanatory message -- no special handling needed in the template, no risk of being filtered out, and it correctly reflects "the tool didn't fail; it intentionally deferred."
 
 `make_rule_result()` already derives the rule's status from the highest-severity finding. `info` rolls up to `pass`. No helper changes required.
 
@@ -103,15 +103,15 @@ Both pass `details={"total_assets": N, "threshold": T}` so the finding's expande
 
 `tests/checks/test_data_quality.py` (new tests):
 
-- `test_duplicate_detection_skipped_when_total_exceeds_threshold` — fake client returning `totalResources: 100000`, default threshold `50000`. Assert: both duplicate rules return `pass` status with one info finding whose message contains "100,000" and "50,000". Assert: `client.paginate("/api/3/assets")` is **not** called (use a paginate-spy that raises if invoked).
-- `test_duplicate_detection_runs_when_under_threshold` — `totalResources: 10000`. Assert: `_collect_duplicate_groups` IS invoked; existing rule output shape preserved.
-- `test_duplicate_detection_threshold_zero_always_skips` — `totalResources: 100`, threshold `0`. Assert: skip path taken, message contains "disabled".
-- `test_peek_total_assets_failure_emits_error_rules` — peek raises `Rapid7ClientError`. Assert: both duplicate rules become `error` status; the other three rules unaffected.
-- `test_duplicate_detection_skipped_when_both_flags_off_does_not_peek` — both flags False; peek-spy raises if called. Assert: no peek call, both rules emit existing `skipped_rule()` output.
+- `test_duplicate_detection_skipped_when_total_exceeds_threshold` -- fake client returning `totalResources: 100000`, default threshold `50000`. Assert: both duplicate rules return `pass` status with one info finding whose message contains "100,000" and "50,000". Assert: `client.paginate("/api/3/assets")` is **not** called (use a paginate-spy that raises if invoked).
+- `test_duplicate_detection_runs_when_under_threshold` -- `totalResources: 10000`. Assert: `_collect_duplicate_groups` IS invoked; existing rule output shape preserved.
+- `test_duplicate_detection_threshold_zero_always_skips` -- `totalResources: 100`, threshold `0`. Assert: skip path taken, message contains "disabled".
+- `test_peek_total_assets_failure_emits_error_rules` -- peek raises `Rapid7ClientError`. Assert: both duplicate rules become `error` status; the other three rules unaffected.
+- `test_duplicate_detection_skipped_when_both_flags_off_does_not_peek` -- both flags False; peek-spy raises if called. Assert: no peek call, both rules emit existing `skipped_rule()` output.
 
 `tests/test_config.py`:
 
-- `test_data_quality_default_duplicate_detection_max_assets` — default = 50000.
+- `test_data_quality_default_duplicate_detection_max_assets` -- default = 50000.
 - `test_data_quality_duplicate_detection_max_assets_negative_rejected`.
 - `test_data_quality_duplicate_detection_max_assets_non_int_rejected`.
 - `test_data_quality_duplicate_detection_max_assets_zero_accepted`.
@@ -123,5 +123,5 @@ No new HTTP verbs introduced. The new `_peek_total_assets` helper issues a `GET`
 ## Out of Scope / Future Work
 
 - If Rapid7 ever adds projection (`fields=`) or aggregation operators to the v3 API, `_collect_duplicate_groups` could be rewritten to scan with a thinner payload or skip pagination entirely. Track in `backlog.md`.
-- A `--force-duplicate-detection` CLI flag that overrides the threshold for the duration of one run. Considered, deferred — users who want this can edit `config.yaml`.
+- A `--force-duplicate-detection` CLI flag that overrides the threshold for the duration of one run. Considered, deferred -- users who want this can edit `config.yaml`.
 - Detecting duplicates by MAC address. Out of scope; would be an additional rule, not a fix to this one.

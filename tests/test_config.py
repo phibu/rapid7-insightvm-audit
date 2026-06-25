@@ -772,7 +772,7 @@ def test_load_audit_rejects_removed_rule_id():
     Strict-mode validator behavior: any rule id not registered in the audit
     rule registry raises ConfigError at load time. Locks in the hard-break
     upgrade contract from
-    0.4.0 — operators removing the deprecated rule from config.yaml will see
+    0.4.0 -- operators removing the deprecated rule from config.yaml will see
     this exact error string in their first 0.4.0 run.
     """
     from rapid7_healthcheck.config import _build_audit_config
@@ -1198,7 +1198,7 @@ class TestFromDictTypeOnlyAndPostValidate:
 
 # ---------------------------------------------------------------------------
 # Task 4: parity tests for audit/user_audit/template_audit builders
-# via _from_dict — pin behaviors to preserve through the migration.
+# via _from_dict -- pin behaviors to preserve through the migration.
 # ---------------------------------------------------------------------------
 
 class TestBuildAuditConfigViaParity:
@@ -1413,7 +1413,7 @@ class TestTask5CloudIntegration:
             })
 
     def test_cloud_integration_timeout_seconds_zero_rejected(self):
-        """timeout_seconds=0 is not positive — must be rejected."""
+        """timeout_seconds=0 is not positive -- must be rejected."""
         from rapid7_healthcheck.config import _build_cloud_integration_config
         with pytest.raises(ConfigError, match="timeout_seconds"):
             _build_cloud_integration_config({
@@ -1491,7 +1491,7 @@ class TestTask5Rapid7:
             })
 
     def test_rapid7_max_retries_zero_rejected(self, tmp_path):
-        """max_retries=0 is not positive — must be rejected."""
+        """max_retries=0 is not positive -- must be rejected."""
         from rapid7_healthcheck.config import _build_rapid7_config
         with pytest.raises(ConfigError, match="max_retries"):
             _build_rapid7_config({

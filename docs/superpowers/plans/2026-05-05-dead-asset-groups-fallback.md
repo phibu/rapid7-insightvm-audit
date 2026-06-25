@@ -26,11 +26,11 @@
 | `CHANGELOG.md` | Modify | `[Unreleased]` entry. |
 | `backlog.md` | Modify | Remove the 0.2.9 important item once shipped. |
 
-The thresholds-table in the report footer is populated by `build_thresholds_table` in `__main__.py`, which auto-iterates `dataclass.fields(...)`. **No template or `__main__.py` change needed** — adding the field to the dataclass surfaces it automatically.
+The thresholds-table in the report footer is populated by `build_thresholds_table` in `__main__.py`, which auto-iterates `dataclass.fields(...)`. **No template or `__main__.py` change needed** -- adding the field to the dataclass surfaces it automatically.
 
 ---
 
-## Task 1: Snapshot accessor — failing test (happy path)
+## Task 1: Snapshot accessor -- failing test (happy path)
 
 **Files:**
 - Test: `tests/audit/test_snapshot.py`
@@ -54,11 +54,11 @@ def test_asset_group_member_count_happy_path():
 - [ ] **Step 2: Run the test**
 
 Run: `pytest tests/audit/test_snapshot.py::test_asset_group_member_count_happy_path -v`
-Expected: FAIL — `AttributeError: 'EnvSnapshot' object has no attribute 'asset_group_member_count'`.
+Expected: FAIL -- `AttributeError: 'EnvSnapshot' object has no attribute 'asset_group_member_count'`.
 
 ---
 
-## Task 2: Snapshot accessor — implement
+## Task 2: Snapshot accessor -- implement
 
 **Files:**
 - Modify: `src/rapid7_healthcheck/audit/snapshot.py`
@@ -84,7 +84,7 @@ Add this method to `EnvSnapshot`, immediately after `asset_group_search_criteria
         GET /api/3/asset_groups/{id}/assets and returns the length of the
         `resources` array (the endpoint is unpaginated per v3 spec).
 
-        Returns None when the underlying call raises Rapid7ClientError —
+        Returns None when the underlying call raises Rapid7ClientError --
         callers surface a per-group info finding rather than aborting the
         rule. We branch on `e.status_code` only; never substring-match the
         error message (CLAUDE.md guidance).
@@ -124,7 +124,7 @@ git commit -m "feat(snapshot): add asset_group_member_count accessor"
 
 ---
 
-## Task 3: Snapshot accessor — caching test
+## Task 3: Snapshot accessor -- caching test
 
 **Files:**
 - Test: `tests/audit/test_snapshot.py`
@@ -159,7 +159,7 @@ git commit -m "test(snapshot): asset_group_member_count caches per id"
 
 ---
 
-## Task 4: Snapshot accessor — error handling test
+## Task 4: Snapshot accessor -- error handling test
 
 **Files:**
 - Test: `tests/audit/test_snapshot.py`
@@ -191,7 +191,7 @@ def test_asset_group_member_count_returns_none_on_client_error():
 
 
 def test_asset_group_member_count_500_also_returns_none():
-    """Non-404 errors are also swallowed and cached as None — symmetric with 404.
+    """Non-404 errors are also swallowed and cached as None -- symmetric with 404.
 
     Rationale: surface a per-group info finding regardless of the underlying
     status. The rule already excludes the group from the dead-group analysis;
@@ -227,7 +227,7 @@ git commit -m "test(snapshot): asset_group_member_count swallows Rapid7ClientErr
 
 ---
 
-## Task 5: Config — add the threshold field
+## Task 5: Config -- add the threshold field
 
 **Files:**
 - Modify: `src/rapid7_healthcheck/config.py`
@@ -235,7 +235,7 @@ git commit -m "test(snapshot): asset_group_member_count swallows Rapid7ClientErr
 
 - [ ] **Step 1: Extend the dataclass**
 
-In `src/rapid7_healthcheck/config.py`, modify `AssetCoverageThresholds` (currently lines 53–59):
+In `src/rapid7_healthcheck/config.py`, modify `AssetCoverageThresholds` (currently lines 53-59):
 
 ```python
 @dataclass(frozen=True)
@@ -264,7 +264,7 @@ In `docs/examples/config.yaml`, locate the `asset_coverage:` block under `thresh
 
 - [ ] **Step 3: Verify config loads**
 
-Run: `pytest tests/test_config.py -v` (or whatever the config-test file is — check `tests/` for the config tests).
+Run: `pytest tests/test_config.py -v` (or whatever the config-test file is -- check `tests/` for the config tests).
 Expected: PASS. If a test asserts on the literal set of asset_coverage fields, update its expectation to include `dead_groups_fallback_cap`.
 
 If you find no config tests for asset_coverage threshold fields, run the broader suite:
@@ -281,14 +281,14 @@ git commit -m "feat(config): add asset_coverage.dead_groups_fallback_cap thresho
 
 ---
 
-## Task 6: Rule — preserve existing zero-inline behavior (regression test)
+## Task 6: Rule -- preserve existing zero-inline behavior (regression test)
 
 **Files:**
 - Test: `tests/checks/test_asset_coverage.py`
 
 - [ ] **Step 1: Update the existing `_FakeSnapshot` to support the accessor**
 
-In `tests/checks/test_asset_coverage.py`, in the `_FakeSnapshot` class (currently lines 20–64), add an `__init__` parameter and a method.
+In `tests/checks/test_asset_coverage.py`, in the `_FakeSnapshot` class (currently lines 20-64), add an `__init__` parameter and a method.
 
 In `__init__` parameter list, add (after `total_agents`):
 
@@ -318,7 +318,7 @@ After the `agent_asset_ids_sampled` method, add:
 - [ ] **Step 2: Verify existing dead-group tests still pass**
 
 Run: `pytest tests/checks/test_asset_coverage.py -v -k "dead_asset_groups"`
-Expected: PASS — the existing tests use `assets=0` or `assets=250`, never missing, so the rule never reaches the fallback path.
+Expected: PASS -- the existing tests use `assets=0` or `assets=250`, never missing, so the rule never reaches the fallback path.
 
 - [ ] **Step 3: Commit (the stub exists but the rule doesn't call it yet)**
 
@@ -329,7 +329,7 @@ git commit -m "test(asset_coverage): stub asset_group_member_count on _FakeSnaps
 
 ---
 
-## Task 7: Rule — failing test for missing-inline + alive (the bug)
+## Task 7: Rule -- failing test for missing-inline + alive (the bug)
 
 **Files:**
 - Test: `tests/checks/test_asset_coverage.py`
@@ -353,7 +353,7 @@ def test_r1_dead_asset_groups_missing_inline_alive_via_fallback(fake_client, app
     result = AssetCoverageCheck().run(fake_client, app_config, snapshot=snap)
     rule = _rule(result, "op.asset_coverage.dead_asset_groups")
 
-    # Only group 11 is truly dead — group 10 has 42 members per fallback.
+    # Only group 11 is truly dead -- group 10 has 42 members per fallback.
     assert rule.summary["dead_groups_count"] == 1
     assert rule.summary["groups_with_missing_count"] == 2
     assert rule.summary["fallback_calls_made"] == 2
@@ -366,25 +366,25 @@ def test_r1_dead_asset_groups_missing_inline_alive_via_fallback(fake_client, app
 - [ ] **Step 2: Run it (must fail before the rule rewrite)**
 
 Run: `pytest tests/checks/test_asset_coverage.py::test_r1_dead_asset_groups_missing_inline_alive_via_fallback -v`
-Expected: FAIL — current rule flags both groups (because `int(None or 0) == 0` is True), or KeyError on the new summary fields.
+Expected: FAIL -- current rule flags both groups (because `int(None or 0) == 0` is True), or KeyError on the new summary fields.
 
 ---
 
-## Task 8: Rule — rewrite `_dead_asset_groups`
+## Task 8: Rule -- rewrite `_dead_asset_groups`
 
 **Files:**
 - Modify: `src/rapid7_healthcheck/checks/asset_coverage.py`
 
 - [ ] **Step 1: Rewrite the rule body**
 
-Replace the body of `_dead_asset_groups` (currently lines 237–294) with:
+Replace the body of `_dead_asset_groups` (currently lines 237-294) with:
 
 ```python
     def _dead_asset_groups(self, snapshot: "EnvSnapshot | None", t) -> RuleResult:
         rid = "op.asset_coverage.dead_asset_groups"
         name = "Asset groups with zero members"
         desc = (
-            "Asset groups whose membership criteria match no assets — orphaned "
+            "Asset groups whose membership criteria match no assets -- orphaned "
             "RBAC/report scopes that were probably created for a project that "
             "ended or for assets that have since been removed."
         )
@@ -528,7 +528,7 @@ Expected: PASS.
 - [ ] **Step 3: Run the entire dead-asset-groups block**
 
 Run: `pytest tests/checks/test_asset_coverage.py -v -k "dead_asset_groups"`
-Expected: ALL PASS. The existing tests now also see the new summary keys (`groups_with_missing_count`, `fallback_calls_made`, `fallback_cap_reached`, `fallback_errors`) — they should be `0`/`False` because no test in the existing block uses missing-inline groups.
+Expected: ALL PASS. The existing tests now also see the new summary keys (`groups_with_missing_count`, `fallback_calls_made`, `fallback_cap_reached`, `fallback_errors`) -- they should be `0`/`False` because no test in the existing block uses missing-inline groups.
 
 If any existing test fails because it asserts on the *exact* set of summary keys (rather than specific values), update its assertion to be tolerant.
 
@@ -541,7 +541,7 @@ git commit -m "fix(asset_coverage): per-id fallback for missing inline group cou
 
 ---
 
-## Task 9: Test — fallback cap reached
+## Task 9: Test -- fallback cap reached
 
 **Files:**
 - Test: `tests/checks/test_asset_coverage.py`
@@ -601,7 +601,7 @@ git commit -m "test(asset_coverage): fallback cap reached emits info finding"
 
 ---
 
-## Task 10: Test — fallback API error
+## Task 10: Test -- fallback API error
 
 **Files:**
 - Test: `tests/checks/test_asset_coverage.py`
@@ -650,7 +650,7 @@ git commit -m "test(asset_coverage): fallback HTTP error emits info finding, no 
 
 ---
 
-## Task 11: Test — `dead_groups_fallback_cap=0` disables fallback
+## Task 11: Test -- `dead_groups_fallback_cap=0` disables fallback
 
 **Files:**
 - Test: `tests/checks/test_asset_coverage.py`
@@ -711,7 +711,7 @@ git commit -m "test(asset_coverage): cap=0 disables fallback without false-posit
 
 ---
 
-## Task 12: Test — non-numeric inline value defensively treated as missing
+## Task 12: Test -- non-numeric inline value defensively treated as missing
 
 **Files:**
 - Test: `tests/checks/test_asset_coverage.py`
@@ -751,7 +751,7 @@ git commit -m "test(asset_coverage): non-numeric inline assets routes through fa
 
 ---
 
-## Task 13: Defensive — `FakeSnapshot` (audit conftest)
+## Task 13: Defensive -- `FakeSnapshot` (audit conftest)
 
 **Files:**
 - Modify: `tests/audit/conftest.py`
@@ -820,7 +820,7 @@ Expected: no output.
 
 - [ ] **Step 3: Run the tool against a recorded fixture if available**
 
-If `tests/fixtures` contains a recorded console response, run the CLI against it (or skip — the unit suite is the gate for read-only safety).
+If `tests/fixtures` contains a recorded console response, run the CLI against it (or skip -- the unit suite is the gate for read-only safety).
 
 ---
 
@@ -854,7 +854,7 @@ In `CHANGELOG.md`, under the `[Unreleased]` section (or create one if missing), 
 In `backlog.md`, under the `## 0.2.9` section, delete the bullet:
 
 ```markdown
-- **important** — `op.asset_coverage.dead_asset_groups` skips groups whose `assets` field is missing (`int(g.get("assets") or 0) == 0`). On consoles where dynamic groups omit the `assets` count key, this produces false-positive findings. Fall back to `GET /api/3/asset_groups/{id}/assets?size=1` and read `page.totalResources` when the inline count is absent.
+- **important** -- `op.asset_coverage.dead_asset_groups` skips groups whose `assets` field is missing (`int(g.get("assets") or 0) == 0`). On consoles where dynamic groups omit the `assets` count key, this produces false-positive findings. Fall back to `GET /api/3/asset_groups/{id}/assets?size=1` and read `page.totalResources` when the inline count is absent.
 ```
 
 Leave the `cleanup` item (the `_capped_findings_with_rollup` helper) in place.
@@ -877,7 +877,7 @@ After completing all tasks, the engineer should verify:
 - [ ] The report footer's thresholds table now lists `asset_coverage.dead_groups_fallback_cap` (auto-surfaced by `build_thresholds_table`).
 - [ ] Running against a console where dynamic groups omit inline counts no longer produces false-positive dead-group findings.
 - [ ] Spec coverage:
-  - Snapshot accessor with cache: Tasks 1–4. ✓
+  - Snapshot accessor with cache: Tasks 1-4. ✓
   - Two-pass classifier rule rewrite: Task 8. ✓
   - New threshold + YAML doc: Task 5. ✓
   - All five test scenarios (zero-inline preserved, fallback-alive, cap-reached, fallback-error, cap=0): Tasks 6, 7, 9, 10, 11. ✓

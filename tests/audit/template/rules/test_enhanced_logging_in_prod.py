@@ -31,7 +31,7 @@ def test_no_finding_when_bound_site_is_normal_importance(fake_snapshot):
     ])
     r = EnhancedLoggingInProdRule().run(fake_snapshot, "info", False, 500, {})
     assert r.findings == []
-    # Examined still 1 — the template has enhancedLogging on; it's
+    # Examined still 1 -- the template has enhancedLogging on; it's
     # applicable to the rule even though no high-importance site is bound.
     assert r.card_summary == {"examined": 1, "passed": 1, "failed": 0}
 
@@ -56,7 +56,7 @@ def test_template_without_enhanced_logging_not_examined(fake_snapshot):
     ])
     r = EnhancedLoggingInProdRule().run(fake_snapshot, "info", False, 500, {})
     assert r.findings == []
-    # Neither template has enhancedLogging on — examined = 0
+    # Neither template has enhancedLogging on -- examined = 0
     assert r.card_summary == {"examined": 0, "passed": 0, "failed": 0}
 
 

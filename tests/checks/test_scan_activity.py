@@ -98,10 +98,10 @@ def test_site_with_zero_scans_fails(fake_client, app_config):
     # card_summary populated for site-level rules (F1 sub2): 1 site, 1 flagged.
     never = _rule(result, "op.scan_activity.sites_never_scanned")
     assert never.card_summary == {"examined": 1, "passed": 0, "failed": 1}
-    # Stuck/recent-failed/recent-unknown have ambiguous denominators — None.
+    # Stuck/recent-failed/recent-unknown have ambiguous denominators -- None.
     assert _rule(result, "op.scan_activity.stuck_scans").card_summary is None
     # sites_overdue_scans: site with no scan history is silently skipped by
-    # the rule (not "passed" in the user-visible sense — it's flagged by
+    # the rule (not "passed" in the user-visible sense -- it's flagged by
     # sites_never_scanned instead). examined must reflect ONLY sites the
     # rule actually evaluated. Here: 0 evaluated, 0 failed.
     overdue = _rule(result, "op.scan_activity.sites_overdue_scans")

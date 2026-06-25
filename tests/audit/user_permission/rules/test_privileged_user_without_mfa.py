@@ -77,7 +77,7 @@ def test_skipped_when_2fa_endpoint_unavailable(fake_user_snapshot):
 
 def test_self_skip_when_all_users_return_401(fake_user_snapshot):
     """If every privileged user's 2FA endpoint returns 401, the calling key
-    likely lacks Global Administrator — self-skip with an info finding."""
+    likely lacks Global Administrator -- self-skip with an info finding."""
     from rapid7_healthcheck.client import Rapid7ClientError
 
     fake_user_snapshot.set_users([
@@ -154,7 +154,7 @@ def test_external_saml_user_skipped_no_2fa_call(fake_user_snapshot):
     """SAML-authenticated privileged user must NOT trigger a 2FA endpoint call;
     they appear in a single aggregate info finding instead."""
     fake_user_snapshot.set_users([_user_with_auth(1, "saml-admin", "saml")])
-    # Deliberately do NOT set_user_2fa_enabled — if the rule calls it, the fake
+    # Deliberately do NOT set_user_2fa_enabled -- if the rule calls it, the fake
     # returns False (default) and we'd see a fail finding. We assert there is none.
     r = PrivilegedUserWithoutMfaRule().run(fake_user_snapshot, "fail", False, 500, {})
     assert r.status == "pass"
@@ -214,7 +214,7 @@ def test_all_privileged_external_no_2fa_calls(fake_user_snapshot):
         _user_with_auth(1, "krb-admin-1", "kerberos"),
         _user_with_auth(2, "krb-admin-2", "kerberos"),
     ])
-    # Configure user_2fa_enabled to RAISE if called — proves no call happened.
+    # Configure user_2fa_enabled to RAISE if called -- proves no call happened.
     from rapid7_healthcheck.client import Rapid7ClientError
     fake_user_snapshot.set_user_2fa_raises(1, Rapid7ClientError("must not be called", status_code=500))
     fake_user_snapshot.set_user_2fa_raises(2, Rapid7ClientError("must not be called", status_code=500))

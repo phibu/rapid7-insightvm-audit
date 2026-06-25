@@ -37,7 +37,7 @@ class CorrelateDisabledRule(AuditRule):
                     severity=severity,
                     message=(
                         f"Template '{t.get('name')}' has vulnerability check "
-                        f"correlation disabled — expect duplicate findings."
+                        f"correlation disabled -- expect duplicate findings."
                     ),
                     details={
                         "template_id": t.get("id"),

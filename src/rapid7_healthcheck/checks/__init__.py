@@ -41,7 +41,7 @@ def findings_of(check: CheckResult) -> Iterator[tuple[str, Finding]]:
     rule's ``rule_id``; the top-level ``findings`` mirror is **ignored** so a
     finding is never double-counted in the delta-blob signature index. A legacy
     (pre-0.2.6) check with only top-level findings yields them tagged with the
-    check ``name`` — matching the historical delta-index fallback.
+    check ``name`` -- matching the historical delta-index fallback.
     """
     if check.rule_results:
         for rr in check.rule_results:

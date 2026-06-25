@@ -1,4 +1,4 @@
-# Configuration Audit — Design
+# Configuration Audit -- Design
 
 **Date:** 2026-04-28
 **Status:** Draft for review
@@ -9,7 +9,7 @@
 
 Add a fifth check category to `rapid7_healthcheck` that audits the InsightVM environment against a curated set of Rapid7-documented best-practice rules (configuration anti-patterns), independent of operational health. Each rule is sourced from official Rapid7 documentation or the Rapid7 community.
 
-The audit answers: *"Is this InsightVM environment configured according to Rapid7's best practices?"* — distinct from the original tool's question of *"Is the platform working correctly right now?"*.
+The audit answers: *"Is this InsightVM environment configured according to Rapid7's best practices?"* -- distinct from the original tool's question of *"Is the platform working correctly right now?"*.
 
 ## 2. Scope
 
@@ -38,7 +38,7 @@ The audit answers: *"Is this InsightVM environment configured according to Rapid
 The existing `config.yaml` gains:
 
 - A new `audit:` block (see §5).
-- A new entry in `checks:` — `configuration_audit: true` (the master toggle in the existing pattern).
+- A new entry in `checks:` -- `configuration_audit: true` (the master toggle in the existing pattern).
 
 No new environment variables. No new CLI flags.
 
@@ -79,17 +79,17 @@ Unchanged: `python -m rapid7_healthcheck` (with the existing flags). Audit runs 
 
 ### Module boundaries
 
-- `rapid7_healthcheck/audit/__init__.py` — `Rule` Protocol, `RuleResult` dataclass, `_RULE_REGISTRY`, `ConfigurationAuditCheck` class.
-- `rapid7_healthcheck/audit/snapshot.py` — `EnvSnapshot` (the lazy data container).
-- `rapid7_healthcheck/audit/rules/<rule_id>.py` — one file per rule (eight files).
-- `rapid7_healthcheck/config.py` — extended with `AuditConfig` dataclass (see §5).
-- `rapid7_healthcheck/checks/__init__.py` — `CheckResult` gains an optional `rule_results` field.
-- `rapid7_healthcheck/templates/report.html.j2` — extended with a conditional per-rule sub-section.
-- `rapid7_healthcheck/__main__.py` — extends `_REGISTRY` with `configuration_audit: ConfigurationAuditCheck`.
+- `rapid7_healthcheck/audit/__init__.py` -- `Rule` Protocol, `RuleResult` dataclass, `_RULE_REGISTRY`, `ConfigurationAuditCheck` class.
+- `rapid7_healthcheck/audit/snapshot.py` -- `EnvSnapshot` (the lazy data container).
+- `rapid7_healthcheck/audit/rules/<rule_id>.py` -- one file per rule (eight files).
+- `rapid7_healthcheck/config.py` -- extended with `AuditConfig` dataclass (see §5).
+- `rapid7_healthcheck/checks/__init__.py` -- `CheckResult` gains an optional `rule_results` field.
+- `rapid7_healthcheck/templates/report.html.j2` -- extended with a conditional per-rule sub-section.
+- `rapid7_healthcheck/__main__.py` -- extends `_REGISTRY` with `configuration_audit: ConfigurationAuditCheck`.
 
 ### Why one Check with many internal rules, not eight Check classes
 
-- Eight rules share data (sites, scan templates, credentials, schedules). Loading once via `EnvSnapshot` saves 7×–10× redundant API calls.
+- Eight rules share data (sites, scan templates, credentials, schedules). Loading once via `EnvSnapshot` saves 7×-10× redundant API calls.
 - The orchestrator's exit-code rollup stays simple: one row in the summary table.
 - The audit becomes its own self-contained subsystem; new rules drop in without touching the orchestrator or the top-level `Check` registry.
 
@@ -101,7 +101,7 @@ Default (matches Rapid7-recommended defaults from research):
 
 ```yaml
 audit:
-  # Master toggle — when false, the entire audit category is skipped.
+  # Master toggle -- when false, the entire audit category is skipped.
   enabled: true
 
   # When true, expensive rules enumerate ALL relevant entities.
@@ -175,20 +175,20 @@ Lives in `rapid7_healthcheck/audit/snapshot.py`. Built once per audit run, passe
 class EnvSnapshot:
     def __init__(self, client: Rapid7Client, *, full_scan: bool, sample_size: int): ...
 
-    # Bulk loaders — cached on first access
+    # Bulk loaders -- cached on first access
     def sites(self) -> list[dict]: ...                 # GET /api/3/sites (paginated)
     def scan_engines(self) -> list[dict]: ...          # GET /api/3/scan_engines
     def shared_credentials(self) -> list[dict]: ...    # GET /api/3/shared_credentials
     def blackouts(self) -> list[dict]: ...             # GET /api/3/blackouts
 
-    # Per-key loaders — cached per (id) tuple
+    # Per-key loaders -- cached per (id) tuple
     def site_credentials(self, site_id: int) -> list[dict]: ...   # /api/3/sites/{id}/site_credentials
     def site_schedules(self, site_id: int) -> list[dict]: ...     # /api/3/sites/{id}/scan_schedules
     def site_included_targets(self, site_id: int) -> list[dict]: ... # /api/3/sites/{id}/included_targets
     def site_asset_count(self, site_id: int) -> int: ...          # /api/3/sites/{id}/assets?size=1 → page.totalResources
     def scan_template(self, template_id: str) -> dict: ...        # /api/3/scan_templates/{id}
 
-    # Expensive paths — respect full_scan and sample_size
+    # Expensive paths -- respect full_scan and sample_size
     def site_recent_scans(self, site_id: int, max_n: int = 20) -> list[dict]: ...
     def asset_sample(self, site_id: int) -> tuple[list[dict], int]:
         """Returns (assets_in_sample, total_asset_count). When full_scan=True, returns all."""
@@ -201,7 +201,7 @@ Simple in-process dicts. No invalidation; single-run lifetime. Each method is id
 
 ### Sampling semantics
 
-`asset_sample(site_id)` is the only place `full_scan` changes behaviour. Returns a tuple so rules can render honest counts. The `total_asset_count` reflects `page.totalResources` from the underlying API. When sampled, the sample is the first `sample_size` assets returned by the paginated endpoint (deterministic per run; not random — keeps re-runs reproducible).
+`asset_sample(site_id)` is the only place `full_scan` changes behaviour. Returns a tuple so rules can render honest counts. The `total_asset_count` reflects `page.totalResources` from the underlying API. When sampled, the sample is the first `sample_size` assets returned by the paginated endpoint (deterministic per run; not random -- keeps re-runs reproducible).
 
 ### Rate-limit / retry behaviour
 
@@ -343,7 +343,7 @@ class ConfigurationAuditCheck:
 3. **Per-rule detail block** (HTML `<details>`, one per rule):
    - Rule description
    - Sampling note (if applicable): "checked 500 of 4,200 assets across 8 of 47 sites"
-   - Findings table (severity / message / expandable details_json) — same shape as today's findings table
+   - Findings table (severity / message / expandable details_json) -- same shape as today's findings table
    - **Sources** list: bulleted `<a href>` links opening in a new tab (`target="_blank" rel="noopener noreferrer"`)
 
 ### Severity vs Status interaction
@@ -356,13 +356,13 @@ Uses only `<details>` / `<summary>` for expansion, same as the existing report. 
 
 ### Self-contained sources
 
-Source URLs render as plain links; operators clicking through hit the live Rapid7 doc. No archival, no offline copy. Acceptable trade-off — the docs are stable, the audit ships with explicit version-dated URLs where helpful (e.g., the 6.6.229 release-note source for Rule 1).
+Source URLs render as plain links; operators clicking through hit the live Rapid7 doc. No archival, no offline copy. Acceptable trade-off -- the docs are stable, the audit ships with explicit version-dated URLs where helpful (e.g., the 6.6.229 release-note source for Rule 1).
 
 ## 9. The 8 rules
 
 API version note: all paths are `/api/3/...`, served via the Insight Platform proxy at the configured `base_url`. The "v4 / cloud" surface is narrower than v3 and does not cover scan templates, schedules, blackouts, credentials, or scan engines. The audit reuses the existing `Rapid7Client` unchanged.
 
-### Rule 1 — `agent_unauth_collision`
+### Rule 1 -- `agent_unauth_collision`
 
 **Default severity:** `fail`. **Expensive:** yes.
 
@@ -374,19 +374,19 @@ API version note: all paths are `/api/3/...`, served via the Insight Platform pr
 1. `snapshot.sites()`.
 2. For each site:
    - Skip if `template.vulnerabilityChecks.enabled == false` (Rule doesn't apply to discovery-only sites).
-   - Check if the site has any enabled credentials (site-level or shared-scoped). If yes, skip — it's authenticated.
+   - Check if the site has any enabled credentials (site-level or shared-scoped). If yes, skip -- it's authenticated.
    - `snapshot.asset_sample(site_id)`. For each asset, `snapshot.asset_history(asset_id)`. Count assets with any history entry where `type == "AGENT-IMPORT"`.
 3. Emit one finding per site with `agent_assets > 0`. Severity = configured. Message: `"Site '<name>' runs unauthenticated vuln scans, but <N>/<sample_size> sampled assets are Insight Agent-managed (<X>%)"`. Details: `{site_id, agent_count, sample_size, total_assets, scan_template_id}`.
 
 **API cost:** 1 + N_sites for setup; up to `sample_size` × N_sites for asset history (default 500 × N_sites).
 
 **Sources:**
-- `https://docs.rapid7.com/insightvm/security-console-best-practices/` — *"For the most accurate view of your environment, we recommend using Agent assessments for authenticated (local) assets and unauthenticated engine scans for unauthenticated (remote) assets."*
-- `https://docs.rapid7.com/release-notes/insightvm/20231129/` — *"The Security Console now uses agent-based assessment results to override less reliable remote check results from unauthenticated scans."*
-- `https://docs.rapid7.com/insightvm/correlate-assets-with-insight-agent-uuids/` — *"Unauthenticated scans yield far less data than authenticated scans produce."*
+- `https://docs.rapid7.com/insightvm/security-console-best-practices/` -- *"For the most accurate view of your environment, we recommend using Agent assessments for authenticated (local) assets and unauthenticated engine scans for unauthenticated (remote) assets."*
+- `https://docs.rapid7.com/release-notes/insightvm/20231129/` -- *"The Security Console now uses agent-based assessment results to override less reliable remote check results from unauthenticated scans."*
+- `https://docs.rapid7.com/insightvm/correlate-assets-with-insight-agent-uuids/` -- *"Unauthenticated scans yield far less data than authenticated scans produce."*
 - `https://discuss.rapid7.com/t/problem-with-conflicting-ip-fo-assets-home-office/10539`
 
-### Rule 2 — `site_vuln_template_no_creds`
+### Rule 2 -- `site_vuln_template_no_creds`
 
 **Default severity:** `fail`. **Expensive:** no.
 
@@ -398,7 +398,7 @@ API version note: all paths are `/api/3/...`, served via the Insight Platform pr
 1. `snapshot.sites()`, `snapshot.shared_credentials()`.
 2. For each site:
    - Fetch template; if `vulnerabilityChecks.enabled == false`, skip.
-   - `snapshot.site_credentials(site_id)` — any with `enabled: true`? `snapshot.shared_credentials()` — any whose site restriction includes this site (or no restriction)?
+   - `snapshot.site_credentials(site_id)` -- any with `enabled: true`? `snapshot.shared_credentials()` -- any whose site restriction includes this site (or no restriction)?
    - If neither, AND `snapshot.site_asset_count(site_id) > 0`, emit a finding.
 3. Emit one finding per affected site. Severity = configured (default `fail`). Message: `"Site '<name>' uses vuln-check template '<template_name>' but has no enabled credentials"`. Details: `{site_id, template_id, template_name}`.
 
@@ -408,7 +408,7 @@ API version note: all paths are `/api/3/...`, served via the Insight Platform pr
 - `https://docs.rapid7.com/insightvm/scan-template-best-practices/`
 - `https://docs.rapid7.com/insightvm/configuring-scan-credentials/`
 
-### Rule 3 — `credential_failure_in_recent_scans`
+### Rule 3 -- `credential_failure_in_recent_scans`
 
 **Default severity:** `warn`. **Expensive:** yes (sampling at the site level).
 
@@ -431,7 +431,7 @@ If credential-status data is unavailable because Scanning Diagnostics isn't enab
 - `https://docs.rapid7.com/insightvm/configuring-site-specific-scan-credentials/`
 - `https://docs.rapid7.com/insightvm/scan-template-best-practices/` (Scanning Diagnostics)
 
-### Rule 4 — `overlapping_scan_windows`
+### Rule 4 -- `overlapping_scan_windows`
 
 **Default severity:** `warn`. **Expensive:** yes.
 
@@ -454,7 +454,7 @@ If credential-status data is unavailable because Scanning Diagnostics isn't enab
 - `https://docs.rapid7.com/insightvm/scan-blackouts`
 - `https://docs.rapid7.com/insightvm/security-console-best-practices/`
 
-### Rule 5 — `single_engine_overload`
+### Rule 5 -- `single_engine_overload`
 
 **Default severity:** `warn`. **Expensive:** no.
 
@@ -470,7 +470,7 @@ If credential-status data is unavailable because Scanning Diagnostics isn't enab
 3. For each engine bound to ≥ 2 sites:
    - Sum `snapshot.site_asset_count(site_id)` across bound sites.
    - If sum > `asset_count_threshold`, emit a finding.
-   - Bonus signal: if any of the bound sites have schedules that overlap (reuse Rule 4 logic, in-memory only — don't re-fetch), include `schedule_overlap: true` in details.
+   - Bonus signal: if any of the bound sites have schedules that overlap (reuse Rule 4 logic, in-memory only -- don't re-fetch), include `schedule_overlap: true` in details.
 4. Emit one finding per overloaded engine. Message: `"Scan engine '<name>' is bound to <N> sites totalling <M> assets (threshold <T>)"`. Details: `{engine_id, sites: [...], total_assets, schedule_overlap}`.
 
 **API cost:** 1 + N_sites + N_engines + N_sites for asset counts. Cheap.
@@ -478,7 +478,7 @@ If credential-status data is unavailable because Scanning Diagnostics isn't enab
 **Sources:**
 - `https://docs.rapid7.com/insightvm/security-console-best-practices/`
 
-### Rule 6 — `discovery_template_on_prod_site`
+### Rule 6 -- `discovery_template_on_prod_site`
 
 **Default severity:** `warn`. **Expensive:** no.
 
@@ -491,7 +491,7 @@ If credential-status data is unavailable because Scanning Diagnostics isn't enab
    - Fetch template. If `vulnerabilityChecks.enabled == false`, continue.
    - Heuristic for "should be vuln-assessment": `site.importance` ∈ `{normal, high, very_high}` AND `snapshot.site_asset_count(site_id) > 10`.
    - Emit a finding.
-2. Message: `"Site '<name>' (importance: <X>, <N> assets) uses Discovery-only template '<template_name>' — no vulnerabilities will be reported"`. Details: `{site_id, template_id, importance, asset_count}`.
+2. Message: `"Site '<name>' (importance: <X>, <N> assets) uses Discovery-only template '<template_name>' -- no vulnerabilities will be reported"`. Details: `{site_id, template_id, importance, asset_count}`.
 
 **False-positive note (in the rendered report):** The "should be vuln-assessment" inference is heuristic. Operators can disable this rule per-site by lowering the site's importance to `very_low`/`low`, or disable the rule entirely in `config.yaml`.
 
@@ -500,7 +500,7 @@ If credential-status data is unavailable because Scanning Diagnostics isn't enab
 **Sources:**
 - `https://docs.rapid7.com/insightvm/scan-template-best-practices/`
 
-### Rule 7 — `policy_and_vuln_in_same_template`
+### Rule 7 -- `policy_and_vuln_in_same_template`
 
 **Default severity:** `warn`. **Expensive:** no.
 
@@ -512,14 +512,14 @@ If credential-status data is unavailable because Scanning Diagnostics isn't enab
 1. `snapshot.sites()`. Collect distinct `scanTemplate.id` values currently assigned to any site (templates not in use are out of scope).
 2. For each in-use template: `snapshot.scan_template(template_id)`.
 3. If `template.policyEnabled == true` AND `template.vulnerabilityChecks.enabled == true`, emit a finding.
-4. Message: `"Template '<name>' has both Policy and Vulnerability checks enabled — Rapid7 recommends separate templates"`. Details: `{template_id, sites_using: [...]}`.
+4. Message: `"Template '<name>' has both Policy and Vulnerability checks enabled -- Rapid7 recommends separate templates"`. Details: `{template_id, sites_using: [...]}`.
 
 **API cost:** 1 + N_templates_in_use. Cheap.
 
 **Sources:**
 - `https://docs.rapid7.com/insightvm/scan-template-best-practices/`
 
-### Rule 8 — `store_invulnerable_results`
+### Rule 8 -- `store_invulnerable_results`
 
 **Default severity:** `info`. **Expensive:** no.
 
@@ -530,7 +530,7 @@ If credential-status data is unavailable because Scanning Diagnostics isn't enab
 **Algorithm:**
 1. Reuse Rule 7's template enumeration.
 2. Inspect the template's "store invulnerable results" boolean. The exact field name will be confirmed against the v3 scan-template schema at implementation time. If the field can't be located, the rule emits a single `info`-level finding noting the schema check failed and skips.
-3. Emit one finding per offending template. Message: `"Template '<name>' has 'Store invulnerable results' enabled — Rapid7 recommends disabling unless required by PCI auditor"`. Details: `{template_id, sites_using: [...]}`.
+3. Emit one finding per offending template. Message: `"Template '<name>' has 'Store invulnerable results' enabled -- Rapid7 recommends disabling unless required by PCI auditor"`. Details: `{template_id, sites_using: [...]}`.
 
 **API cost:** Effectively zero added cost when run alongside Rule 7.
 
@@ -540,8 +540,8 @@ If credential-status data is unavailable because Scanning Diagnostics isn't enab
 ## 10. Errors
 
 - Per-rule exceptions are caught by `ConfigurationAuditCheck.run` and produce `RuleResult(status="error")`. Other rules continue.
-- Snapshot-load failures (e.g. `Rapid7ClientError` while fetching `/api/3/sites`) propagate up to `ConfigurationAuditCheck.run`, which records the entire audit as `status="error"` (the orchestrator's outer try/except already handles this — same pattern as the existing checks).
-- Invalid config (`audit:` block schema errors) raises `ConfigError` at startup, exit code 3 — same as existing config validation.
+- Snapshot-load failures (e.g. `Rapid7ClientError` while fetching `/api/3/sites`) propagate up to `ConfigurationAuditCheck.run`, which records the entire audit as `status="error"` (the orchestrator's outer try/except already handles this -- same pattern as the existing checks).
+- Invalid config (`audit:` block schema errors) raises `ConfigError` at startup, exit code 3 -- same as existing config validation.
 
 ## 11. Logging
 

@@ -35,7 +35,7 @@ class PolicyAndVulnInSameTemplateRule(AuditRule):
                     severity=severity,
                     message=(
                         f"Template '{tpl.get('name', tpl_id)}' has both Policy and Vulnerability "
-                        f"checks enabled — Rapid7 recommends separate templates"
+                        f"checks enabled -- Rapid7 recommends separate templates"
                     ),
                     details={"template_id": tpl_id, "sites_using": site_ids},
                 ))

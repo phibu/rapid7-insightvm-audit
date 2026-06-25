@@ -92,7 +92,7 @@ def _audit_rule_ids() -> frozenset[str]:
     """Valid rule ids for the Configuration Audit category.
 
     The import is lazy and deliberately so: ``config.py`` is a leaf module,
-    and every ``audit/**/__init__.py`` imports ``config.AppConfig`` — importing
+    and every ``audit/**/__init__.py`` imports ``config.AppConfig`` -- importing
     the audit packages at this module's top level would be a circular import.
     By the time this runs (inside ``load_config`` → the builders), the cycle is
     resolved and the side-effect rule imports in each package's ``__init__``
@@ -104,7 +104,7 @@ def _audit_rule_ids() -> frozenset[str]:
     Peer accessors (``_user_rule_ids``, ``_cloud_rule_ids``,
     ``_template_rule_ids``) carry the same lazy-import rationale, one per
     category. Each ``ConfigBlockSpec.registry`` points at its own accessor, so
-    a builder asks for exactly its category's ids — no build-all-four-and-
+    a builder asks for exactly its category's ids -- no build-all-four-and-
     discard-three tuple. A new rule registered via ``@register`` /
     ``@register_user_rule`` / ``@register_cloud_rule`` /
     ``@register_template_rule`` is accepted by config automatically.
@@ -480,7 +480,7 @@ def _build_thresholds(data: Any) -> Thresholds:
 
 @dataclass(frozen=True)
 class BodySpec:
-    """The scalar-body slice of a rule-bearing config block — everything
+    """The scalar-body slice of a rule-bearing config block -- everything
     beyond its `rules:` mapping.
 
     `cls` is the config dataclass to parse the body into; `pv` is the
@@ -490,7 +490,7 @@ class BodySpec:
     `required` defaults to `frozenset()` because `AuditConfig` /
     `UserAuditConfig` declare their body fields with no dataclass default, so
     `_from_dict`'s MISSING-derivation already requires them. Only
-    `TemplateAuditConfig` populates it (`{enabled, full_scan, sample_size}`) —
+    `TemplateAuditConfig` populates it (`{enabled, full_scan, sample_size}`) --
     that dataclass *gives* those three defaults, so without the explicit set an
     empty `template_audit: {}` block would silently validate instead of
     erroring. See CONTEXT.md "BodySpec".
@@ -531,8 +531,8 @@ def _build_rule_audit_config(data: dict | None, spec: ConfigBlockSpec, *, defaul
     per-block differences arrive via `spec`. See CONTEXT.md
     "_build_rule_audit_config".
 
-    Error wording matches the pre-collapse builders by construction — `path`
-    and `body_path` carry it — so the existing config tests pass unchanged.
+    Error wording matches the pre-collapse builders by construction -- `path`
+    and `body_path` carry it -- so the existing config tests pass unchanged.
     The first-failure ordering is preserved per block:
 
       - rules-only (`spec.body is None`, i.e. cloud_drift): `_validate_dict_schema`
@@ -644,7 +644,7 @@ def _build_cloud_integration_config(data: dict | None) -> CloudIntegrationConfig
 
 
 def _build_cloud_drift_config(data: dict | None) -> CloudDriftConfig:
-    """Validator for the optional `cloud_drift:` block — a rules-only block
+    """Validator for the optional `cloud_drift:` block -- a rules-only block
     (no `enabled`/`full_scan`/`sample_size`; sampling does not apply to
     cloud-drift rules and the category enable lives in `checks.cloud_drift_audit`).
     Thin shim over `_build_rule_audit_config` with a `body=None` spec; see
@@ -672,7 +672,7 @@ def _build_report_config(data: Any) -> ReportConfig:
 
     `delta_max_age_days` is `int | None`. `get_type_hints` resolves this to
     `Optional[int]`, which `_check_scalar`'s `if expected is int` does NOT
-    match — it would hit the "unsupported declared type" branch and raise.
+    match -- it would hit the "unsupported declared type" branch and raise.
     So we pop `delta_max_age_days` before calling `_from_dict`, validate it
     by hand (non-negative int or None; reject bool and negative), then
     re-attach it via `replace` after `_from_dict` returns.
@@ -680,7 +680,7 @@ def _build_report_config(data: Any) -> ReportConfig:
     if not isinstance(data, dict):
         raise ConfigError(f"report: expected mapping, got {type(data).__name__}")
     raw = dict(data)
-    # Pop the union field before _from_dict — validated and re-attached below.
+    # Pop the union field before _from_dict -- validated and re-attached below.
     delta = raw.pop("delta_max_age_days", 30)
     if delta is not None and (not isinstance(delta, int) or isinstance(delta, bool) or delta < 0):
         raise ConfigError("report.delta_max_age_days: expected non-negative int or null")
@@ -702,7 +702,7 @@ def _ensure_default_on(checks: dict, *names: str) -> dict:
 
     Preserves explicit user values: if a key is already present (even with
     ``False``), it is not overwritten. Mutates and returns a copy of the
-    input dict only when at least one name was missing — when every name
+    input dict only when at least one name was missing -- when every name
     is present, returns the input dict unchanged so the caller doesn't pay
     for a copy.
     """

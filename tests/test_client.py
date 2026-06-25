@@ -413,7 +413,7 @@ def test_client_default_timeout_is_60_seconds(session):
 
 
 def test_client_default_parallel_pages_is_one(session):
-    """Default parallel_pages is 1 (sequential — preserves today's behavior)."""
+    """Default parallel_pages is 1 (sequential -- preserves today's behavior)."""
     c = Rapid7Client(
         base_url="https://example.test",
         api_key="k",
@@ -483,7 +483,7 @@ def test_client_rejects_default_page_size_501(session):
 
 
 def test_client_accepts_parallel_pages_sixteen(session):
-    """Inclusive upper bound — 16 must be accepted."""
+    """Inclusive upper bound -- 16 must be accepted."""
     c = Rapid7Client(
         base_url="https://example.test",
         api_key="k",
@@ -494,7 +494,7 @@ def test_client_accepts_parallel_pages_sixteen(session):
 
 
 def test_client_accepts_default_page_size_500(session):
-    """Inclusive upper bound — 500 must be accepted."""
+    """Inclusive upper bound -- 500 must be accepted."""
     c = Rapid7Client(
         base_url="https://example.test",
         api_key="k",
@@ -521,7 +521,7 @@ def test_parallel_paginate_yields_in_page_order(session):
     def fake_request(*args, **kwargs):
         page_num = kwargs["params"]["page"]
         if page_num == 1:
-            # Block until page 2 has finished — guarantees out-of-order
+            # Block until page 2 has finished -- guarantees out-of-order
             # completion so the test exercises the as_completed path.
             page2_done.wait(timeout=2.0)
         resp = _resp(200, pages_by_number[page_num])
@@ -536,7 +536,7 @@ def test_parallel_paginate_yields_in_page_order(session):
 
 
 def test_parallel_paginate_propagates_first_error(session):
-    """Page 1 of 3 returns 500 — _paginate must raise Rapid7ClientError
+    """Page 1 of 3 returns 500 -- _paginate must raise Rapid7ClientError
     and must not yield page 1's or page 2's resources. Page 0 is yielded
     via Phase 1 before any failure."""
     page0 = {"resources": [{"id": "p0"}], "page": {"number": 0, "totalPages": 3}}
