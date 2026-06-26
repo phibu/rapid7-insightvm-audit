@@ -44,6 +44,13 @@ class DuplicateCredentialClustersRule(AuditRule):
         sites_to_scan = sites if site_cap is None else sites[:site_cap]
         sites_truncated = 0 if site_cap is None else max(0, len(sites) - len(sites_to_scan))
 
+        # Per-rule prefetch (CONTEXT.md): warm credentials for exactly the
+        # slice this run will iterate -- sites_to_scan, NOT all sites -- so
+        # fast-mode sampling is respected (no GET the loop never reads).
+        snapshot.prefetch_site_credentials(
+            [s.get("id") for s in sites_to_scan if s.get("id") is not None]
+        )
+
         # key -> list of {source, name}
         members_by_key: dict[tuple, list[dict]] = defaultdict(list)
 
