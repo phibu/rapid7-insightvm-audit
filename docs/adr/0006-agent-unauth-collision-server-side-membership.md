@@ -1,5 +1,7 @@
 # agent_unauth_collision is computed by agent-site membership, server-side, not by agent-inventory iteration
 
+> **Status: IMPLEMENTED** (2026-06-26). The rule now computes agent-site overlap server-side via one `/api/3/assets/search` count per candidate site; the `/api/3/agents` iteration, the `max_agents` ceiling, and the agents-unavailable skip are removed. The `max_agents` config knob is replaced by `agent_site_name`.
+
 The `agent_unauth_collision` rule flags sites that run **unauthenticated** vulnerability scans against assets that already carry an Insight Agent (the agent gives strictly richer authenticated data; the redundant unauth scan adds load and causes correlation drift). It originally answered "does this site contain an agent-managed asset?" by paginating the full `/api/3/agents` inventory into an id set, then iterating each candidate site's assets (`iter_site_assets`) and testing membership -- **per-site sampled** (`audit.sample_size`), and **skipped entirely** when the agent fleet exceeded `max_agents` (default 50,000). That meant the rule **silently did nothing on exactly the large consoles that most need it**.
 
 We are rewriting it to use **agent-site membership, computed server-side** -- the same technique and trade-off as [ADR-0004](0004-agent-only-coverage-gap-server-side.md).

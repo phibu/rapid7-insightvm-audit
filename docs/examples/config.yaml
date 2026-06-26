@@ -83,7 +83,7 @@ audit:
     agent_unauth_collision:
       enabled: true             # enable/disable this rule
       severity: fail            # finding severity: info | warn | fail
-      max_agents: 50000         # skip the rule when the agent fleet exceeds this count; 0 always skips
+      agent_site_name: "Rapid7 Insight Agents"  # display name of the Insight Agent site (id varies per console; resolved by name)
     site_vuln_template_no_creds:
       enabled: true             # enable/disable this rule
       severity: fail            # finding severity: info | warn | fail
