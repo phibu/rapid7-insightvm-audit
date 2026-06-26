@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.6] - 2026-06-26
+
 ### Changed
 
 - **Internal:** the report's cross-run state is now a return value, not mutation of the render context. A new pure `build_render_state(...) -> RenderState` owns the `project → serialize → compute → metrics` sequence and returns the four derived values (state-blob JSON, content hash, delta, metrics) the template reads; `render_report` calls it once instead of mutating those fields onto `ReportContext` in a fixed-but-implicit order. `ReportContext` is now `frozen=True` and inputs-only. The pipeline is testable without rendering HTML (new `test_build_render_state_*`). No behavior change; respects ADR-0002 (the `findings_of`/`compute.index` twin is untouched). See CONTEXT.md "RenderState".
