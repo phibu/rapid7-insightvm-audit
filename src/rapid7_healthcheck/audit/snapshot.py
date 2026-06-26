@@ -4,6 +4,7 @@ import itertools
 import logging
 from dataclasses import dataclass, field
 from ipaddress import IPv4Address, IPv4Network, IPv6Address, IPv6Network, ip_address, ip_network
+from collections.abc import Callable
 from typing import Any, Protocol
 
 from rapid7_healthcheck.client import Rapid7ClientError
@@ -181,10 +182,53 @@ class EnvSnapshot:
     def sample_size(self) -> int:
         return self._sample_size
 
+    # --- cache plumbing ----------------------------------------------------
+    # The fetch-once-cache-return mechanism, owned in one place. The *fetch*
+    # varies per accessor (paginate vs get+envelope-key vs page-count int), so
+    # each accessor passes a zero-arg `fetch` closure that owns its own envelope
+    # logic; the helper owns only the caching. Error-policy accessors
+    # (scan_engine_pools, agents, agent_count, asset_group_member_count) and the
+    # sampling accessors (asset_sample, agents) do NOT route through these --
+    # their per-accessor try/except and sampling are irreducible. See CONTEXT.md
+    # "EnvSnapshot".
+
+    def _cached(self, slot: str, fetch: Callable[[], Any]) -> Any:
+        """Return `self.<slot>`, computing it via `fetch()` on first access.
+
+        The single-value cache: the slot starts as `None` and holds the fetched
+        value thereafter. `fetch` runs at most once per snapshot.
+        """
+        if getattr(self, slot) is None:
+            setattr(self, slot, fetch())
+        return getattr(self, slot)
+
+    def _cached_by(self, key: Any, cache: dict, fetch: Callable[[Any], Any]) -> Any:
+        """Return `cache[key]`, computing it via `fetch(key)` on a cache miss.
+
+        The per-id cache: one entry per key (site id, template id). The same
+        `fetch` callable a `prefetch_*` helper hands to `_prefetch_per_site`, so
+        the accessor and its prefetch twin share one GET -- no duplicated fetch.
+        """
+        if key not in cache:
+            cache[key] = fetch(key)
+        return cache[key]
+
+    def _sampled(self, it: Any) -> list:
+        """Materialize an asset/agent iterator honouring the snapshot's sampling.
+
+        The single owner of the sampling rule: `full_scan` takes the whole
+        iterator, otherwise the first `sample_size` items. Both `asset_sample`
+        and `agents` read it so "what does sampling mean" has one answer. The
+        sampling accessors keep their own caching and (for `agents`) error
+        policy -- only this list-materialization step is shared. See CONTEXT.md
+        "Cached accessor".
+        """
+        if self._full_scan:
+            return list(it)
+        return list(itertools.islice(it, self._sample_size))
+
     def sites(self) -> list[dict]:
-        if self._sites is None:
-            self._sites = list(self._client.paginate("/api/3/sites"))
-        return self._sites
+        return self._cached("_sites", lambda: list(self._client.paginate("/api/3/sites")))
 
     def scan_engines(self) -> list[dict]:
         """Return all scan engines from /api/3/scan_engines.
@@ -201,10 +245,10 @@ class EnvSnapshot:
         subset. The fix at that point is to switch to ``self._client.paginate(...)``.
         Detection signal: ``body.get("page")`` becomes non-empty.
         """
-        if self._scan_engines is None:
-            body = self._client.get("/api/3/scan_engines")
-            self._scan_engines = list(body.get("resources", []))
-        return self._scan_engines
+        return self._cached(
+            "_scan_engines",
+            lambda: list(self._client.get("/api/3/scan_engines").get("resources", [])),
+        )
 
     def scan_engine_pools(self) -> list[dict]:
         """Return all scan engine pools from /api/3/scan_engine_pools.
@@ -246,30 +290,37 @@ class EnvSnapshot:
         return self._scan_engine_pools
 
     def shared_credentials(self) -> list[dict]:
-        if self._shared_credentials is None:
-            body = self._client.get("/api/3/shared_credentials")
-            self._shared_credentials = list(body.get("resources", []))
-        return self._shared_credentials
+        return self._cached(
+            "_shared_credentials",
+            lambda: list(self._client.get("/api/3/shared_credentials").get("resources", [])),
+        )
+
+    # Each per-site accessor and its `prefetch_*` twin share one `_fetch_*`
+    # method, so the GET+envelope is spelled once. The accessor reads it lazily
+    # via `_cached_by`; the prefetch warms the same cache concurrently via
+    # `_prefetch_per_site`. See CONTEXT.md "EnvSnapshot" / "Per-rule prefetch".
+    def _fetch_site_credentials(self, site_id: int) -> list[dict]:
+        body = self._client.get(f"/api/3/sites/{site_id}/site_credentials")
+        return list(body.get("resources", []))
+
+    def _fetch_site_schedules(self, site_id: int) -> list[dict]:
+        body = self._client.get(f"/api/3/sites/{site_id}/scan_schedules")
+        return list(body.get("resources", []))
+
+    def _fetch_site_included_targets(self, site_id: int) -> list[dict]:
+        body = self._client.get(f"/api/3/sites/{site_id}/included_targets")
+        return list(body.get("addresses", body.get("resources", [])))
 
     def site_credentials(self, site_id: int) -> list[dict]:
-        if site_id not in self._site_credentials:
-            body = self._client.get(f"/api/3/sites/{site_id}/site_credentials")
-            self._site_credentials[site_id] = list(body.get("resources", []))
-        return self._site_credentials[site_id]
+        return self._cached_by(site_id, self._site_credentials, self._fetch_site_credentials)
 
     def site_schedules(self, site_id: int) -> list[dict]:
-        if site_id not in self._site_schedules:
-            body = self._client.get(f"/api/3/sites/{site_id}/scan_schedules")
-            self._site_schedules[site_id] = list(body.get("resources", []))
-        return self._site_schedules[site_id]
+        return self._cached_by(site_id, self._site_schedules, self._fetch_site_schedules)
 
     def site_included_targets(self, site_id: int) -> list[dict]:
-        if site_id not in self._site_included_targets:
-            body = self._client.get(f"/api/3/sites/{site_id}/included_targets")
-            self._site_included_targets[site_id] = list(
-                body.get("addresses", body.get("resources", []))
-            )
-        return self._site_included_targets[site_id]
+        return self._cached_by(
+            site_id, self._site_included_targets, self._fetch_site_included_targets
+        )
 
     def _resolve_prefetch_workers(self) -> int:
         """Worker count for batch prefetch -- reuses the client's `parallel_pages`.
@@ -334,13 +385,10 @@ class EnvSnapshot:
         Turns the N sequential `GET /api/3/sites/{id}/scan_schedules` calls
         into `ceil(N / parallel_pages)` parallel batches. After this returns,
         `site_schedules(sid)` for any `sid` in `site_ids` is a cache hit.
-        Idempotent -- already-cached sites are skipped.
+        Idempotent -- already-cached sites are skipped. Uses the same
+        `_fetch_site_schedules` the accessor does, so the GET is spelled once.
         """
-        def _fetch(sid: int) -> list[dict]:
-            body = self._client.get(f"/api/3/sites/{sid}/scan_schedules")
-            return list(body.get("resources", []))
-
-        self._prefetch_per_site(site_ids, self._site_schedules, _fetch)
+        self._prefetch_per_site(site_ids, self._site_schedules, self._fetch_site_schedules)
 
     def prefetch_site_included_targets(self, site_ids: list[int]) -> None:
         """Concurrently warm the `site_included_targets` cache for many sites.
@@ -348,12 +396,11 @@ class EnvSnapshot:
         Peer of `prefetch_site_schedules` for
         `GET /api/3/sites/{id}/included_targets`. After this returns,
         `site_included_targets(sid)` is a cache hit for every prefetched site.
+        Uses the same `_fetch_site_included_targets` the accessor does.
         """
-        def _fetch(sid: int) -> list[dict]:
-            body = self._client.get(f"/api/3/sites/{sid}/included_targets")
-            return list(body.get("addresses", body.get("resources", [])))
-
-        self._prefetch_per_site(site_ids, self._site_included_targets, _fetch)
+        self._prefetch_per_site(
+            site_ids, self._site_included_targets, self._fetch_site_included_targets
+        )
 
     def prefetch_site_credentials(self, site_ids: list[int]) -> None:
         """Concurrently warm the `site_credentials` cache for many sites.
@@ -367,13 +414,10 @@ class EnvSnapshot:
         collapsing an N+1 of per-site GETs into one `parallel_pages`-wide
         fan-out. A `Rapid7ClientError` on one site is swallowed and that site
         stays uncached, so the later sequential `site_credentials(sid)` retries
-        it and surfaces the error in context.
+        it and surfaces the error in context. Uses the same
+        `_fetch_site_credentials` the accessor does, so the GET is spelled once.
         """
-        def _fetch(sid: int) -> list[dict]:
-            body = self._client.get(f"/api/3/sites/{sid}/site_credentials")
-            return list(body.get("resources", []))
-
-        self._prefetch_per_site(site_ids, self._site_credentials, _fetch)
+        self._prefetch_per_site(site_ids, self._site_credentials, self._fetch_site_credentials)
 
     def agent_site_id_by_name(self, name: str) -> int | None:
         """Resolve the Insight Agent site's id by matching ``name`` in sites().
@@ -538,11 +582,11 @@ class EnvSnapshot:
         return self._site_asset_count[site_id]
 
     def scan_template(self, template_id: str) -> dict:
-        if template_id not in self._scan_templates:
-            self._scan_templates[template_id] = self._client.get(
-                f"/api/3/scan_templates/{template_id}"
-            )
-        return self._scan_templates[template_id]
+        return self._cached_by(
+            template_id,
+            self._scan_templates,
+            lambda tid: self._client.get(f"/api/3/scan_templates/{tid}"),
+        )
 
     def templates_full(self) -> list[dict]:
         """Return all scan templates from /api/3/scan_templates with full
@@ -555,19 +599,16 @@ class EnvSnapshot:
         by ID for callers that already know the ID -- template_audit rules
         walk the full list and benefit from one paginated fetch.
         """
-        if self._templates_full is None:
-            self._templates_full = list(self._client.paginate("/api/3/scan_templates"))
-        return self._templates_full
+        return self._cached(
+            "_templates_full",
+            lambda: list(self._client.paginate("/api/3/scan_templates")),
+        )
 
     def asset_sample(self, site_id: int) -> tuple[list[dict], int]:
         if site_id not in self._asset_samples:
             total = self.site_asset_count(site_id)
             it = self._client.paginate(f"/api/3/sites/{site_id}/assets")
-            if self._full_scan:
-                items = list(it)
-            else:
-                items = list(itertools.islice(it, self._sample_size))
-            self._asset_samples[site_id] = (items, total)
+            self._asset_samples[site_id] = (self._sampled(it), total)
         return self._asset_samples[site_id]
 
     def iter_site_assets(self, site_id: int):
@@ -591,9 +632,10 @@ class EnvSnapshot:
         prefer `asset_group_search_criteria(id)` because the listing endpoint may
         return summary-only entries on some console versions.
         """
-        if self._asset_groups is None:
-            self._asset_groups = list(self._client.paginate("/api/3/asset_groups"))
-        return self._asset_groups
+        return self._cached(
+            "_asset_groups",
+            lambda: list(self._client.paginate("/api/3/asset_groups")),
+        )
 
     def asset_group_search_criteria(self, group_id: int) -> dict:
         body = self._client.get(f"/api/3/asset_groups/{group_id}/search_criteria")
@@ -676,17 +718,13 @@ class EnvSnapshot:
         the `criticality-tag`/`custom-tag`/`location-tag`/`owner-tag` fields,
         which is what the nested-tag detection rule inspects.
         """
-        if self._tags is None:
-            self._tags = list(self._client.paginate("/api/3/tags"))
-        return self._tags
+        return self._cached("_tags", lambda: list(self._client.paginate("/api/3/tags")))
 
     def reports(self) -> list[dict]:
         """All configured reports with their full body (`frequency`, `scope`,
         `nextRuntimes`). Used to cross-check report schedules vs scan schedules.
         """
-        if self._reports is None:
-            self._reports = list(self._client.paginate("/api/3/reports"))
-        return self._reports
+        return self._cached("_reports", lambda: list(self._client.paginate("/api/3/reports")))
 
     def administration_properties(self) -> dict:
         """Console host/version info from /api/3/administration/properties.
@@ -695,11 +733,12 @@ class EnvSnapshot:
         Per API v3 the schema is loose (`EnvironmentProperties`), so callers
         must be defensive about which keys are present.
         """
-        if self._administration_properties is None:
+        def _fetch() -> dict:
             body = self._client.get("/api/3/administration/properties")
             props = body.get("properties") if isinstance(body, dict) else None
-            self._administration_properties = props if isinstance(props, dict) else {}
-        return self._administration_properties
+            return props if isinstance(props, dict) else {}
+
+        return self._cached("_administration_properties", _fetch)
 
     @staticmethod
     def template_vuln_enabled(template: dict) -> bool:
@@ -761,10 +800,11 @@ class EnvSnapshot:
         """Total assets in the deployment. Reads page metadata only -- does not
         enumerate the asset list.
         """
-        if self._total_asset_count is None:
+        def _fetch() -> int:
             body = self._client.get("/api/3/assets", params={"size": 1})
-            self._total_asset_count = int(body.get("page", {}).get("totalResources", 0))
-        return self._total_asset_count
+            return int(body.get("page", {}).get("totalResources", 0))
+
+        return self._cached("_total_asset_count", _fetch)
 
     def scans_total(self) -> int:
         """Total scans across the deployment from /api/3/scans page metadata.
@@ -772,10 +812,11 @@ class EnvSnapshot:
         Reads page.totalResources only -- does not enumerate the scan list.
         Mirrors total_asset_count(). Cached on first call.
         """
-        if self._scans_total is None:
+        def _fetch() -> int:
             body = self._client.get("/api/3/scans", params={"size": 1})
-            self._scans_total = int(body.get("page", {}).get("totalResources", 0))
-        return self._scans_total
+            return int(body.get("page", {}).get("totalResources", 0))
+
+        return self._cached("_scans_total", _fetch)
 
     def _mark_agents_unavailable_from_gateway_error(self, e: Rapid7ClientError) -> bool:
         """Return True if `e` is a gateway/transient failure on /api/3/agents
@@ -823,10 +864,7 @@ class EnvSnapshot:
         if total > 0:
             try:
                 it = self._client.paginate("/api/3/agents", timeout=self._agents_timeout)
-                if self._full_scan:
-                    sample = list(it)
-                else:
-                    sample = list(itertools.islice(it, self._sample_size))
+                sample = self._sampled(it)
             except Rapid7ClientError as e:
                 if self._mark_agents_unavailable_from_gateway_error(e):
                     self._agents_cache = ([], 0)
