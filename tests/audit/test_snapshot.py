@@ -1037,3 +1037,15 @@ def test_candidate_agent_overlaps_runs_concurrently():
     counts, failed = s.candidate_agent_overlaps(list(range(1, 9)), agent_site_id=9)
     assert len(counts) == 8
     assert c.max_in_flight > 1
+
+
+def test_fakesnapshot_agent_overlap_setters():
+    from tests.audit.conftest import FakeSnapshot
+    snap = FakeSnapshot()
+    snap.set_agent_site_id("Rapid7 Insight Agents", 9)
+    snap.set_candidate_agent_overlaps({11: 3, 12: 0}, failed=[13])
+    assert snap.agent_site_id_by_name("Rapid7 Insight Agents") == 9
+    assert snap.agent_site_id_by_name("Other") is None
+    counts, failed = snap.candidate_agent_overlaps([11, 12, 13], agent_site_id=9)
+    assert counts == {11: 3, 12: 0}
+    assert failed == [13]
