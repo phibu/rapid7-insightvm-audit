@@ -586,8 +586,8 @@
     <p class="rail-heading">Checks</p>
     <ul>
     {% for r in results %}
-      {% set rail_fail = r.findings|selectattr('severity','equalto','fail')|list|length %}
-      {% set rail_warn = r.findings|selectattr('severity','equalto','warn')|list|length %}
+      {% set rail_fail = rail_counts[loop.index0].fail %}
+      {% set rail_warn = rail_counts[loop.index0].warn %}
       <li data-rail-for="check-{{ loop.index }}">
         <a href="#check-{{ loop.index }}">
           <span class="status-dot {{ r.status }}" aria-hidden="true"></span>
@@ -734,7 +734,7 @@
       {% for f in r.findings %}
         <tr{% if f.details and f.details.builtin %} class="builtin-finding"{% endif %}>
           <td>
-            <span class="badge {{ 'fail' if f.severity == 'fail' else 'warn' if f.severity == 'warn' else 'pass' }}">{{ f.severity|upper }}</span>
+            <span class="badge {{ f.severity | severity_css }}">{{ f.severity|upper }}</span>
             {% if f.details and f.details.builtin %}<span class="badge builtin" title="Rapid7 built-in (non-editable) scan template -- remediate by cloning it, fixing the clone, and rebinding the affected site">BUILT-IN</span>{% endif %}
           </td>
           <td>
@@ -764,9 +764,10 @@
     </div>
 
     {% for rr in r.rule_results %}
+    {%- set card = card_views.get(rr.rule_id) %}
     <details id="rule-{{ rr.rule_id }}"
              data-severity="{{ rr.status }}"
-             data-search-text="{{ (rr.rule_name|lower ~ ' ' ~ rr.findings|map(attribute='message')|join(' ')|lower)[:200] }}">
+             {% if card and card.changed %}data-changed {% endif %}data-search-text="{{ card.search_text if card else '' }}">
       <summary><b>{{ rr.rule_name }}</b> <span class="badge {{ rr.status }}">{{ rr.status|upper }}</span>{% if rr.sampled %} <span class="badge info" title="Rule ran on a sample">sampled</span>{% endif %} <span class="rule-duration">{{ rr.duration_ms | duration }}</span></summary>
       {% if rr.card_summary %}
       <div class="rule-card-summary">
@@ -814,7 +815,7 @@
           {% for f in rr.findings %}
             <tr{% if f.details and f.details.builtin %} class="builtin-finding"{% endif %}>
               <td>
-                <span class="badge {{ 'fail' if f.severity == 'fail' else 'warn' if f.severity == 'warn' else 'pass' }}">{{ f.severity|upper }}</span>
+                <span class="badge {{ f.severity | severity_css }}">{{ f.severity|upper }}</span>
                 {% if f.details and f.details.builtin %}<span class="badge builtin" title="Rapid7 built-in (non-editable) scan template -- remediate by cloning it, fixing the clone, and rebinding the affected site">BUILT-IN</span>{% endif %}
               </td>
               <td>
@@ -867,10 +868,9 @@
 </div><!-- /.report-grid -->
 
 {% if state_blob_json %}
+{# The state blob is load-bearing across runs: the NEXT run extracts it to
+   compute its delta (see state_engine.extract_blob_from_html). Keep it. #}
 <script id="report-state" type="application/json">{{ state_blob_json | safe }}</script>
-{% endif %}
-{% if delta %}
-<script id="report-delta" type="application/json">{{ delta | tojson | safe }}</script>
 {% endif %}
 
 <script>
@@ -1006,31 +1006,14 @@
 })();
 {% if delta %}
 (function(){
+  // The `data-changed` marking is computed server-side in build_card_views
+  // (from the same delta this strip renders) and stamped on each rule card in
+  // the template -- so this IIFE only wires the Changed chip's toggle and hash
+  // restore. It no longer re-parses the delta/state blobs or re-walks finding
+  // signatures in JS (that was a fourth spelling of the signature walk). See
+  // CONTEXT.md "RuleCardView".
   var chip = document.querySelector('.chip[data-filter="changed"]');
   if (!chip) return;
-  var deltaEl = document.getElementById('report-delta');
-  var stateEl = document.getElementById('report-state');
-  if (!deltaEl || !stateEl) return;
-  var delta, state;
-  try {
-    delta = JSON.parse(deltaEl.textContent);
-    state = JSON.parse(stateEl.textContent);
-  } catch(e) { return; }
-  // Build signature set from delta.
-  var sigs = {};
-  ['resolved', 'new_fails', 'severity_changed'].forEach(function(k){
-    (delta[k] || []).forEach(function(f){ if (f.signature) sigs[f.signature] = true; });
-  });
-  // Walk state blob, mark each rule card that has any finding signature in sigs.
-  (state.results || []).forEach(function(r){
-    (r.rule_results || []).forEach(function(rr){
-      var match = (rr.findings || []).some(function(f){ return sigs[f.signature]; });
-      if (match) {
-        var card = document.getElementById('rule-' + rr.rule_id);
-        if (card) card.setAttribute('data-changed', '');
-      }
-    });
-  });
   function setChanged(active) {
     chip.setAttribute('aria-pressed', active ? 'true' : 'false');
     if (active) document.body.setAttribute('data-filter-changed', '');

@@ -111,6 +111,78 @@ def _metrics(results: list[CheckResult]) -> dict:
     }
 
 
+_FINDING_BADGE_CSS = {"fail": "fail", "warn": "warn"}
+
+
+def _severity_css(severity: str) -> str:
+    """Map a finding's severity to its badge css class.
+
+    `fail`/`warn` map to themselves; everything else (notably `info`) maps to
+    the `pass`-styled badge. This is the template ternary that used to be spelled
+    twice (the flat-fallback table and the per-rule findings table)."""
+    return _FINDING_BADGE_CSS.get(severity, "pass")
+
+
+@dataclass(frozen=True)
+class RuleCardView:
+    """The per-rule-card view-model -- the decisions the report template used to
+    make inline, computed once in pure Python. See CONTEXT.md "RuleCardView"."""
+    rule_id: str
+    search_text: str
+    changed: bool
+
+
+def build_card_views(
+    results: list[CheckResult], *, delta: dict | None
+) -> dict[str, RuleCardView]:
+    """Build one `RuleCardView` per rule card, keyed by `rule_id`.
+
+    Pure: reads the live results plus the delta the render already holds. The
+    `changed` set is resolved from `delta` (every delta finding carries its
+    `rule_id`, attached by `state_engine.compute.index`), so the template stamps
+    `data-changed` server-side and the JS need not re-walk the state blob.
+    """
+    changed_rule_ids: set[str] = set()
+    if delta is not None:
+        for key in ("resolved", "new_fails", "severity_changed"):
+            for f in delta.get(key, []) or []:
+                rid = f.get("rule_id")
+                if rid is not None:
+                    changed_rule_ids.add(rid)
+
+    views: dict[str, RuleCardView] = {}
+    for r in results:
+        for rr in r.rule_results or []:
+            messages = " ".join(f.message or "" for f in rr.findings)
+            search_text = f"{rr.rule_name} {messages}".strip().lower()[:200]
+            views[rr.rule_id] = RuleCardView(
+                rule_id=rr.rule_id,
+                search_text=search_text,
+                changed=rr.rule_id in changed_rule_ids,
+            )
+    return views
+
+
+def build_rail_counts(results: list[CheckResult]) -> list[dict[str, int]]:
+    """Per-check ``{"fail": n, "warn": n}`` for the section rail, one entry per
+    check in render order.
+
+    Counts come from `findings_of` -- the canonical rule_results-xor-top-level
+    walk -- not the `r.findings` flat mirror the rail template used to read via
+    `selectattr`. The two usually agree, but the mirror can drift; reading the
+    canonical population keeps the rail honest. See CONTEXT.md "Section rail"."""
+    counts: list[dict[str, int]] = []
+    for r in results:
+        fail = warn = 0
+        for _rule_id, f in findings_of(r):
+            if f.severity == "fail":
+                fail += 1
+            elif f.severity == "warn":
+                warn += 1
+        counts.append({"fail": fail, "warn": warn})
+    return counts
+
+
 @dataclass(frozen=True)
 class InventoryTotals:
     """At-a-glance inventory counters rendered at the top of the report."""
@@ -246,6 +318,7 @@ def render_report(ctx: ReportContext, *, prior_state: dict | None = None) -> str
     env.filters["duration"] = _format_duration
     env.filters["humanize_key"] = _humanize_key
     env.filters["humanize_value"] = _humanize_value
+    env.filters["severity_css"] = _severity_css
     template = env.get_template("report.html.j2")
     _annotate_findings(ctx.results)
     verdict_class, verdict_label = _verdict(ctx.results)
@@ -259,6 +332,8 @@ def render_report(ctx: ReportContext, *, prior_state: dict | None = None) -> str
         base_url_host=ctx.base_url_host,
         prior_state=prior_state,
     )
+    card_views = build_card_views(ctx.results, delta=state.delta)
+    rail_counts = build_rail_counts(ctx.results)
 
     return template.render(
         title=ctx.title,
@@ -276,6 +351,8 @@ def render_report(ctx: ReportContext, *, prior_state: dict | None = None) -> str
         metrics=state.metrics,
         content_hash=state.content_hash,
         inventory_totals=ctx.inventory_totals,
+        card_views=card_views,
+        rail_counts=rail_counts,
     )
 
 
