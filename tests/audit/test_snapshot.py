@@ -1002,6 +1002,25 @@ def test_agent_site_id_by_name_resolves_and_caches():
     assert s.agent_site_id_by_name("Nonexistent") is None
 
 
+def test_agent_site_id_by_name_caches_none_result():
+    """A miss is cached: a second lookup of an unknown name does not re-scan
+    sites(). Proves the cache keys on `name in cache`, not on truthiness of the
+    stored id (None is a valid cached value)."""
+    c = _ConcurrentFakeClient(parallel_pages=4)
+    s = EnvSnapshot(c, full_scan=False, sample_size=500)
+    s._sites = [{"id": 9, "name": "Rapid7 Insight Agents"}]
+    calls = {"n": 0}
+    real_sites = s.sites
+    def _counting_sites():
+        calls["n"] += 1
+        return real_sites()
+    s.sites = _counting_sites
+    assert s.agent_site_id_by_name("Nonexistent") is None
+    assert s.agent_site_id_by_name("Nonexistent") is None
+    # sites() consulted exactly once across both lookups -- the None was cached.
+    assert calls["n"] == 1
+
+
 def test_candidate_agent_overlaps_query_shape_and_counts():
     c = _ConcurrentFakeClient(parallel_pages=1)  # sequential: deterministic
     # Each candidate's membership POST returns a totalResources count.

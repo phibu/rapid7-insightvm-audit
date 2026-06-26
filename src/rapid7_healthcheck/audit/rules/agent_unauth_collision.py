@@ -150,5 +150,9 @@ class AgentUnauthCollisionRule(AuditRule):
                 "agent_site_id": agent_site_id,
             },
             examined=len(candidate_ids),
+            # card-summary `failed` is the count of problems found (flagged
+            # candidates), the card convention -- distinct from
+            # summary["candidates_failed"], which counts candidates whose
+            # overlap query *errored* and were skip-disclosed, not flagged.
             failed=flagged,
         )
