@@ -169,3 +169,36 @@ def test_zero_assets_skips_coverage_math():
     # (the configurable severity branch). coverage_percent must not be present.
     assert "coverage_percent" not in result.summary
     assert result.summary["agents_total"] == 0
+
+
+def test_fleet_coverage_uses_count_not_body_fetch():
+    """insight_agent_deployed reads agent_count() and never fetches agent
+    bodies via agents()."""
+    from tests.audit.conftest import FakeSnapshot
+
+    snap = FakeSnapshot()
+    # set_agents([], total=40) sets the count agent_count() returns WITHOUT a
+    # body sample (FakeSnapshot has no set_agent_count; agent_count() reads
+    # _agents_total, which set_agents populates). is_agents_unavailable() stays
+    # False (unavailable defaults to False).
+    snap.set_agents([], total=40)
+    snap.set_total_asset_count(100)  # for coverage math
+
+    called = {"agents": 0, "agent_count": 0}
+    orig_count = snap.agent_count
+    snap.agent_count = lambda: (called.__setitem__("agent_count", called["agent_count"] + 1), orig_count())[1]
+
+    def _boom():
+        called["agents"] += 1
+        raise AssertionError("agents() must not be called by fleet-coverage rule")
+
+    snap.agents = _boom
+
+    rule = InsightAgentDeployedRule()
+    result = rule.run(snap, "info", True, 500, {})
+
+    assert called["agents"] == 0
+    assert called["agent_count"] >= 1
+    # Coverage math unchanged: 40/100 = 40% -> below default 70% threshold -> one warn finding.
+    assert result.summary["agents_total"] == 40
+    assert result.summary["coverage_percent"] == 40.0

@@ -142,6 +142,7 @@ class _ConcurrentFakeClient:
         self.parallel_pages = parallel_pages
         self.get_calls: list[str] = []
         self._get: dict[str, dict] = {}
+        self._get_raises: dict[str, Exception] = {}
         self._get_delay = get_delay
         self._lock = __import__("threading").Lock()
         self._in_flight = 0
@@ -149,6 +150,10 @@ class _ConcurrentFakeClient:
 
     def set_get(self, path: str, body: dict):
         self._get[path] = body
+
+    def set_get_raises(self, path: str, exc: Exception):
+        """Register a path that should raise exc when GET'd (for error-injection tests)."""
+        self._get_raises[path] = exc
 
     def get(self, path: str, params: dict | None = None, *, timeout: int | None = None) -> dict:
         with self._lock:
@@ -158,6 +163,8 @@ class _ConcurrentFakeClient:
         try:
             if self._get_delay:
                 __import__("time").sleep(self._get_delay)
+            if path in self._get_raises:
+                raise self._get_raises[path]
             if path not in self._get:
                 raise AssertionError(f"unexpected GET {path}")
             return self._get[path]
@@ -893,3 +900,65 @@ def test_is_builtin_template_missing_or_malformed_id():
     assert EnvSnapshot.is_builtin_template({}) is False
     assert EnvSnapshot.is_builtin_template({"id": None}) is False
     assert EnvSnapshot.is_builtin_template({"id": ""}) is False
+
+
+# --- prefetch_site_credentials --------------------------------------------
+
+
+def test_prefetch_site_credentials_warms_cache_no_further_http():
+    """After prefetch, site_credentials(sid) is a cache hit -- the per-site GET
+    happens during prefetch, not on the accessor call."""
+    c = _ConcurrentFakeClient(parallel_pages=4)
+    for sid in (1, 2, 3):
+        c.set_get(f"/api/3/sites/{sid}/site_credentials",
+                  {"resources": [{"id": sid * 10, "name": f"cred-{sid}"}]})
+    s = EnvSnapshot(c, full_scan=False, sample_size=500)
+    s.prefetch_site_credentials([1, 2, 3])
+    calls_after_prefetch = len(c.get_calls)
+    assert calls_after_prefetch == 3
+    # Accessor calls now hit the warm cache -- no new HTTP.
+    assert s.site_credentials(2) == [{"id": 20, "name": "cred-2"}]
+    assert len(c.get_calls) == calls_after_prefetch
+
+
+def test_prefetch_site_credentials_skips_already_cached_sites():
+    """A site already in the credential cache is not re-fetched."""
+    c = _ConcurrentFakeClient(parallel_pages=4)
+    c.set_get("/api/3/sites/1/site_credentials", {"resources": [{"id": 11}]})
+    c.set_get("/api/3/sites/2/site_credentials", {"resources": [{"id": 22}]})
+    s = EnvSnapshot(c, full_scan=False, sample_size=500)
+    # Warm site 1 via the accessor first.
+    assert s.site_credentials(1) == [{"id": 11}]
+    before = len(c.get_calls)
+    s.prefetch_site_credentials([1, 2])  # only site 2 should be fetched
+    assert len(c.get_calls) == before + 1
+
+
+def test_prefetch_site_credentials_runs_concurrently_when_parallel_pages_gt_1():
+    """With parallel_pages > 1, prefetch fans out rather than looping."""
+    c = _ConcurrentFakeClient(parallel_pages=4, get_delay=0.02)
+    for sid in range(1, 9):
+        c.set_get(f"/api/3/sites/{sid}/site_credentials", {"resources": []})
+    s = EnvSnapshot(c, full_scan=False, sample_size=500)
+    s.prefetch_site_credentials(list(range(1, 9)))
+    assert c.max_in_flight > 1
+
+
+def test_prefetch_site_credentials_swallows_per_site_error_leaves_site_uncached():
+    """A Rapid7ClientError on one site is swallowed; that site stays uncached
+    so the later sequential accessor retries and surfaces the error in context."""
+    from rapid7_healthcheck.client import Rapid7ClientError
+    c = _ConcurrentFakeClient(parallel_pages=4)
+    c.set_get("/api/3/sites/1/site_credentials", {"resources": [{"id": 11}]})
+    c.set_get_raises("/api/3/sites/2/site_credentials",
+                     Rapid7ClientError("boom", status_code=500))
+    c.set_get("/api/3/sites/3/site_credentials", {"resources": [{"id": 33}]})
+    s = EnvSnapshot(c, full_scan=False, sample_size=500)
+    s.prefetch_site_credentials([1, 2, 3])
+    # Sites 1 and 3 cached; site 2 was swallowed and is NOT cached.
+    assert s.site_credentials(1) == [{"id": 11}]
+    assert s.site_credentials(3) == [{"id": 33}]
+    # Re-fetching site 2 now raises (the error surfaces in the accessor).
+    import pytest
+    with pytest.raises(Rapid7ClientError):
+        s.site_credentials(2)

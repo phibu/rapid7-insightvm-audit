@@ -74,3 +74,53 @@ def test_fast_mode_bounds_sites_and_discloses(fake_snapshot):
     assert r.summary["sites_truncated"] == 3
     assert r.sampled is True
     assert any("not scanned" in f.message.lower() for f in r.findings)
+
+
+def test_duplicate_clusters_prefetches_scanned_slice_full_scan():
+    """full_scan=True: prefetch covers every site."""
+    from rapid7_healthcheck.audit.rules.duplicate_credential_clusters import (
+        DuplicateCredentialClustersRule,
+    )
+    from tests.audit.conftest import FakeSnapshot
+
+    snap = FakeSnapshot()
+    snap.set_sites([{"id": i, "name": f"s{i}"} for i in (1, 2, 3, 4)])
+    for sid in (1, 2, 3, 4):
+        snap.set_site_credentials(sid, [])
+    snap.set_shared_credentials([])
+
+    prefetched: list[list[int]] = []
+    orig = snap.prefetch_site_credentials
+    snap.prefetch_site_credentials = lambda ids: (prefetched.append(list(ids)), orig(ids))[1]
+
+    DuplicateCredentialClustersRule().run(snap, "info", True, 500, {})
+
+    assert len(prefetched) == 1
+    assert sorted(prefetched[0]) == [1, 2, 3, 4]
+
+
+def test_duplicate_clusters_prefetches_only_sampled_slice_fast_mode():
+    """full_scan=False with sample_size=2: prefetch covers only the first 2
+    sites -- it must NOT fetch credentials the sampled loop never reads."""
+    from rapid7_healthcheck.audit.rules.duplicate_credential_clusters import (
+        DuplicateCredentialClustersRule,
+    )
+    from tests.audit.conftest import FakeSnapshot
+
+    snap = FakeSnapshot()
+    snap.set_sites([{"id": i, "name": f"s{i}"} for i in (1, 2, 3, 4)])
+    # Only register creds for the two sampled sites; if the rule prefetched
+    # sites 3/4 it would call site_credentials on them -- but prefetch swallows
+    # errors, so instead we assert on the prefetch slice directly.
+    for sid in (1, 2):
+        snap.set_site_credentials(sid, [])
+    snap.set_shared_credentials([])
+
+    prefetched: list[list[int]] = []
+    orig = snap.prefetch_site_credentials
+    snap.prefetch_site_credentials = lambda ids: (prefetched.append(list(ids)), orig(ids))[1]
+
+    DuplicateCredentialClustersRule().run(snap, "info", False, 2, {})
+
+    assert len(prefetched) == 1
+    assert sorted(prefetched[0]) == [1, 2]

@@ -378,6 +378,26 @@ class EnvSnapshot:
 
         self._prefetch_per_site(site_ids, self._site_included_targets, _fetch)
 
+    def prefetch_site_credentials(self, site_ids: list[int]) -> None:
+        """Concurrently warm the `site_credentials` cache for many sites.
+
+        Peer of `prefetch_site_schedules` / `prefetch_site_included_targets`
+        for `GET /api/3/sites/{id}/site_credentials`. After this returns,
+        `site_credentials(sid)` is a cache hit for every prefetched site.
+        Idempotent -- already-cached sites are skipped. The per-rule prefetch
+        pattern (see CONTEXT.md): a credential rule calls this at the top of
+        its `run()` with the exact slice of site ids it is about to iterate,
+        collapsing an N+1 of per-site GETs into one `parallel_pages`-wide
+        fan-out. A `Rapid7ClientError` on one site is swallowed and that site
+        stays uncached, so the later sequential `site_credentials(sid)` retries
+        it and surfaces the error in context.
+        """
+        def _fetch(sid: int) -> list[dict]:
+            body = self._client.get(f"/api/3/sites/{sid}/site_credentials")
+            return list(body.get("resources", []))
+
+        self._prefetch_per_site(site_ids, self._site_credentials, _fetch)
+
     def all_included_targets(self) -> IncludedTargets:
         """Build the normalized union of every site's included scan targets.
 

@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Performance:** the four credential audit rules (`database_targets_no_db_credentials`, `web_spider_credentials_missing`, `site_credential_centralization_candidates`, `duplicate_credential_clusters`) now prefetch each rule's site credentials in one concurrent fan-out (`prefetch_site_credentials`) instead of issuing one sequential `GET /api/3/sites/{id}/site_credentials` per site. Wall-clock for these rules drops by roughly the configured `parallel_pages` factor on consoles with many credentialed sites. Output, findings, and error semantics are unchanged; fast-mode sampling is respected (only the scanned slice is prefetched).
+- **Performance:** the `insight_agent_deployed` ("Insight Agent Fleet Coverage") rule now reads the fleet total from a single `size=1` head-probe (`agent_count()`) instead of fetching agent record bodies (`agents()`). Under `full_scan: true` this drops a full `/api/3/agents` pagination to one request. Coverage math and the agents-unavailable skip path are unchanged.
+
 ## [1.1.3] - 2026-06-25
 
 Reporting and accuracy improvements: built-in scan templates are now visually

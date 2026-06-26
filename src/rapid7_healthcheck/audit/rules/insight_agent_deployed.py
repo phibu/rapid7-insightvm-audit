@@ -26,7 +26,12 @@ class InsightAgentDeployedRule(AuditRule):
     ]
 
     def run(self, snapshot, severity, full_scan, sample_size, rule_config) -> RuleResult:
-        agents, agents_total = snapshot.agents()
+        # Read the fleet total from the cheap size=1 head-probe -- this rule
+        # only needs the count, never the agent bodies. agent_count() primes
+        # the same is_agents_unavailable() flag agents() did, so the skip
+        # branch below is unaffected; under full_scan this drops a full-fleet
+        # pagination to a single GET.
+        agents_total = snapshot.agent_count()
 
         if snapshot.is_agents_unavailable():
             return RuleResult(

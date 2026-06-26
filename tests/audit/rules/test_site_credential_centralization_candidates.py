@@ -87,3 +87,26 @@ def test_shared_cred_assigned_all_sites_not_flagged(fake_snapshot):
     ])
     r = SiteCredentialCentralizationCandidatesRule().run(fake_snapshot, "info", True, 500, {})
     assert r.summary["single_use_shared_credentials"] == 0
+
+
+def test_centralization_prefetches_all_site_credentials(fake_snapshot):
+    """The rule warms site_credentials for every site via one prefetch call
+    before the per-site loop."""
+    fake_snapshot.set_sites([
+        {"id": 1, "name": "a"},
+        {"id": 2, "name": "b"},
+        {"id": 3, "name": "c"},
+    ])
+    for sid in (1, 2, 3):
+        fake_snapshot.set_site_credentials(sid, [])
+    fake_snapshot.set_shared_credentials([])
+
+    prefetched: list[list[int]] = []
+    orig = fake_snapshot.prefetch_site_credentials
+    fake_snapshot.prefetch_site_credentials = lambda ids: (prefetched.append(list(ids)), orig(ids))[1]
+
+    rule = SiteCredentialCentralizationCandidatesRule()
+    rule.run(fake_snapshot, "info", True, 500, {})
+
+    assert len(prefetched) == 1
+    assert sorted(prefetched[0]) == [1, 2, 3]

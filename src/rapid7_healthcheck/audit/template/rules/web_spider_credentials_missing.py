@@ -50,6 +50,17 @@ class WebSpiderCredentialsMissingRule(AuditRule):
                 continue
             template_to_sites.setdefault(tpl_id, []).append(site)
 
+        # Per-rule prefetch (CONTEXT.md): warm the credential cache for every
+        # web-enabled-bound site in one concurrent fan-out before the per-site
+        # loop below.
+        bound_site_ids = [
+            s.get("id")
+            for sites in template_to_sites.values()
+            for s in sites
+            if s.get("id") is not None
+        ]
+        snapshot.prefetch_site_credentials(bound_site_ids)
+
         findings: list[Finding] = []
         examined = 0
         for tpl_id, t in web_enabled.items():

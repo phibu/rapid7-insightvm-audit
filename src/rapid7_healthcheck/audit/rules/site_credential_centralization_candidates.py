@@ -55,6 +55,14 @@ class SiteCredentialCentralizationCandidatesRule(AuditRule):
         # site_id -> set of credential keys, plus per-key the sites it appears in
         sites_by_key: dict[tuple, set] = defaultdict(set)
         examples_by_key: dict[tuple, dict] = {}
+
+        # Per-rule prefetch (CONTEXT.md): this rule reads every site's
+        # credentials, so warm the whole population in one concurrent fan-out
+        # before the loop -- the single largest site_credentials N+1 in the tool.
+        snapshot.prefetch_site_credentials(
+            [s.get("id") for s in sites if s.get("id") is not None]
+        )
+
         site_creds_examined = 0
         for site in sites:
             sid = site.get("id")
