@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Python 3.11 compatibility (CI was red):** two nested f-strings that reused the outer quote inside the inner f-string parsed on 3.12+ (PEP 701) but raised `SyntaxError: f-string: unmatched '('` on Python 3.11 — the project's stated minimum. Because `__main__` imports the offending `data_quality` module, this broke collection of 7 test files and failed every CI run since 1.1.3 (`test (3.11)`). Both call sites (`checks/data_quality.py` empty-site message, `audit/rules/local_engine_production_scope.py` overloaded-engine message) now compute the `id=…` fallback into a local before the message f-string. Behavior is identical (fallback still applies only when the `name` key is absent). Verified: full suite green under Python 3.11.15.
+- **Scan Engines / Engine version drift:** an offset-less `lastRefreshedDate` from the Console (a timestamp with no `Z`/`+00:00`) no longer errors these checks. The old per-file ISO parsers returned a naive datetime, which raised `TypeError: can't subtract/compare offset-naive and offset-aware datetimes` when compared against the tz-aware "now" (`op.scan_engines.last_contact` and the `engine_version_drift` stale-cutoff path). The shared parser now normalizes a naive parse to UTC, so a long-stale engine flags `fail`/`warn` as intended instead of producing an `error` card. Covered by regression tests feeding an offset-less timestamp through both checks.
+
+### Changed
+
+- **Internal:** the InsightVM time-shape parsing the rules and operational checks each copied — `_parse_iso` (six copies), `_parse_duration` + the `PT[nH][nM][nS]` regex (two), and `windows_intersect` (two) — now lives in one module, `audit/timewindow.py` (`parse_iso`, `parse_duration`, `windows_intersect`). `parse_iso` adopts the always-aware-UTC contract the cloud-drift copy already had, so the extraction also fixes the naive-datetime crash (see Fixed). The template-discovery duration parser (`_applicability.parse_iso8601_seconds_to_ms`) stays separate — it is a different grammar (`PnS` → milliseconds). New `test_timewindow.py` exercises the three functions at the interface. See CONTEXT.md "timewindow".
 
 ## [1.1.6] - 2026-06-26
 

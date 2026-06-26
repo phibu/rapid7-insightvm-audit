@@ -1,41 +1,18 @@
 from __future__ import annotations
 
-import re
 from datetime import datetime, timedelta
 from itertools import combinations
 
 from rapid7_healthcheck.audit import AuditRule, RuleResult, register
+from rapid7_healthcheck.audit.timewindow import (
+    parse_duration,
+    parse_iso,
+    windows_intersect,
+)
 from rapid7_healthcheck.checks import Finding
-
-
-# Mirror the existing overlap rule's parsers so behaviour stays consistent.
-_DURATION_RE = re.compile(r"^P(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$")
 
 _DEFAULT_REPORT_DURATION_MINUTES = 30
 _DEFAULT_SCAN_DURATION_MINUTES = 60
-
-
-def _parse_iso(value: str | None) -> datetime | None:
-    if not value:
-        return None
-    try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-
-
-def _parse_duration(value: str | None) -> timedelta:
-    if not value:
-        return timedelta(0)
-    m = _DURATION_RE.match(value)
-    if not m:
-        return timedelta(0)
-    h, mn, s = (int(x) if x else 0 for x in m.groups())
-    return timedelta(hours=h, minutes=mn, seconds=s)
-
-
-def _windows_intersect(a_start, a_end, b_start, b_end) -> bool:
-    return a_start < b_end and b_start < a_end
 
 
 def _coerce_id_set(values) -> set[int]:
@@ -63,11 +40,11 @@ def _report_windows(report: dict, duration: timedelta) -> list[tuple[datetime, d
     starts: list[datetime] = []
     if isinstance(next_runtimes, list) and next_runtimes:
         for nr in next_runtimes:
-            t = _parse_iso(nr if isinstance(nr, str) else None)
+            t = parse_iso(nr if isinstance(nr, str) else None)
             if t is not None:
                 starts.append(t)
     else:
-        t = _parse_iso(freq.get("start"))
+        t = parse_iso(freq.get("start"))
         if t is not None:
             starts.append(t)
     return [(s, s + duration) for s in starts]
@@ -164,10 +141,10 @@ class ScanReportScheduleOverlapRule(AuditRule):
             for sch in snapshot.site_schedules(sid):
                 if not sch.get("enabled", False):
                     continue
-                start = _parse_iso(sch.get("start"))
+                start = parse_iso(sch.get("start"))
                 if start is None:
                     continue
-                duration = _parse_duration(sch.get("duration"))
+                duration = parse_duration(sch.get("duration"))
                 end = start + duration if duration > timedelta(0) else start + scan_duration_default
                 scan_windows.append((sid, name, sch, start, end))
 
@@ -192,7 +169,7 @@ class ScanReportScheduleOverlapRule(AuditRule):
             for sid, s_name, sch, s_s, s_e in scan_windows:
                 if sid not in r_scope:
                     continue
-                if not _windows_intersect(r_s, r_e, s_s, s_e):
+                if not windows_intersect(r_s, r_e, s_s, s_e):
                     continue
                 findings.append(Finding(
                     severity=severity,
@@ -214,7 +191,7 @@ class ScanReportScheduleOverlapRule(AuditRule):
             shared = a_scope & b_scope
             if not shared:
                 continue
-            if not _windows_intersect(a_s, a_e, b_s, b_e):
+            if not windows_intersect(a_s, a_e, b_s, b_e):
                 continue
             findings.append(Finding(
                 severity=severity,

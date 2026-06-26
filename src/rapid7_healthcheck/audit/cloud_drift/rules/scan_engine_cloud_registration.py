@@ -6,29 +6,13 @@ from datetime import datetime, timedelta, timezone
 from rapid7_healthcheck.audit import AuditRule, RuleResult
 from rapid7_healthcheck.audit.cloud_drift import register_cloud_rule
 from rapid7_healthcheck.audit.cloud_drift._utils import _coerce_positive_int
+from rapid7_healthcheck.audit.timewindow import parse_iso
 from rapid7_healthcheck.checks import Finding
 
 logger = logging.getLogger(__name__)
 
 
 _DEFAULT_LAST_SEEN_MAX_AGE_HOURS = 24
-
-
-def _parse_iso(value: str | None) -> datetime | None:
-    if not value:
-        return None
-    # v4 emits "YYYY-MM-DDTHH:MM:SSZ"; fromisoformat in Python 3.11 accepts
-    # "+00:00" but not bare "Z" -- handle both via the standard replace trick.
-    # If a future v4 response ever omits the offset entirely, treat the
-    # naive result as UTC so the downstream `last_seen < threshold`
-    # comparison cannot raise TypeError on a tz mismatch.
-    try:
-        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt
 
 
 def _normalize_host_key(value) -> str | None:
@@ -95,8 +79,8 @@ class ScanEngineCloudRegistrationRule(AuditRule):
                 cloud_by_name[name] = e
                 continue
             # Compare last_seen -- newer wins. Unparseable / None loses.
-            new_seen = _parse_iso(e.get("last_seen"))
-            existing_seen = _parse_iso(existing.get("last_seen"))
+            new_seen = parse_iso(e.get("last_seen"))
+            existing_seen = parse_iso(existing.get("last_seen"))
             if new_seen is not None and (existing_seen is None or new_seen > existing_seen):
                 cloud_by_name[name] = e
 
@@ -113,8 +97,8 @@ class ScanEngineCloudRegistrationRule(AuditRule):
             if existing is None:
                 cloud_by_host_name[host_name] = e
                 continue
-            new_seen = _parse_iso(e.get("last_seen"))
-            existing_seen = _parse_iso(existing.get("last_seen"))
+            new_seen = parse_iso(e.get("last_seen"))
+            existing_seen = parse_iso(existing.get("last_seen"))
             if new_seen is not None and (existing_seen is None or new_seen > existing_seen):
                 cloud_by_host_name[host_name] = e
 
@@ -176,7 +160,7 @@ class ScanEngineCloudRegistrationRule(AuditRule):
                 ))
                 continue
 
-            last_seen = _parse_iso(cloud.get("last_seen"))
+            last_seen = parse_iso(cloud.get("last_seen"))
             if last_seen is None or last_seen < threshold:
                 stale_in_cloud += 1
                 # Use console name in the message when available; cloud name

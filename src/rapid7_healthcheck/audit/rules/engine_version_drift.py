@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 from rapid7_healthcheck.audit import AuditRule, RuleResult, register
+from rapid7_healthcheck.audit.timewindow import parse_iso
 from rapid7_healthcheck.checks import Finding
 
 
@@ -18,15 +19,6 @@ _CONSOLE_PRODUCT_VERSION_KEYS = (
 _CONSOLE_CONTENT_VERSION_KEYS = (
     "contentVersion", "content_version", "vulnDefVersion",
 )
-
-
-def _parse_iso(value: str | None) -> datetime | None:
-    if not value or not isinstance(value, str):
-        return None
-    try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        return None
 
 
 def _first_present(d: dict, keys) -> str | None:
@@ -121,7 +113,7 @@ class EngineVersionDriftRule(AuditRule):
                     engine_details["console_content_version"] = console_content
 
             refresh_raw = engine.get("lastRefreshedDate")
-            refreshed_at = _parse_iso(refresh_raw)
+            refreshed_at = parse_iso(refresh_raw)
             if refresh_raw and refreshed_at is None:
                 engines_unparseable_refresh_date += 1
             elif refreshed_at is not None and refreshed_at < stale_cutoff:

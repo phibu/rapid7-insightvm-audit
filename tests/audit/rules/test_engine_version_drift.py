@@ -64,6 +64,25 @@ def test_warn_on_stale_lastRefreshedDate(fake_snapshot):
     assert r.findings[0].details["age_days"] >= 29
 
 
+def test_stale_lastRefreshedDate_handles_offsetless_timestamp(fake_snapshot):
+    # Regression: an offset-less lastRefreshedDate ("...T..:..:.." with no
+    # Z/+00:00) made the old naive parser return a naive datetime, and the
+    # stale-cutoff comparison `refreshed_at < stale_cutoff` (stale_cutoff aware)
+    # plus `now - refreshed_at` raised TypeError. timewindow.parse_iso
+    # normalizes naive -> UTC so the stale engine warns instead of erroring.
+    naive_stale = (
+        datetime.now(timezone.utc) - timedelta(days=30)
+    ).replace(tzinfo=None).isoformat()
+    assert "+" not in naive_stale and "Z" not in naive_stale  # truly naive
+    fake_snapshot.set_administration_properties({})
+    fake_snapshot.set_scan_engines([
+        _engine(1, "e1", refreshed=naive_stale),
+    ])
+    r = EngineVersionDriftRule().run(fake_snapshot, "warn", False, 500, {})
+    assert r.status == "warn"  # not "error"
+    assert "lastRefreshedDate" in r.findings[0].message
+
+
 def test_pass_when_console_version_unknown(fake_snapshot):
     """If the console doesn't surface a version key we recognise, we cannot
     detect drift -- be conservative and pass rather than emit a false positive.
