@@ -7,7 +7,7 @@ from rapid7_healthcheck.checks import CheckResult, Finding
 from rapid7_healthcheck.report import ReportContext, render_report, write_report
 
 
-def _ctx(results: list[CheckResult]) -> ReportContext:
+def _ctx(results: list[CheckResult], *, inventory_totals=None) -> ReportContext:
     return ReportContext(
         title="Test Report",
         generated_at=datetime(2026, 4, 28, 12, 0, tzinfo=timezone.utc),
@@ -16,6 +16,7 @@ def _ctx(results: list[CheckResult]) -> ReportContext:
         config_path="config.yaml",
         results=results,
         thresholds_table=[("scan_engines.last_contact_warn_hours", "2")],
+        inventory_totals=inventory_totals,
     )
 
 
@@ -402,15 +403,14 @@ from rapid7_healthcheck.report import InventoryTotals
 
 def test_report_renders_inventory_strip_when_totals_present():
     r = CheckResult(name="X", description="x", status="pass")
-    ctx = _ctx([r])
-    ctx.inventory_totals = InventoryTotals(
+    ctx = _ctx([r], inventory_totals=InventoryTotals(
         total_assets=1234,
         total_sites=12,
         total_scan_engines=3,
         total_asset_groups_static=5,
         total_asset_groups_dynamic=2,
         total_scans=987,
-    )
+    ))
     html = render_report(ctx)
     # Match the rendered <section>, not the always-inlined CSS rule -- mirrors
     # the rigor of the negative test below so a regression in the
@@ -426,9 +426,8 @@ def test_report_renders_inventory_strip_when_totals_present():
 
 def test_report_omits_inventory_strip_when_totals_is_none():
     r = CheckResult(name="X", description="x", status="pass")
-    ctx = _ctx([r])
-    # explicitly None (which is the default)
-    ctx.inventory_totals = None
+    # inventory_totals defaults to None
+    ctx = _ctx([r], inventory_totals=None)
     html = render_report(ctx)
     # The CSS rules for `.inventory-totals` are always inlined in <style>,
     # but the rendered <section> only appears when totals is non-None.

@@ -333,3 +333,53 @@ def test_project_serialize_extract_compute_in_memory():
     assert delta is not None
     assert len(delta["resolved"]) == 1
     assert delta["resolved"][0]["message_short"] == "engine down"
+
+
+def test_build_render_state_composes_pipeline_without_rendering():
+    """build_render_state owns project -> serialize -> compute -> metrics and
+    returns the bundle the template reads -- testable without rendering HTML."""
+    from rapid7_healthcheck.checks import CheckResult, Finding
+    from rapid7_healthcheck.report import build_render_state
+    from rapid7_healthcheck.state_engine import project
+
+    gen = datetime(2026, 4, 29, 12, 0, tzinfo=timezone.utc)
+    prior_run = [CheckResult(
+        name="Scan Engines", description="d", status="fail",
+        findings=[Finding(severity="fail", message="engine down")],
+    )]
+    current_run = [CheckResult(
+        name="Scan Engines", description="d", status="pass", findings=[],
+    )]
+    prior_blob = project(results=prior_run, tool_version="t",
+                         generated_at=gen, base_url_host="h")
+
+    state = build_render_state(
+        results=current_run, tool_version="t", generated_at=gen,
+        base_url_host="h", prior_state=prior_blob,
+    )
+
+    # blob serialized + hashed; delta computed against the prior; metrics always.
+    assert state.blob_json is not None
+    assert state.content_hash is not None and len(state.content_hash) == 16
+    assert state.delta is not None
+    assert len(state.delta["resolved"]) == 1
+    assert state.metrics["findings_total"] == 0  # current run has no findings
+
+
+def test_build_render_state_no_prior_yields_no_delta():
+    """With no prior_state, the blob + metrics are still computed but delta is None."""
+    from rapid7_healthcheck.checks import CheckResult, Finding
+    from rapid7_healthcheck.report import build_render_state
+
+    gen = datetime(2026, 4, 29, 12, 0, tzinfo=timezone.utc)
+    run = [CheckResult(
+        name="Scan Engines", description="d", status="fail",
+        findings=[Finding(severity="fail", message="engine down")],
+    )]
+    state = build_render_state(
+        results=run, tool_version="t", generated_at=gen,
+        base_url_host="h", prior_state=None,
+    )
+    assert state.delta is None
+    assert state.blob_json is not None
+    assert state.metrics["findings_fail"] == 1

@@ -122,8 +122,12 @@ class InventoryTotals:
     total_scans: int
 
 
-@dataclass
+@dataclass(frozen=True)
 class ReportContext:
+    """The inputs a render needs. Inputs only -- the derived cross-run state
+    (delta, state blob, content hash, metrics) is computed by
+    `build_render_state` and returned as a `RenderState`, never mutated back
+    onto the context. See CONTEXT.md "RenderState"."""
     title: str
     generated_at: datetime
     base_url_host: str
@@ -131,10 +135,6 @@ class ReportContext:
     config_path: str
     results: list[CheckResult]
     thresholds_table: list[tuple[str, str]] = field(default_factory=list)
-    delta: dict | None = None              # computed delta or None
-    state_blob_json: str | None = None     # pre-serialized JSON for embedding, or None if dropped
-    metrics: dict | None = None            # populated by render_report
-    content_hash: str | None = None        # SHA-256 prefix of state_blob_json
     inventory_totals: "InventoryTotals | None" = None
 
 
@@ -174,6 +174,66 @@ def _annotate_findings(results: list[CheckResult]) -> None:
             annotate_one(f)
 
 
+@dataclass(frozen=True)
+class RenderState:
+    """The cross-run state a render needs, computed once from a run's results.
+
+    Bundles the four values the template reads that are derived (not given) --
+    the trimmed state blob's serialized JSON, its content hash, the cross-run
+    delta, and the metric rollup. Previously these were mutated onto
+    `ReportContext` in a fixed-but-implicit order inside `render_report`; here
+    the order lives in `build_render_state` and the result is immutable. See
+    CONTEXT.md "RenderState".
+    """
+    blob_json: str | None
+    content_hash: str | None
+    delta: dict | None
+    metrics: dict
+
+
+def build_render_state(
+    *,
+    results: list[CheckResult],
+    tool_version: str,
+    generated_at: datetime,
+    base_url_host: str,
+    prior_state: dict | None,
+) -> RenderState:
+    """Compute the cross-run `RenderState` for a run.
+
+    The single owner of the project -> serialize -> compute -> metrics
+    sequence. `project` builds the trimmed state blob (None if oversized);
+    serialization + the content hash follow only when the blob exists; the
+    delta is computed only with both a blob and a `prior_state`; metrics are
+    always computed. Pure -- no I/O, no HTML -- so it is testable without
+    rendering. See CONTEXT.md "RenderState".
+    """
+    blob = state_engine.project(
+        results=results,
+        tool_version=tool_version,
+        generated_at=generated_at,
+        base_url_host=base_url_host,
+    )
+    if blob is not None:
+        blob_json = json.dumps(blob, separators=(",", ":"), default=str)
+        content_hash = hashlib.sha256(blob_json.encode("utf-8")).hexdigest()[:16]
+    else:
+        blob_json = None
+        content_hash = None
+
+    if blob is not None and prior_state is not None:
+        delta = state_engine.compute(prior=prior_state, current=blob)
+    else:
+        delta = None
+
+    return RenderState(
+        blob_json=blob_json,
+        content_hash=content_hash,
+        delta=delta,
+        metrics=_metrics(results),
+    )
+
+
 def render_report(ctx: ReportContext, *, prior_state: dict | None = None) -> str:
     """Render the report. If `prior_state` is supplied, compute a delta and
     embed both the delta strip and the trimmed state blob in the output."""
@@ -192,27 +252,13 @@ def render_report(ctx: ReportContext, *, prior_state: dict | None = None) -> str
     generated_at_local_str = ctx.generated_at.astimezone().strftime("%Y-%m-%d %H:%M:%S")
     generated_at_utc_str = ctx.generated_at.strftime("%Y-%m-%d %H:%M:%S")
 
-    # Build the trimmed state blob (may be None if oversized).
-    blob = state_engine.project(
+    state = build_render_state(
         results=ctx.results,
         tool_version=ctx.tool_version,
         generated_at=ctx.generated_at,
         base_url_host=ctx.base_url_host,
+        prior_state=prior_state,
     )
-    if blob is not None:
-        ctx.state_blob_json = json.dumps(blob, separators=(",", ":"), default=str)
-        ctx.content_hash = hashlib.sha256(ctx.state_blob_json.encode("utf-8")).hexdigest()[:16]
-    else:
-        ctx.state_blob_json = None
-        ctx.content_hash = None
-
-    # Compute delta (None if no prior, host mismatch, or blob is None).
-    if blob is not None and prior_state is not None:
-        ctx.delta = state_engine.compute(prior=prior_state, current=blob)
-    else:
-        ctx.delta = None
-
-    ctx.metrics = _metrics(ctx.results)
 
     return template.render(
         title=ctx.title,
@@ -225,10 +271,10 @@ def render_report(ctx: ReportContext, *, prior_state: dict | None = None) -> str
         thresholds_table=ctx.thresholds_table,
         verdict_class=verdict_class,
         verdict_label=verdict_label,
-        delta=ctx.delta,
-        state_blob_json=ctx.state_blob_json,
-        metrics=ctx.metrics,
-        content_hash=ctx.content_hash,
+        delta=state.delta,
+        state_blob_json=state.blob_json,
+        metrics=state.metrics,
+        content_hash=state.content_hash,
         inventory_totals=ctx.inventory_totals,
     )
 
