@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.4] - 2026-06-26
+
 ### Changed
 
 - **Performance:** the four credential audit rules (`database_targets_no_db_credentials`, `web_spider_credentials_missing`, `site_credential_centralization_candidates`, `duplicate_credential_clusters`) now prefetch each rule's site credentials in one concurrent fan-out (`prefetch_site_credentials`) instead of issuing one sequential `GET /api/3/sites/{id}/site_credentials` per site. Wall-clock for these rules drops by roughly the configured `parallel_pages` factor on consoles with many credentialed sites. Output, findings, and error semantics are unchanged; fast-mode sampling is respected (only the scanned slice is prefetched).
