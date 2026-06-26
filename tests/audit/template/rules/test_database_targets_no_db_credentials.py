@@ -72,3 +72,37 @@ def test_db_template_no_bound_sites_not_examined(fake_snapshot):
     r = DatabaseTargetsNoDbCredentialsRule().run(fake_snapshot, "warn", False, 500, {})
     assert r.findings == []
     assert r.card_summary == {"examined": 0, "passed": 0, "failed": 0}
+
+
+def test_database_targets_prefetches_bound_site_credentials():
+    """The rule warms site_credentials for the union of DB-template-bound
+    sites via one prefetch call before the per-site loop."""
+    from tests.audit.conftest import FakeSnapshot
+
+    snap = FakeSnapshot()
+    # One template with a postgres DB target, bound to sites 1 and 2.
+    snap.set_templates_full([
+        {"id": "tpl-db", "name": "DB Audit", "database": {"postgres": "prod"}},
+    ])
+    snap.set_sites([
+        {"id": 1, "name": "site-1", "scanTemplate": "tpl-db"},
+        {"id": 2, "name": "site-2", "scanTemplate": "tpl-db"},
+    ])
+    snap.set_site_credentials(1, [])   # no DB cred
+    snap.set_site_credentials(2, [])   # no DB cred
+
+    prefetched: list[list[int]] = []
+    orig = snap.prefetch_site_credentials
+    def _spy(site_ids):
+        prefetched.append(list(site_ids))
+        return orig(site_ids)
+    snap.prefetch_site_credentials = _spy
+
+    rule = DatabaseTargetsNoDbCredentialsRule()
+    result = rule.run(snap, "warn", True, 500, {})
+
+    # Prefetch was called once with both bound site ids.
+    assert len(prefetched) == 1
+    assert sorted(prefetched[0]) == [1, 2]
+    # Behavior unchanged: the template is flagged (no DB creds on either site).
+    assert result.summary["templates_flagged"] == 1
