@@ -172,6 +172,12 @@ class FakeSnapshot:
         """No-op in tests -- see prefetch_site_schedules."""
         return None
 
+    def prefetch_site_credentials(self, site_ids: list[int]) -> None:
+        """No-op in tests -- see prefetch_site_schedules. FakeSnapshot
+        credentials are pre-registered via set_site_credentials, so the cache
+        the real prefetch warms is already populated."""
+        return None
+
     def site_asset_count(self, site_id: int) -> int:
         if site_id not in self._site_asset_count:
             raise AssertionError(f"FakeSnapshot.site_asset_count({site_id}) not registered")
