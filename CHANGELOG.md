@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Internal:** config int lower-bound validation is now a **field floor** — each int field carries its own minimum as `metadata={"min": N}` on the dataclass (`min=1` positive-only, `min=0` non-negative), enforced once in `_from_dict`'s per-field loop. This replaces the `POS_*`/`NN_*` field-name tuples + four `post_validate` lambdas in `_build_thresholds` (now four plain `_from_dict` calls) and the per-block positive checks the `rapid7`, `cloud_integration`, and audit-body blocks ran; the now-dead `_positive_int_fields` / `_non_negative_int_fields` helpers are deleted. The two genuine non-floor checks stay as `post_validate` hooks (the `parallel_pages`/`page_size` *ranges* + the `parallel_pages > 8` warning; `report.delta_max_age_days`'s nullable-with-custom-wording). Error strings are byte-identical, so config schema, error wording, and the 1.0 frozen contract are unchanged — no user-facing change. See CONTEXT.md "Field floor" / "Validation hook".
+
+### Fixed
+
+- **Report:** two rule cards no longer show a misleading "N examined · N passed · N failed" header. The `dynamic_groups_and_nested_tags` rule (which spans two populations — tags and dynamic groups — across three finding kinds) and the `local_account_when_sso_configured` rule (a threshold rule emitting a single aggregate finding) computed that triad from mismatched populations, so `passed` was wrong or clamped to zero. Both now omit the triad and fall back to their per-key summary block, matching the other aggregate/threshold rules. Status, findings, and summary contents are unchanged.
+
 ## [1.1.5] - 2026-06-26
 
 ### Changed
