@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Audit:** the `agent_unauth_collision` rule ("Insight Agent Asset Scanned Without Authentication") now detects agent/unauth-scan overlap **server-side and exactly**: for each candidate site (vulnerability-enabled template, no credentials) one `POST /api/3/assets/search` counts the assets shared with the Insight Agent site, fanned out concurrently. This replaces the sampled `/api/3/agents` iteration, removes the `max_agents` fleet-size ceiling (so the rule **always runs** instead of silently skipping on large consoles), and removes the per-site sample cap. "Has an Insight Agent" is now defined by agent-site membership (the only agent signal expressible server-side). The `max_agents` rule knob is replaced by `agent_site_name` (default `"Rapid7 Insight Agents"`); a leftover `max_agents` in an existing config is harmless (opaque rule knob). Finding messages and signatures change once → a one-time cross-run delta churn. Implements ADR-0006.
+
 ## [1.1.4] - 2026-06-26
 
 ### Changed

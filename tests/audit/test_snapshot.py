@@ -147,6 +147,9 @@ class _ConcurrentFakeClient:
         self._lock = __import__("threading").Lock()
         self._in_flight = 0
         self.max_in_flight = 0
+        self.post_calls: list[tuple] = []
+        self._post: dict[str, list[dict]] = {}
+        self._post_raises: dict[str, Exception] = {}
 
     def set_get(self, path: str, body: dict):
         self._get[path] = body
@@ -168,6 +171,32 @@ class _ConcurrentFakeClient:
             if path not in self._get:
                 raise AssertionError(f"unexpected GET {path}")
             return self._get[path]
+        finally:
+            with self._lock:
+                self._in_flight -= 1
+
+    def set_post_one(self, path: str, body: dict):
+        self._post.setdefault(path, []).append(body)
+
+    def set_post_one_raises(self, path: str, exc: Exception):
+        self._post_raises[path] = exc
+
+    def post_one(self, path: str, *, json_body: dict | None = None, params: dict | None = None, timeout: int | None = None) -> dict:
+        with self._lock:
+            self._in_flight += 1
+            self.max_in_flight = max(self.max_in_flight, self._in_flight)
+            self.post_calls.append((path, json_body))
+        try:
+            if self._get_delay:
+                __import__("time").sleep(self._get_delay)
+            if path in self._post_raises:
+                raise self._post_raises[path]
+            if path not in self._post or not self._post[path]:
+                raise AssertionError(f"unexpected POST {path}")
+            bodies = self._post[path]
+            # Return queued bodies in order; repeat the last once exhausted so
+            # a single registration serves N identical candidate queries.
+            return bodies.pop(0) if len(bodies) > 1 else bodies[0]
         finally:
             with self._lock:
                 self._in_flight -= 1
@@ -962,3 +991,61 @@ def test_prefetch_site_credentials_swallows_per_site_error_leaves_site_uncached(
     import pytest
     with pytest.raises(Rapid7ClientError):
         s.site_credentials(2)
+
+
+def test_agent_site_id_by_name_resolves_and_caches():
+    c = _ConcurrentFakeClient(parallel_pages=4)
+    s = EnvSnapshot(c, full_scan=False, sample_size=500)
+    s._sites = [{"id": 9, "name": "Rapid7 Insight Agents"}, {"id": 2, "name": "Prod"}]
+    assert s.agent_site_id_by_name("Rapid7 Insight Agents") == 9
+    # Unknown name -> None.
+    assert s.agent_site_id_by_name("Nonexistent") is None
+
+
+def test_candidate_agent_overlaps_query_shape_and_counts():
+    c = _ConcurrentFakeClient(parallel_pages=1)  # sequential: deterministic
+    # Each candidate's membership POST returns a totalResources count.
+    c.set_post_one("/api/3/assets/search", {"page": {"totalResources": 3}})
+    c.set_post_one("/api/3/assets/search", {"page": {"totalResources": 0}})
+    s = EnvSnapshot(c, full_scan=False, sample_size=500)
+    counts, failed = s.candidate_agent_overlaps([11, 12], agent_site_id=9)
+    assert counts == {11: 3, 12: 0}
+    assert failed == []
+    # Verify the filter body shape of the first call: match all, candidate IN + agent IN.
+    first_body = c.post_calls[0][1]
+    assert first_body["match"] == "all"
+    fields = [(f["field"], f["operator"], f["values"]) for f in first_body["filters"]]
+    assert ("site-id", "in", [11]) in fields
+    assert ("site-id", "in", [9]) in fields
+
+
+def test_candidate_agent_overlaps_per_candidate_error_goes_to_failed():
+    from rapid7_healthcheck.client import Rapid7ClientError
+    c = _ConcurrentFakeClient(parallel_pages=1)
+    c.set_post_one_raises("/api/3/assets/search", Rapid7ClientError("boom", status_code=503))
+    s = EnvSnapshot(c, full_scan=False, sample_size=500)
+    counts, failed = s.candidate_agent_overlaps([21, 22], agent_site_id=9)
+    assert counts == {}
+    assert sorted(failed) == [21, 22]
+
+
+def test_candidate_agent_overlaps_runs_concurrently():
+    c = _ConcurrentFakeClient(parallel_pages=4, get_delay=0.02)
+    for _ in range(8):
+        c.set_post_one("/api/3/assets/search", {"page": {"totalResources": 1}})
+    s = EnvSnapshot(c, full_scan=False, sample_size=500)
+    counts, failed = s.candidate_agent_overlaps(list(range(1, 9)), agent_site_id=9)
+    assert len(counts) == 8
+    assert c.max_in_flight > 1
+
+
+def test_fakesnapshot_agent_overlap_setters():
+    from tests.audit.conftest import FakeSnapshot
+    snap = FakeSnapshot()
+    snap.set_agent_site_id("Rapid7 Insight Agents", 9)
+    snap.set_candidate_agent_overlaps({11: 3, 12: 0}, failed=[13])
+    assert snap.agent_site_id_by_name("Rapid7 Insight Agents") == 9
+    assert snap.agent_site_id_by_name("Other") is None
+    counts, failed = snap.candidate_agent_overlaps([11, 12, 13], agent_site_id=9)
+    assert counts == {11: 3, 12: 0}
+    assert failed == [13]

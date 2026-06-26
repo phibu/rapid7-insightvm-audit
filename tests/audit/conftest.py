@@ -42,6 +42,9 @@ class FakeSnapshot:
         self._reports: list[dict] = []
         self._administration_properties: dict = {}
         self._total_asset_count: int = 0
+        self._agent_site_ids: dict[str, int] = {}
+        self._candidate_overlaps: dict[int, int] = {}
+        self._candidate_overlaps_failed: list[int] = []
 
     @property
     def full_scan(self) -> bool: return self._full_scan
@@ -79,6 +82,10 @@ class FakeSnapshot:
     def set_scan_engines(self, engines: list[dict]) -> None: self._scan_engines = engines
     def set_shared_credentials(self, creds: list[dict]) -> None: self._shared_credentials = creds
     def set_site_credentials(self, site_id: int, creds: list[dict]) -> None: self._site_credentials[site_id] = creds
+    def set_agent_site_id(self, name: str, site_id: int) -> None: self._agent_site_ids[name] = site_id
+    def set_candidate_agent_overlaps(self, counts: dict, failed=()) -> None:
+        self._candidate_overlaps = dict(counts)
+        self._candidate_overlaps_failed = list(failed)
     def set_site_schedules(self, site_id: int, schedules: list[dict]) -> None: self._site_schedules[site_id] = schedules
     def set_site_included_targets(self, site_id: int, targets: list[dict]) -> None: self._site_included_targets[site_id] = targets
     def set_site_asset_count(self, site_id: int, n: int) -> None: self._site_asset_count[site_id] = n
@@ -150,6 +157,14 @@ class FakeSnapshot:
         if site_id not in self._site_credentials:
             raise AssertionError(f"FakeSnapshot.site_credentials({site_id}) not registered")
         return self._site_credentials[site_id]
+
+    def agent_site_id_by_name(self, name: str):
+        return self._agent_site_ids.get(name)
+
+    def candidate_agent_overlaps(self, candidate_ids, agent_site_id):
+        counts = {cid: self._candidate_overlaps[cid] for cid in candidate_ids if cid in self._candidate_overlaps}
+        failed = [cid for cid in candidate_ids if cid in self._candidate_overlaps_failed]
+        return counts, failed
 
     def site_schedules(self, site_id: int) -> list[dict]:
         if site_id not in self._site_schedules:

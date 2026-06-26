@@ -4,6 +4,8 @@ from rapid7_healthcheck.audit import AuditRule, RuleResult, register
 from rapid7_healthcheck.audit.rules.site_vuln_template_no_creds import _site_has_credentials
 from rapid7_healthcheck.checks import Finding
 
+_DEFAULT_AGENT_SITE_NAME = "Rapid7 Insight Agents"
+
 
 @register
 class AgentUnauthCollisionRule(AuditRule):
@@ -12,16 +14,15 @@ class AgentUnauthCollisionRule(AuditRule):
     description = (
         "Sites running unauthenticated vulnerability scans against assets that "
         "already have the Insight Agent installed. The agent produces strictly "
-        "richer authenticated data; redundant unauth scans add load, cause "
-        "asset-correlation drift, and (prior to console release 6.6.229) could "
-        "degrade results. Detection is grounded in the authoritative agent "
-        "inventory at /api/3/agents (one fetch, cached) -- site-asset listings "
-        "are intersected by asset id, which is reliably populated. In fast "
-        "mode (`full_scan: false`), per-site enumeration is bounded by "
-        "`audit.sample_size` and short-circuits on the first agent-managed "
-        "asset; sites that exceed the cap without a match are listed in a "
-        "single aggregate info finding so the gap is visible. Run with "
-        "`full_scan: true` to remove the cap."
+        "richer authenticated data; redundant unauth scans add load and cause "
+        "asset-correlation drift. Detection is server-side and exact: for each "
+        "candidate site (vulnerability-enabled scan template, no site "
+        "credentials) one /api/3/assets/search query counts the assets shared "
+        "with the Insight Agent site (resolved by name; its id varies per "
+        "console). The exact overlap count comes from the result metadata -- no "
+        "asset bodies fetched, no sampling, and the rule always runs (no agent-"
+        "fleet-size ceiling). 'Has an Insight Agent' means membership in the "
+        "agent site (the only agent signal expressible in a server-side query)."
     )
     default_severity = "fail"
     expensive = True
@@ -33,167 +34,121 @@ class AgentUnauthCollisionRule(AuditRule):
     ]
 
     def run(self, snapshot, severity, full_scan, sample_size, rule_config) -> RuleResult:
-        # Prime the unavailable flag via agent_count() before checking it,
-        # then branch: 404 -> existing skip path; oversize -> new skip path;
-        # else -> existing main loop.
-        total_agents = snapshot.agent_count()
+        agent_site_name = (rule_config or {}).get("agent_site_name", _DEFAULT_AGENT_SITE_NAME)
+        agent_site_id = snapshot.agent_site_id_by_name(agent_site_name)
 
-        if snapshot.is_agents_unavailable():
-            return RuleResult(
-                rule_id=self.rule_id,
-                rule_name=self.rule_name,
-                description=self.description,
-                severity=severity,
-                status="skipped",
-                findings=[Finding(
+        if agent_site_id is None:
+            return self.result(
+                [Finding(
                     severity="info",
                     message=(
-                        "Skipped: /api/3/agents is unavailable on this console "
-                        "(404). Cannot determine agent-managed assets without "
-                        "the agent inventory endpoint. Verify agent/unauth "
-                        "scan overlap manually in the Security Console."
+                        f"No site named '{agent_site_name}' was found -- no Insight "
+                        f"Agent site to compare against. (Set "
+                        f"audit.rules.agent_unauth_collision.agent_site_name if your "
+                        f"agent site is named differently.)"
                     ),
-                    details={"agents_endpoint_unavailable": True},
+                    details={"agent_site_name": agent_site_name},
                 )],
-                summary={
-                    "sites_examined": 0,
-                    "sites_flagged": 0,
-                    "sites_truncated": 0,
-                    "per_site_cap": None,
-                    "agent_asset_ids": 0,
-                },
-                sources=list(self.sources),
-            )
-
-        max_agents = rule_config.get("max_agents", 50000)
-        if total_agents > max_agents:
-            return RuleResult(
-                rule_id=self.rule_id,
-                rule_name=self.rule_name,
-                description=self.description,
                 severity=severity,
-                status="skipped",
-                findings=[Finding(
-                    severity="info",
-                    message=(
-                        f"Skipped: Insight Agent inventory ({total_agents} agents) "
-                        f"exceeds the configured cap (max_agents = {max_agents}) "
-                        f"under audit.rules.agent_unauth_collision. Full "
-                        f"pagination of /api/3/agents at this scale is too slow "
-                        f"for a health-check pass. Raise the cap (set to 0 to "
-                        f"disable the ceiling) or audit agent/unauth scan "
-                        f"overlap manually in the Security Console."
-                    ),
-                    details={
-                        "agent_count": total_agents,
-                        "max_agents_cap": max_agents,
-                        "inventory_oversize": True,
-                    },
-                )],
                 summary={
-                    "sites_examined": 0,
-                    "sites_flagged": 0,
-                    "sites_truncated": 0,
-                    "per_site_cap": None,
-                    "agent_asset_ids": 0,
-                    "agent_count": total_agents,
-                    "max_agents_cap": max_agents,
+                    "candidates_examined": 0,
+                    "candidates_flagged": 0,
+                    "candidates_failed": 0,
+                    "agent_site_id": None,
                 },
-                sources=list(self.sources),
+                examined=0,
+                failed=0,
             )
 
-        agent_ids = snapshot.agent_asset_ids()
-
-        per_site_cap = None if full_scan else sample_size
-
-        findings: list[Finding] = []
-        sites_examined = 0
-        sites_flagged = 0
-        truncated_sites: list[dict] = []  # {site_id, name, total_assets}
-
+        # Build candidate sites: vuln-enabled template, NOT the agent site.
+        # Compute the template-eligible set first (template reads are cached
+        # per distinct id), then prefetch those sites' credentials in one
+        # concurrent fan-out before the per-site no-credentials test.
+        template_eligible: list[dict] = []
         for site in snapshot.sites():
-            sid = site["id"]
-            name = site.get("name", f"id={sid}")
+            sid = site.get("id")
+            if sid is None or sid == agent_site_id:
+                continue
             tpl_id = snapshot.site_scan_template_id(site)
             if not tpl_id:
                 continue
             tpl = snapshot.scan_template(tpl_id)
             if not snapshot.template_vuln_enabled(tpl):
                 continue
+            template_eligible.append(site)
+
+        snapshot.prefetch_site_credentials(
+            [s["id"] for s in template_eligible if s.get("id") is not None]
+        )
+
+        candidate_sites: list[dict] = []
+        for site in template_eligible:
+            sid = site["id"]
             if _site_has_credentials(snapshot, sid):
                 continue
+            candidate_sites.append(site)
 
-            sites_examined += 1
-            total_assets = snapshot.site_asset_count(sid)
+        candidate_ids = [s["id"] for s in candidate_sites]
+        overlaps, failed_ids = snapshot.candidate_agent_overlaps(candidate_ids, agent_site_id)
 
-            examined = 0
-            agent_found = False
-            for asset in snapshot.iter_site_assets(sid):
-                examined += 1
-                asset_id = asset.get("id")
-                if (
-                    isinstance(asset_id, int)
-                    and not isinstance(asset_id, bool)
-                    and asset_id in agent_ids
-                ):
-                    agent_found = True
-                    break
-                if per_site_cap is not None and examined >= per_site_cap:
-                    break
+        name_by_id = {s["id"]: s.get("name", f"id={s['id']}") for s in candidate_sites}
+        tpl_by_id = {s["id"]: snapshot.site_scan_template_id(s) for s in candidate_sites}
 
-            if agent_found:
-                sites_flagged += 1
-                findings.append(Finding(
-                    severity=severity,
-                    message=(
-                        f"Site '{name}' runs unauthenticated vuln scans, and at "
-                        f"least 1 of {examined} sampled assets is Insight "
-                        f"Agent-managed (total site assets: {total_assets}). "
-                        f"Stop unauth scanning where the agent already covers "
-                        f"the host."
-                    ),
-                    details={
-                        "site_id": sid,
-                        "scan_template_id": tpl_id,
-                        "examined": examined,
-                        "total_assets": total_assets,
-                        "sampled": per_site_cap is not None and examined >= 1 and total_assets > examined,
-                        "short_circuited": True,
-                    },
-                ))
-            elif per_site_cap is not None and examined >= per_site_cap and total_assets > examined:
-                truncated_sites.append({
-                    "site_id": sid,
-                    "name": name,
-                    "total_assets": total_assets,
-                })
+        findings: list[Finding] = []
+        flagged = 0
+        for cid, count in sorted(overlaps.items()):
+            if count <= 0:
+                continue
+            flagged += 1
+            name = name_by_id.get(cid, f"id={cid}")
+            findings.append(Finding(
+                severity=severity,
+                message=(
+                    f"Site '{name}' runs unauthenticated vulnerability scans, and "
+                    f"{count} of its assets are also in the Insight Agent site "
+                    f"('{agent_site_name}') -- the agent already provides "
+                    f"authenticated coverage. Stop unauth scanning where the agent "
+                    f"covers the host."
+                ),
+                details={
+                    "site_id": cid,
+                    "scan_template_id": tpl_by_id.get(cid),
+                    "overlap_count": count,
+                    "agent_site_id": agent_site_id,
+                },
+            ))
 
-        if truncated_sites:
+        if failed_ids:
+            names = ", ".join(name_by_id.get(cid, f"id={cid}") for cid in sorted(failed_ids)[:20])
             findings.append(Finding(
                 severity="info",
                 message=(
-                    f"{len(truncated_sites)} sites exceeded the per-site sample "
-                    f"cap ({per_site_cap} assets) without finding an Insight "
-                    f"Agent -- verify in the Security Console UI: "
-                    f"{', '.join(s['name'] for s in truncated_sites[:20])}."
+                    f"{len(failed_ids)} candidate site(s) could not be checked "
+                    f"(agent-overlap query failed -- transient API error): {names}."
                 ),
-                details={
-                    "truncated_site_count": len(truncated_sites),
-                    "cap": per_site_cap,
-                    "truncated_sites": truncated_sites[:20],
-                },
+                details={"failed_site_ids": sorted(failed_ids)[:20], "failed_count": len(failed_ids)},
+            ))
+
+        if flagged == 0 and not failed_ids:
+            findings.append(Finding(
+                severity="info",
+                message=(
+                    f"No unauthenticated site overlaps the Insight Agent site "
+                    f"('{agent_site_name}'): every candidate site's assets are "
+                    f"either absent from the agent site or already credentialed."
+                ),
+                details={"agent_site_id": agent_site_id, "candidates_examined": len(candidate_ids)},
             ))
 
         return self.result(
             findings,
             severity=severity,
             summary={
-                "sites_examined": sites_examined,
-                "sites_flagged": sites_flagged,
-                "sites_truncated": len(truncated_sites),
-                "per_site_cap": per_site_cap,
-                "agent_asset_ids": len(agent_ids),
+                "candidates_examined": len(candidate_ids),
+                "candidates_flagged": flagged,
+                "candidates_failed": len(failed_ids),
+                "agent_site_id": agent_site_id,
             },
-            examined=sites_examined,
-            failed=sites_flagged,
+            examined=len(candidate_ids),
+            failed=flagged,
         )
