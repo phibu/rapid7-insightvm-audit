@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Python 3.11 compatibility (CI was red):** two nested f-strings that reused the outer quote inside the inner f-string parsed on 3.12+ (PEP 701) but raised `SyntaxError: f-string: unmatched '('` on Python 3.11 — the project's stated minimum. Because `__main__` imports the offending `data_quality` module, this broke collection of 7 test files and failed every CI run since 1.1.3 (`test (3.11)`). Both call sites (`checks/data_quality.py` empty-site message, `audit/rules/local_engine_production_scope.py` overloaded-engine message) now compute the `id=…` fallback into a local before the message f-string. Behavior is identical (fallback still applies only when the `name` key is absent). Verified: full suite green under Python 3.11.15.
+
 ## [1.1.6] - 2026-06-26
 
 ### Changed

@@ -69,10 +69,13 @@ class LocalEngineProductionScopeRule(AuditRule):
             if total <= threshold:
                 continue
             engines_flagged += 1
+            # Inner fallback kept as a separate local: a nested f-string reusing
+            # the outer quote breaks on Python 3.11 (pre-PEP-701 tokenizer).
+            display = engine.get("name", f"id={engine_id}")
             findings.append(Finding(
                 severity=severity,
                 message=(
-                    f"Local Scan Engine '{engine.get('name', f'id={engine_id}')}' "
+                    f"Local Scan Engine '{display}' "
                     f"is bound to {len(site_ids)} site(s) totalling {total} assets "
                     f"(threshold {threshold}). Move large sites to a distributed engine."
                 ),

@@ -140,17 +140,19 @@ class EmptySitesRule:
         # unlike asset-count rules, no rollup is needed). Stable per-site
         # signature: keyed on site id so the cross-run delta tracks individual
         # sites appearing/clearing rather than a single aggregate count.
-        findings: list[Finding] = [
-            Finding(
+        findings: list[Finding] = []
+        for s in empty_sites:
+            # Inner fallback kept as a separate local: a nested f-string reusing
+            # the outer quote breaks on Python 3.11 (pre-PEP-701 tokenizer).
+            display = s.get("name", f"id={s.get('id')}")
+            findings.append(Finding(
                 severity="warn",
-                message=f"Site '{s.get('name', f'id={s.get('id')}')}' has zero assets",
+                message=f"Site '{display}' has zero assets",
                 details={
                     "site_id": s.get("id"),
                     "site_name": s.get("name"),
                 },
-            )
-            for s in empty_sites
-        ]
+            ))
         return make_rule_result(
             rule_id=self.RULE_ID,
             rule_name=self.RULE_NAME,
