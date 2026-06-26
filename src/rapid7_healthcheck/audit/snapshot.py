@@ -195,6 +195,7 @@ class EnvSnapshot:
         self._agent_asset_ids_sampled_cache: tuple[list[int], int] | None = None
         self._asset_group_member_counts: dict[int, int | None] = {}
         self._all_included_targets_cache: IncludedTargets | None = None
+        self._agent_site_id_cache: dict[str, int | None] = {}
 
     @property
     def full_scan(self) -> bool:
@@ -397,6 +398,92 @@ class EnvSnapshot:
             return list(body.get("resources", []))
 
         self._prefetch_per_site(site_ids, self._site_credentials, _fetch)
+
+    def agent_site_id_by_name(self, name: str) -> int | None:
+        """Resolve the Insight Agent site's id by matching ``name`` in sites().
+
+        The agent site's id varies per console; its name is deterministic
+        (default "Rapid7 Insight Agents"). Returns None when no site matches
+        the name. Cached per name within the snapshot lifetime. See CONTEXT.md
+        "Agent site".
+        """
+        if name in self._agent_site_id_cache:
+            return self._agent_site_id_cache[name]
+        match = next((s.get("id") for s in self.sites() if s.get("name") == name), None)
+        self._agent_site_id_cache[name] = match
+        return match
+
+    def _overlap_count_query(self, candidate_id: int, agent_site_id: int) -> dict:
+        """Build the count-only membership filter body for one candidate site.
+
+        Server-side membership query (CONTEXT.md): assets in BOTH the candidate
+        site and the agent site. The count comes from page.totalResources; no
+        asset bodies are fetched. site-id is the only agent-expressible field on
+        assets/search, so agent membership is by agent-SITE membership.
+        """
+        return {
+            "match": "all",
+            "filters": [
+                {"field": "site-id", "operator": "in", "values": [candidate_id]},
+                {"field": "site-id", "operator": "in", "values": [agent_site_id]},
+            ],
+        }
+
+    def candidate_agent_overlaps(
+        self, candidate_ids: list[int], agent_site_id: int
+    ) -> tuple[dict[int, int], list[int]]:
+        """Per-candidate overlap counts with the agent site, fanned out concurrently.
+
+        Returns ``(overlap_counts, failed_ids)``:
+            - ``overlap_counts``: ``{candidate_id: page.totalResources}`` for every
+              candidate whose membership POST succeeded -- the exact number of
+              assets in both the candidate site and the agent site.
+            - ``failed_ids``: candidate ids whose POST raised ``Rapid7ClientError``
+              (skip-and-disclose; the rule surfaces these in one info finding).
+
+        One count-only ``POST /api/3/assets/search`` per candidate
+        (``page=0, size=1``; zero asset bodies). Independent read-only requests,
+        so they fan out across ``parallel_pages`` workers -- the same shape
+        ``_prefetch_per_site`` uses for GETs; the read-only verb/path check runs
+        per call inside ``post_one`` and ``requests.Session`` is thread-safe for
+        reads, so concurrency does not weaken the read-only invariant. Sequential
+        when ``parallel_pages <= 1`` or a single candidate.
+        """
+        counts: dict[int, int] = {}
+        failed: list[int] = []
+        if not candidate_ids:
+            return counts, failed
+
+        def _count_one(cid: int) -> int:
+            body = self._client.post_one(
+                "/api/3/assets/search",
+                json_body=self._overlap_count_query(cid, agent_site_id),
+                params={"page": 0, "size": 1},
+            )
+            return int(body.get("page", {}).get("totalResources", 0))
+
+        workers = self._resolve_prefetch_workers()
+        if workers <= 1 or len(candidate_ids) == 1:
+            for cid in candidate_ids:
+                try:
+                    counts[cid] = _count_one(cid)
+                except Rapid7ClientError as e:
+                    logger.warning("agent-overlap query failed for site %s: %s", cid, e)
+                    failed.append(cid)
+            return counts, failed
+
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = {executor.submit(_count_one, cid): cid for cid in candidate_ids}
+            for fut in as_completed(futures):
+                cid = futures[fut]
+                try:
+                    counts[cid] = fut.result()
+                except Rapid7ClientError as e:
+                    logger.warning("agent-overlap query failed for site %s: %s", cid, e)
+                    failed.append(cid)
+        return counts, failed
 
     def all_included_targets(self) -> IncludedTargets:
         """Build the normalized union of every site's included scan targets.
