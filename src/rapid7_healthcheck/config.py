@@ -19,8 +19,11 @@ class ConfigError(Exception):
 class Rapid7Config:
     base_url: str
     verify_tls: bool
-    request_timeout_seconds: int
-    max_retries: int
+    request_timeout_seconds: int = field(metadata={"min": 1})
+    max_retries: int = field(metadata={"min": 1})
+    # parallel_pages/page_size are ranges (a floor + a ceiling) plus a >8 warning,
+    # which a field floor cannot express -- they stay in _build_rapid7_config's
+    # validation hook. See CONTEXT.md "Validation hook".
     parallel_pages: int = 1
     page_size: int = 250
 
@@ -34,27 +37,31 @@ class ReportConfig:
     log_format: str = "plain"
 
 
+# Threshold int fields carry their own floor via metadata={"min": N} -- the
+# field-floor mechanism _from_dict enforces (min=1 positive, min=0 non-negative).
+# See CONTEXT.md "Field floor": the floor lives on the field, not in a separate
+# POS_*/NN_* list, so there is no field-name list to keep in spelling-sync.
 @dataclass(frozen=True)
 class ScanEngineThresholds:
-    last_contact_warn_hours: int
-    last_contact_fail_hours: int
+    last_contact_warn_hours: int = field(metadata={"min": 1})
+    last_contact_fail_hours: int = field(metadata={"min": 1})
 
 
 @dataclass(frozen=True)
 class ScanActivityThresholds:
-    recent_window_days: int
-    stuck_scan_hours: int
-    site_no_scan_days: int
+    recent_window_days: int = field(metadata={"min": 1})
+    stuck_scan_hours: int = field(metadata={"min": 1})
+    site_no_scan_days: int = field(metadata={"min": 1})
 
 
 @dataclass(frozen=True)
 class AssetCoverageThresholds:
-    stale_asset_days: int
-    flag_unscanned_assets: bool
-    never_scanned_days: int
+    stale_asset_days: int = field(metadata={"min": 1})
+    flag_unscanned_assets: bool = field()
+    never_scanned_days: int = field(metadata={"min": 1})
     flag_dead_asset_groups: bool = True
     flag_agent_only_assets: bool = False
-    dead_groups_fallback_cap: int = 200
+    dead_groups_fallback_cap: int = field(default=200, metadata={"min": 0})
     flag_ghost_assets: bool = True
     # The display name of the site Rapid7 auto-assigns Insight-Agent assets to.
     # The id varies per console but the name is deterministic, so the
@@ -64,13 +71,13 @@ class AssetCoverageThresholds:
 
 @dataclass(frozen=True)
 class DataQualityThresholds:
-    flag_missing_os: bool
-    flag_empty_sites: bool
+    flag_missing_os: bool = field()
+    flag_empty_sites: bool = field()
     flag_stale_assets: bool = True
-    stale_asset_days: int = 180
+    stale_asset_days: int = field(default=180, metadata={"min": 1})
     flag_duplicate_hostnames: bool = True
     flag_duplicate_ips: bool = True
-    duplicate_detection_max_assets: int = 50000
+    duplicate_detection_max_assets: int = field(default=50000, metadata={"min": 0})
 
 
 @dataclass(frozen=True)
@@ -186,8 +193,8 @@ class RuleConfig:
 class AuditConfig:
     enabled: bool
     full_scan: bool
-    sample_size: int
-    agents_timeout_seconds: int = 180
+    sample_size: int = field(metadata={"min": 1})
+    agents_timeout_seconds: int = field(default=180, metadata={"min": 1})
     rules: dict = field(default_factory=dict)  # str -> RuleConfig
 
 
@@ -196,7 +203,7 @@ class UserAuditConfig:
     """Sibling to AuditConfig, scoped to the User & Permission audit category."""
     enabled: bool
     full_scan: bool
-    sample_size: int
+    sample_size: int = field(metadata={"min": 1})
     rules: dict = field(default_factory=dict)  # str -> RuleConfig
 
 
@@ -220,8 +227,8 @@ class CloudIntegrationConfig:
     enabled: bool
     base_url: str = ""
     api_key_env: str = "R7_CLOUD_API_KEY"
-    timeout_seconds: int = 30
-    max_retries: int = 3
+    timeout_seconds: int = field(default=30, metadata={"min": 1})
+    max_retries: int = field(default=3, metadata={"min": 1})
     parallel_pages: int = 1
 
 
@@ -258,7 +265,7 @@ class TemplateAuditConfig:
     Configuration Audit category."""
     enabled: bool = True
     full_scan: bool = False
-    sample_size: int = 500
+    sample_size: int = field(default=500, metadata={"min": 1})
     rules: dict = field(default_factory=dict)  # str -> RuleConfig
 
 
@@ -361,10 +368,31 @@ def _from_dict(cls: type, data: Any, path: str, *, post_validate: Callable[[Any]
     kwargs: dict[str, Any] = {}
     for f in fields(cls):
         if f.name in data:
-            _check_scalar(f.name, data[f.name], hints[f.name], path, positive_int=False)
-            kwargs[f.name] = data[f.name]
+            value = data[f.name]
+            _check_scalar(f.name, value, hints[f.name], path, positive_int=False)
+            _enforce_field_floor(f, value, path)
+            kwargs[f.name] = value
     obj = cls(**kwargs)
     return post_validate(obj) if post_validate is not None else obj
+
+
+def _enforce_field_floor(f: Any, value: Any, path: str) -> None:
+    """Enforce a field's ``metadata={"min": N}`` floor on an int value.
+
+    The single owner of "what is the minimum for this int" -- see CONTEXT.md
+    "Field floor". ``min=1`` means positive-only, ``min=0`` non-negative; the
+    bound is mapped back to the frozen error wording at raise time so the
+    message is byte-identical to the per-field positive / non-negative checks
+    the threshold and audit-body blocks ran before the migration. Non-int values
+    (or fields without a ``min``) are a no-op -- ``_check_scalar`` has already
+    rejected wrong-typed values, and bool is excluded there too.
+    """
+    floor = f.metadata.get("min")
+    if floor is None or not isinstance(value, int) or isinstance(value, bool):
+        return
+    if value < floor:
+        word = "positive" if floor == 1 else "non-negative"
+        raise ConfigError(f"{path}.{f.name}: must be a {word} integer, got {value}")
 
 
 _THRESHOLD_NESTED = {
@@ -389,7 +417,9 @@ def _build_rapid7_config(data: Any) -> Rapid7Config:
     Note: the base_url HTTPS check lives in `_build_app_config`, not here.
     """
     def pv(c: Rapid7Config) -> Rapid7Config:
-        _positive_int_fields(c, "rapid7", ("request_timeout_seconds", "max_retries"))
+        # request_timeout_seconds / max_retries are positive-only field floors
+        # (see the dataclass); the hook keeps only the two ranges + the >8 warning,
+        # which a field floor can't express. See CONTEXT.md "Validation hook".
         if not (1 <= c.parallel_pages <= 16):
             raise ConfigError(
                 f"rapid7.parallel_pages must be in range [1, 16]; got {c.parallel_pages}"
@@ -409,24 +439,6 @@ def _build_rapid7_config(data: Any) -> Rapid7Config:
     return _from_dict(Rapid7Config, data, "rapid7", post_validate=pv)
 
 
-def _positive_int_fields(obj: Any, path: str, field_names: tuple[str, ...]) -> Any:
-    """Raise ConfigError if any named int field on obj is <= 0."""
-    for name in field_names:
-        val = getattr(obj, name)
-        if isinstance(val, int) and not isinstance(val, bool) and val <= 0:
-            raise ConfigError(f"{path}.{name}: must be a positive integer, got {val}")
-    return obj
-
-
-def _non_negative_int_fields(obj: Any, path: str, field_names: tuple[str, ...]) -> Any:
-    """Raise ConfigError if any named int field on obj is < 0."""
-    for name in field_names:
-        val = getattr(obj, name)
-        if isinstance(val, int) and not isinstance(val, bool) and val < 0:
-            raise ConfigError(f"{path}.{name}: must be a non-negative integer, got {val}")
-    return obj
-
-
 def _build_thresholds(data: Any) -> Thresholds:
     if not isinstance(data, dict):
         raise ConfigError("thresholds: expected mapping")
@@ -438,38 +450,19 @@ def _build_thresholds(data: Any) -> Thresholds:
     if missing:
         raise ConfigError(f"thresholds: missing required key(s): {sorted(missing)}")
 
-    # Field classification (confirmed against the dataclasses, config.py:41-73).
-    # POS_* = positive-only int fields, NN_* = non-negative int fields.
-    # bool fields are validated by _from_dict's _check_scalar(bool) and are NOT
-    # listed here.
-    POS_SCAN_ENGINES = ("last_contact_warn_hours", "last_contact_fail_hours")
-    POS_SCAN_ACTIVITY = ("recent_window_days", "stuck_scan_hours", "site_no_scan_days")
-    POS_ASSET_COVERAGE = ("stale_asset_days", "never_scanned_days")
-    NN_ASSET_COVERAGE = ("dead_groups_fallback_cap",)
-    POS_DATA_QUALITY = ("stale_asset_days",)
-    NN_DATA_QUALITY = ("duplicate_detection_max_assets",)
-
+    # No post_validate hooks: each threshold int field carries its own floor via
+    # metadata={"min": N} (see the dataclass declarations and CONTEXT.md "Field
+    # floor"), which _from_dict enforces in its per-field loop with byte-identical
+    # wording. The old POS_*/NN_* field-name tuples + lambdas are gone.
     return Thresholds(
         scan_engines=_from_dict(
-            ScanEngineThresholds, data["scan_engines"], "thresholds.scan_engines",
-            post_validate=lambda o: _positive_int_fields(o, "thresholds.scan_engines", POS_SCAN_ENGINES),
-        ),
+            ScanEngineThresholds, data["scan_engines"], "thresholds.scan_engines"),
         scan_activity=_from_dict(
-            ScanActivityThresholds, data["scan_activity"], "thresholds.scan_activity",
-            post_validate=lambda o: _positive_int_fields(o, "thresholds.scan_activity", POS_SCAN_ACTIVITY),
-        ),
+            ScanActivityThresholds, data["scan_activity"], "thresholds.scan_activity"),
         asset_coverage=_from_dict(
-            AssetCoverageThresholds, data["asset_coverage"], "thresholds.asset_coverage",
-            post_validate=lambda o: _non_negative_int_fields(
-                _positive_int_fields(o, "thresholds.asset_coverage", POS_ASSET_COVERAGE),
-                "thresholds.asset_coverage", NN_ASSET_COVERAGE),
-        ),
+            AssetCoverageThresholds, data["asset_coverage"], "thresholds.asset_coverage"),
         data_quality=_from_dict(
-            DataQualityThresholds, data["data_quality"], "thresholds.data_quality",
-            post_validate=lambda o: _non_negative_int_fields(
-                _positive_int_fields(o, "thresholds.data_quality", POS_DATA_QUALITY),
-                "thresholds.data_quality", NN_DATA_QUALITY),
-        ),
+            DataQualityThresholds, data["data_quality"], "thresholds.data_quality"),
     )
 
 
@@ -478,9 +471,13 @@ class BodySpec:
     """The scalar-body slice of a rule-bearing config block -- everything
     beyond its `rules:` mapping.
 
-    `cls` is the config dataclass to parse the body into; `pv` is the
-    post-validate hook (the `sample_size` / `+agents_timeout` positive-int
-    checks); `required` is the set of keys the block must carry explicitly.
+    `cls` is the config dataclass to parse the body into; `pv` is an optional
+    post-validate hook for validation a field floor cannot express. It defaults
+    to `None` because all four rule-bearing bodies' int constraints
+    (`sample_size`, `agents_timeout_seconds`) are now positive-only field floors
+    carried as `metadata={"min": 1}` on the dataclass and enforced by
+    `_from_dict` (see CONTEXT.md "Field floor") -- none of them needs a hook.
+    `required` is the set of keys the block must carry explicitly.
 
     `required` defaults to `frozenset()` because `AuditConfig` /
     `UserAuditConfig` declare their body fields with no dataclass default, so
@@ -491,7 +488,7 @@ class BodySpec:
     erroring. See CONTEXT.md "BodySpec".
     """
     cls: type
-    pv: Callable[[Any], Any]
+    pv: Callable[[Any], Any] | None = None
     required: frozenset[str] = frozenset()
 
 
@@ -567,20 +564,14 @@ _AUDIT_BLOCK_SPEC = ConfigBlockSpec(
     path="audit.rules",
     body_path="audit",
     registry=_audit_rule_ids,
-    body=BodySpec(
-        cls=AuditConfig,
-        pv=lambda obj: _positive_int_fields(obj, "audit", ("sample_size", "agents_timeout_seconds")),
-    ),
+    body=BodySpec(cls=AuditConfig),
 )
 
 _USER_AUDIT_BLOCK_SPEC = ConfigBlockSpec(
     path="user_audit.rules",
     body_path="user_audit",
     registry=_user_rule_ids,
-    body=BodySpec(
-        cls=UserAuditConfig,
-        pv=lambda obj: _positive_int_fields(obj, "user_audit", ("sample_size",)),
-    ),
+    body=BodySpec(cls=UserAuditConfig),
 )
 
 _CLOUD_DRIFT_BLOCK_SPEC = ConfigBlockSpec(
@@ -596,7 +587,6 @@ _TEMPLATE_AUDIT_BLOCK_SPEC = ConfigBlockSpec(
     registry=_template_rule_ids,
     body=BodySpec(
         cls=TemplateAuditConfig,
-        pv=lambda obj: _positive_int_fields(obj, "template_audit", ("sample_size",)),
         required=frozenset({"enabled", "full_scan", "sample_size"}),
     ),
 )
@@ -628,7 +618,9 @@ def _build_cloud_integration_config(data: dict | None) -> CloudIntegrationConfig
             raise ConfigError("cloud_integration.base_url must start with https://")
         if not c.api_key_env:
             raise ConfigError("cloud_integration.api_key_env: expected non-empty str")
-        _positive_int_fields(c, "cloud_integration", ("timeout_seconds", "max_retries"))
+        # timeout_seconds / max_retries are positive-only field floors (see the
+        # dataclass); the hook keeps only what a floor can't express -- the
+        # base_url/api_key_env rules and the parallel_pages range below.
         if not (1 <= c.parallel_pages <= 16):
             raise ConfigError(
                 f"cloud_integration.parallel_pages must be in range [1, 16]; got {c.parallel_pages}"

@@ -1,5 +1,5 @@
 import textwrap
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import pytest
@@ -1174,6 +1174,36 @@ class TestFromDictTypeOnlyAndPostValidate:
             return replace(obj, name=obj.name.strip())
 
         assert _from_dict(_Sample, {"n": 1, "name": "  y  "}, "s", post_validate=pv).name == "y"
+
+
+@dataclass(frozen=True)
+class _Floored:
+    """A field carrying its own int floor via metadata -- the field-floor mechanism."""
+    pos: int = field(metadata={"min": 1})
+    nn: int = field(default=0, metadata={"min": 0})
+
+
+class TestFromDictFieldFloor:
+    """_from_dict enforces a field's metadata={'min': N} floor, with byte-identical
+    wording to the old _positive_int_fields / _non_negative_int_fields helpers."""
+
+    def test_min_1_accepts_positive(self):
+        assert _from_dict(_Floored, {"pos": 1, "nn": 0}, "s").pos == 1
+
+    def test_min_1_rejects_zero_with_positive_wording(self):
+        with pytest.raises(ConfigError, match=r"s\.pos: must be a positive integer, got 0"):
+            _from_dict(_Floored, {"pos": 0}, "s")
+
+    def test_min_0_accepts_zero(self):
+        assert _from_dict(_Floored, {"pos": 5, "nn": 0}, "s").nn == 0
+
+    def test_min_0_rejects_negative_with_non_negative_wording(self):
+        with pytest.raises(ConfigError, match=r"s\.nn: must be a non-negative integer, got -1"):
+            _from_dict(_Floored, {"pos": 5, "nn": -1}, "s")
+
+    def test_floor_does_not_touch_unfloored_fields(self):
+        # _Sample.n carries no floor: 0 and negatives still pass _from_dict (type-only).
+        assert _from_dict(_Sample, {"n": -5}, "s").n == -5
 
 
 # ---------------------------------------------------------------------------

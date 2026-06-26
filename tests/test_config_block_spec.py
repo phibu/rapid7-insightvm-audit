@@ -19,8 +19,16 @@ from rapid7_healthcheck.config import (
     RuleConfig,
     TemplateAuditConfig,
     _build_rule_audit_config,
-    _positive_int_fields,
 )
+
+
+def _reject_zero_sample_size(obj):
+    """A self-contained BodySpec.pv hook used to prove the post-validate seam
+    runs. Production blocks no longer need a hook for this (sample_size is a
+    field floor now), so the probe carries its own."""
+    if obj.sample_size <= 0:
+        raise ConfigError("probe.sample_size: must be a positive integer")
+    return obj
 
 
 def _bodied_spec() -> ConfigBlockSpec:
@@ -31,7 +39,7 @@ def _bodied_spec() -> ConfigBlockSpec:
         registry=lambda: frozenset({"r.ok"}),
         body=BodySpec(
             cls=AuditConfig,
-            pv=lambda obj: _positive_int_fields(obj, "probe", ("sample_size",)),
+            pv=_reject_zero_sample_size,
         ),
     )
 
@@ -88,7 +96,7 @@ def test_required_gate_catches_keys_the_dataclass_would_default():
         registry=lambda: frozenset({"r.ok"}),
         body=BodySpec(
             cls=TemplateAuditConfig,
-            pv=lambda obj: _positive_int_fields(obj, "probe", ("sample_size",)),
+            pv=_reject_zero_sample_size,
             required=frozenset({"enabled", "full_scan", "sample_size"}),
         ),
     )
