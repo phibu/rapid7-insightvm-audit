@@ -50,7 +50,10 @@ def test_warn_when_tag_references_another_tag(fake_snapshot):
     assert len(nested_findings) == 1
     assert nested_findings[0].details["references"] == ["base"]
     assert r.summary["nested_tag_refs"] == 1
-    assert r.card_summary == {"examined": 2, "passed": 1, "failed": 1}
+    # Two populations (tags + dynamic groups) and three finding kinds -> no honest
+    # examined/passed/failed triad; card_summary is intentionally None (the rule
+    # falls back to per-summary-key rendering, like overlapping_scan_windows).
+    assert r.card_summary is None
 
 
 def test_warn_with_circular_tag_reference(fake_snapshot):

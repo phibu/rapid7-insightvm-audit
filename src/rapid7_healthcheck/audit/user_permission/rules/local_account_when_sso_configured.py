@@ -83,6 +83,10 @@ class LocalAccountWhenSsoConfiguredRule(AuditRule):
                 },
             ))
 
+        # No card_summary triad: this is a threshold rule (count of enabled local
+        # accounts vs max_local, emitting 0-or-1 aggregate finding), which has no
+        # per-item examined/passed/failed population. The summary dict above
+        # carries local_user_count / threshold; the report falls back to it.
         return self.result(
             findings,
             severity=severity,
@@ -91,6 +95,4 @@ class LocalAccountWhenSsoConfiguredRule(AuditRule):
                 "external_source_count": len(external_sources),
                 "threshold": max_local,
             },
-            examined=len(users),
-            failed=len(local_users),
         )

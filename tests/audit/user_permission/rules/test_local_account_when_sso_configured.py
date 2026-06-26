@@ -40,7 +40,10 @@ def test_warn_when_local_count_exceeds_threshold(fake_user_snapshot):
     r = LocalAccountWhenSsoConfiguredRule().run(fake_user_snapshot, "warn", False, 500, {})
     assert r.status == "warn"
     assert r.findings[0].details["local_user_count"] == 3
-    assert r.card_summary == {"examined": 3, "passed": 0, "failed": 3}
+    # Threshold rule (count of enabled local accounts vs a max, 0-or-1 aggregate
+    # finding) has no per-item pass/fail population; card_summary is intentionally
+    # None and the report falls back to the summary dict.
+    assert r.card_summary is None
 
 
 def test_threshold_knob_overrides_default(fake_user_snapshot):

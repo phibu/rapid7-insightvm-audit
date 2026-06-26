@@ -186,6 +186,11 @@ class DynamicGroupsAndNestedTagsRule(AuditRule):
                 details={"groups": groups_referencing_tags},
             ))
 
+        # No card_summary triad: this rule spans two populations (tags + dynamic
+        # groups) and emits three disjoint finding kinds (nested-tag refs, tag
+        # cycles, info-severity group references), so examined/passed/failed has
+        # no honest single shape. The summary dict above carries the real counts;
+        # the report falls back to rendering it. Mirrors overlapping_scan_windows.
         return self.result(
             findings,
             severity=severity,
@@ -198,6 +203,4 @@ class DynamicGroupsAndNestedTagsRule(AuditRule):
                 "dynamic_groups_referencing_tags": len(groups_referencing_tags),
                 "threshold": dynamic_group_limit,
             },
-            examined=len(tag_by_name),
-            failed=len(findings),
         )
