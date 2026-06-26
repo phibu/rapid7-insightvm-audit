@@ -133,5 +133,30 @@ def test_custom_agent_site_name_knob():
     assert fails[0].details["agent_site_id"] == 7
 
 
+def test_all_candidates_fail_their_query_is_disclosed_not_silent_pass():
+    """When EVERY candidate's overlap query errors, the rule discloses the
+    outage (info finding) and stays pass -- it must NOT report a clean pass
+    with no findings (which would hide that nothing was actually checked)."""
+    snap = _make_snapshot(
+        sites=[{"id": 1, "name": "Prod", "scanTemplate": "tpl-vuln"},
+               {"id": 2, "name": "Stage", "scanTemplate": "tpl-vuln"},
+               {"id": 9, "name": "Rapid7 Insight Agents"}],
+        templates={"tpl-vuln": _vuln_template()},
+        creds={1: [], 2: []},
+    )
+    snap.set_shared_credentials([])
+    # No counts; both candidates land in failed.
+    snap.set_candidate_agent_overlaps({}, failed=[1, 2])
+    result = AgentUnauthCollisionRule().run(snap, "fail", True, 500, {})
+    assert result.status == "pass"  # info-only -> pass
+    fails = [f for f in result.findings if f.severity == "fail"]
+    infos = [f for f in result.findings if f.severity == "info"]
+    assert fails == []
+    # The outage is disclosed -- not a silent empty pass.
+    assert any("could not be checked" in f.message.lower() for f in infos)
+    assert result.summary["candidates_failed"] == 2
+    assert result.summary["candidates_flagged"] == 0
+
+
 def test_default_severity_is_fail():
     assert AgentUnauthCollisionRule.default_severity == "fail"

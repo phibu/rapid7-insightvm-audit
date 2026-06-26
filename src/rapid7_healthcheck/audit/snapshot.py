@@ -135,28 +135,6 @@ def _expand_target(entry: str, *, range_cap: int = 1024) -> tuple[list[IPv4Netwo
     return networks, literals
 
 
-def _extract_agent_asset_id(agent: dict) -> int | None:
-    """Extract the correlated asset ID from an Insight Agent record.
-
-    The /api/3/agents payload exposes the asset id either at top level as
-    ``id`` (newer consoles) or only via ``links`` (older shapes), where
-    one entry has ``rel == "Asset"`` and ``href == "/api/3/assets/{id}"``.
-    Returns None when neither shape yields a numeric id.
-    """
-    asset_id = agent.get("id")
-    if isinstance(asset_id, int) and not isinstance(asset_id, bool):
-        return asset_id
-    for link in agent.get("links") or []:
-        if not isinstance(link, dict):
-            continue
-        if (link.get("rel") or "").lower() == "asset":
-            href = link.get("href") or ""
-            tail = href.rstrip("/").rsplit("/", 1)[-1]
-            if tail.isdigit():
-                return int(tail)
-    return None
-
-
 class EnvSnapshot:
     def __init__(
         self,
@@ -191,8 +169,6 @@ class EnvSnapshot:
         self._agents_cache: tuple[list[dict], int] | None = None
         self._agents_unavailable: bool = False
         self._agent_count_cache: int | None = None
-        self._agent_asset_ids_cache: set[int] | None = None
-        self._agent_asset_ids_sampled_cache: tuple[list[int], int] | None = None
         self._asset_group_member_counts: dict[int, int | None] = {}
         self._all_included_targets_cache: IncludedTargets | None = None
         self._agent_site_id_cache: dict[str, int | None] = {}
@@ -864,8 +840,8 @@ class EnvSnapshot:
         """True if /api/3/agents returned 404 -- pure read of the cached flag.
 
         The flag is primed as a side effect of any agent accessor:
-        `agent_count()`, `agents()`, or `agent_asset_ids_sampled()`. Callers
-        should invoke at least one of those first.
+        `agent_count()` or `agents()`. Callers should invoke at least one of
+        those first.
         """
         return self._agents_unavailable
 
@@ -907,97 +883,6 @@ class EnvSnapshot:
             raise
         self._agent_count_cache = int(head.get("page", {}).get("totalResources", 0))
         return self._agent_count_cache
-
-    def agent_asset_ids(self) -> set[int]:
-        """Set of asset IDs that are correlated with an Insight Agent.
-
-        Always full-paginates /api/3/agents and caches the result, independent
-        of `sample_size` / `full_scan`. The agents endpoint returns a light
-        payload per agent and is the authoritative inventory used by rules
-        like `agent_unauth_collision` to do membership checks against
-        site-asset listings -- sampling here would silently re-introduce the
-        false-negative class of bug those rules are designed to detect.
-
-        The Agent payload exposes the asset id under either `id` (top-level)
-        or nested under `links` (`rel: Asset`); we read whatever shape the
-        console returns. Returns an empty set cleanly when the agents endpoint
-        is unavailable -- callers should check `is_agents_unavailable()` to
-        distinguish "no agents" from "no signal".
-        """
-        if self._agent_asset_ids_cache is not None:
-            return self._agent_asset_ids_cache
-
-        # Prime the unavailable flag via the existing agents() head-check.
-        self.agents()
-        if self._agents_unavailable:
-            self._agent_asset_ids_cache = set()
-            return self._agent_asset_ids_cache
-
-        ids: set[int] = set()
-        try:
-            for a in self._client.paginate("/api/3/agents", timeout=self._agents_timeout):
-                aid = _extract_agent_asset_id(a)
-                if aid is not None:
-                    ids.add(aid)
-        except Rapid7ClientError as e:
-            if self._mark_agents_unavailable_from_gateway_error(e):
-                self._agent_asset_ids_cache = set()
-                return self._agent_asset_ids_cache
-            raise
-        self._agent_asset_ids_cache = ids
-        return ids
-
-    def agent_asset_ids_sampled(self) -> tuple[list[int], int]:
-        """First-N sample of agent asset IDs paired with the population total.
-
-        Returns ``(sample_ids, total_count)``:
-            - ``total_count``: ``page.totalResources`` from the first page of
-              ``/api/3/agents``
-            - ``sample_ids``: up to ``self._sample_size`` IDs taken in API
-              default order (typically newest first)
-
-        Consumes at most ``sample_size`` agent records from ``/api/3/agents``
-        via ``itertools.islice``; the returned list may be shorter than
-        ``sample_size`` when some records carry neither a top-level ``id`` nor
-        a valid ``links[rel=Asset]`` href. Page fetches: at most
-        ``ceil(sample_size / 100)``.
-        Independent of ``full_scan`` -- always samples.
-
-        Returns ``([], 0)`` cleanly when ``/api/3/agents`` is unavailable
-        (404), and sets the same ``_agents_unavailable`` flag that
-        ``agents()`` and ``agent_asset_ids()`` use, so
-        ``is_agents_unavailable()`` reflects the state regardless of which
-        accessor was called first.
-
-        Cached separately from ``agents()`` and ``agent_asset_ids()``;
-        distinct shapes, distinct consumers.
-        """
-        if self._agent_asset_ids_sampled_cache is not None:
-            return self._agent_asset_ids_sampled_cache
-
-        total = self.agent_count()
-        if self._agents_unavailable:
-            self._agent_asset_ids_sampled_cache = ([], 0)
-            return self._agent_asset_ids_sampled_cache
-
-        sample_ids: list[int] = []
-        if total > 0:
-            try:
-                for a in itertools.islice(
-                    self._client.paginate("/api/3/agents", timeout=self._agents_timeout),
-                    self._sample_size,
-                ):
-                    aid = _extract_agent_asset_id(a)
-                    if aid is not None:
-                        sample_ids.append(aid)
-            except Rapid7ClientError as e:
-                if self._mark_agents_unavailable_from_gateway_error(e):
-                    self._agent_asset_ids_sampled_cache = ([], 0)
-                    return self._agent_asset_ids_sampled_cache
-                raise
-
-        self._agent_asset_ids_sampled_cache = (sample_ids, total)
-        return self._agent_asset_ids_sampled_cache
 
 
 

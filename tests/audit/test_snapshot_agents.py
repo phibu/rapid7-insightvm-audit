@@ -180,35 +180,6 @@ def test_agents_count_cache_invalidated_after_gateway_failure():
     assert snapshot.is_agents_unavailable() is True
 
 
-def test_agent_asset_ids_swallows_504_and_marks_unavailable():
-    """Full-fleet pagination via agent_asset_ids() must use the same swallow
-    pattern (agent_unauth_collision rule depends on this accessor)."""
-    client = MagicMock()
-    client.get.return_value = {"resources": [], "page": {"totalResources": 5000}}
-    client.paginate.side_effect = _raising_paginate(504)
-
-    snapshot = EnvSnapshot(client, full_scan=False, sample_size=100)
-    ids = snapshot.agent_asset_ids()
-
-    assert ids == set()
-    assert snapshot.is_agents_unavailable() is True
-
-
-def test_agent_asset_ids_sampled_swallows_504_and_marks_unavailable():
-    """Sampled pagination via agent_asset_ids_sampled() must use the same
-    swallow pattern (agent_only_assets rule depends on this accessor)."""
-    client = MagicMock()
-    client.get.return_value = {"resources": [], "page": {"totalResources": 5000}}
-    client.paginate.side_effect = _raising_paginate(504)
-
-    snapshot = EnvSnapshot(client, full_scan=False, sample_size=100)
-    sample_ids, total = snapshot.agent_asset_ids_sampled()
-
-    assert sample_ids == []
-    assert total == 0
-    assert snapshot.is_agents_unavailable() is True
-
-
 def test_is_agents_unavailable_false_before_first_call():
     client = MagicMock()
     snapshot = EnvSnapshot(client, full_scan=False, sample_size=10)
@@ -285,10 +256,10 @@ def test_agent_count_is_cached():
     assert client.call_count == 1
 
 
-def test_three_agent_accessors_share_one_head_request():
-    """agent_count(), agents(), and agent_asset_ids_sampled() must
-    collectively issue exactly one GET /api/3/agents?size=1 head request,
-    regardless of call order. Locks in the head-fetch unification."""
+def test_two_agent_accessors_share_one_head_request():
+    """agent_count() and agents() must collectively issue exactly one
+    GET /api/3/agents?size=1 head request, regardless of call order.
+    Locks in the head-fetch unification."""
     from rapid7_healthcheck.audit.snapshot import EnvSnapshot
 
     head_calls: list[dict] = []
@@ -306,17 +277,16 @@ def test_three_agent_accessors_share_one_head_request():
 
     snap.agent_count()
     snap.agents()
-    snap.agent_asset_ids_sampled()
     snap.agent_count()  # repeated -- still cached
 
     assert len(head_calls) == 1, (
         f"expected exactly one /api/3/agents?size=1 head request across "
-        f"all three accessors, got {len(head_calls)}"
+        f"both accessors, got {len(head_calls)}"
     )
 
 
 def test_agents_timeout_seconds_passed_to_every_agents_call_site():
-    """All four /api/3/agents call sites use the configured timeout."""
+    """All /api/3/agents call sites use the configured timeout."""
     from rapid7_healthcheck.audit.snapshot import EnvSnapshot
 
     calls: list = []
@@ -342,8 +312,6 @@ def test_agents_timeout_seconds_passed_to_every_agents_call_site():
     )
     snap.agent_count()
     snap.agents()
-    snap.agent_asset_ids()
-    snap.agent_asset_ids_sampled()
 
     agents_calls = [c for c in calls if c[1] == "/api/3/agents"]
     assert agents_calls, "no /api/3/agents calls recorded"
