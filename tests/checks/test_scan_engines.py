@@ -92,6 +92,31 @@ def test_engine_fail_when_last_contact_exceeds_fail_hours(fake_client, app_confi
     assert result.summary["engines_fail"] == 1
 
 
+def test_last_contact_handles_offsetless_timestamp(fake_client, app_config):
+    # Regression: the Console can emit lastRefreshedDate without an offset
+    # ("...T..:..:.." with no Z/+00:00). The old naive parser returned a naive
+    # datetime, and `aware_now - naive` raised TypeError, erroring the check.
+    # timewindow.parse_iso normalizes naive -> UTC, so the age computes and the
+    # long-stale engine flags fail instead of crashing.
+    old_offsetless = (
+        datetime.now(timezone.utc) - timedelta(hours=72)
+    ).replace(tzinfo=None).isoformat()
+    assert "+" not in old_offsetless and "Z" not in old_offsetless  # truly naive
+    fake_client.set_get(
+        "/api/3/scan_engines",
+        {
+            "resources": [
+                {"id": 1, "name": "offsetless", "status": "active",
+                 "lastRefreshedDate": old_offsetless, "sites": [10]},
+            ]
+        },
+    )
+    result = ScanEnginesCheck().run(fake_client, app_config)
+    assert result.status == "fail"  # not "error"
+    last_contact = _rule(result, "op.scan_engines.last_contact")
+    assert any(f.severity == "fail" and "offsetless" in f.message for f in last_contact.findings)
+
+
 @pytest.mark.parametrize(
     "status,expected_status,expected_severity",
     [

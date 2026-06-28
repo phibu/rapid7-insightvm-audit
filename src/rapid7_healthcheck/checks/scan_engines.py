@@ -6,6 +6,7 @@ from typing import Any, NamedTuple
 
 from rapid7_healthcheck._local_engine import is_local_engine
 from rapid7_healthcheck.audit import RuleResult
+from rapid7_healthcheck.audit.timewindow import parse_iso
 from rapid7_healthcheck.checks import CheckResult, Finding
 from rapid7_healthcheck.checks._op_rule import (
     make_rule_result,
@@ -62,15 +63,6 @@ _BAD_STATUS: dict[str, _BadStatus] = {
         "engine status is indeterminate",
     ),
 }
-
-
-def _parse_iso(value: str | None) -> datetime | None:
-    if not value:
-        return None
-    try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        return None
 
 
 def _engine_name(engine: dict) -> str:
@@ -132,7 +124,7 @@ class EngineLastContactRule:
             status = engine.get("status", "unknown")
             if status in _BAD_STATUS:
                 continue
-            last_refreshed = _parse_iso(engine.get("lastRefreshedDate"))
+            last_refreshed = parse_iso(engine.get("lastRefreshedDate"))
             if last_refreshed is None:
                 continue
             age_hours = (now - last_refreshed).total_seconds() / 3600.0
@@ -190,7 +182,7 @@ class EngineMissingLastRefreshRule:
             if is_local_engine(engine):
                 # Local engine is in-process; never has a lastRefreshedDate.
                 continue
-            if _parse_iso(engine.get("lastRefreshedDate")) is not None:
+            if parse_iso(engine.get("lastRefreshedDate")) is not None:
                 continue
             name = _engine_name(engine)
             findings.append(Finding(

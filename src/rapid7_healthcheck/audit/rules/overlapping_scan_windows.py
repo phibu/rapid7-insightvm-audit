@@ -1,40 +1,18 @@
 from __future__ import annotations
 
 import ipaddress
-import re
-from datetime import datetime, timedelta
+from datetime import timedelta
 from itertools import combinations
 
 from rapid7_healthcheck.audit import AuditRule, RuleResult, register
+from rapid7_healthcheck.audit.timewindow import (
+    parse_duration,
+    parse_iso,
+    windows_intersect,
+)
 from rapid7_healthcheck.checks import Finding
 
-# ISO 8601 duration parser, minimal: PT[nH][nM][nS]
-_DURATION_RE = re.compile(r"^P(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$")
-
 _DEFAULT_ASSUMED_SCAN_DURATION_MINUTES = 60
-
-
-def _parse_iso(value: str | None) -> datetime | None:
-    if not value:
-        return None
-    try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-
-
-def _parse_duration(value: str | None) -> timedelta:
-    if not value:
-        return timedelta(0)
-    m = _DURATION_RE.match(value)
-    if not m:
-        return timedelta(0)
-    h, mn, s = (int(x) if x else 0 for x in m.groups())
-    return timedelta(hours=h, minutes=mn, seconds=s)
-
-
-def _windows_intersect(a_start, a_end, b_start, b_end) -> bool:
-    return a_start < b_end and b_start < a_end
 
 
 def _parse_scope(targets: list) -> tuple[list, set[str]]:
@@ -126,10 +104,10 @@ class OverlappingScanWindowsRule(AuditRule):
             for sch in snapshot.site_schedules(sid):
                 if not sch.get("enabled", False):
                     continue
-                start = _parse_iso(sch.get("start"))
+                start = parse_iso(sch.get("start"))
                 if start is None:
                     continue
-                duration = _parse_duration(sch.get("duration"))
+                duration = parse_duration(sch.get("duration"))
                 end = start + duration if duration > timedelta(0) else start + assumed_duration
                 windows.append((sid, name, sch, start, end, scope))
 
@@ -138,7 +116,7 @@ class OverlappingScanWindowsRule(AuditRule):
         for (sid_a, name_a, sch_a, s_a, e_a, scope_a), (sid_b, name_b, sch_b, s_b, e_b, scope_b) in combinations(windows, 2):
             if sid_a == sid_b:
                 continue
-            if not _windows_intersect(s_a, e_a, s_b, e_b):
+            if not windows_intersect(s_a, e_a, s_b, e_b):
                 continue
             if not _scopes_intersect(scope_a, scope_b):
                 continue

@@ -6,6 +6,7 @@ from typing import Any, Callable, NamedTuple
 
 from rapid7_healthcheck.audit import RuleResult
 from rapid7_healthcheck.audit.snapshot import EnvSnapshot
+from rapid7_healthcheck.audit.timewindow import parse_iso
 from rapid7_healthcheck.checks import CheckResult, Finding
 from rapid7_healthcheck.checks._op_rule import (
     make_rule_result,
@@ -61,15 +62,6 @@ def _emit_overflow_rollup(
         ))
 
 
-def _parse_iso(value: str | None) -> datetime | None:
-    if not value:
-        return None
-    try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-
-
 @dataclass(frozen=True)
 class _ParsedScan:
     scan_id: int | None
@@ -111,7 +103,7 @@ def _fetch_parsed_sites(client, snapshot: "EnvSnapshot") -> list[_ParsedSiteScan
         parsed_scans: list[_ParsedScan] = []
         most_recent_finished: datetime | None = None
         for s in raw:
-            start_time = _parse_iso(s.get("startTime"))
+            start_time = parse_iso(s.get("startTime"))
             status = (s.get("status") or "").lower()
             parsed_scans.append(_ParsedScan(
                 scan_id=s.get("id"),
