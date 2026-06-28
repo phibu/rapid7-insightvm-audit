@@ -199,56 +199,12 @@ def test_build_thresholds_table_includes_all_keys():
     assert "data_quality.flag_empty_sites" in keys
 
 
-def test_run_checks_dispatches_every_check_with_uniform_kwargs():
-    """_run_checks passes snapshot, cloud_client, and progress to EVERY check
-    uniformly -- no branching on check name to decide which kwargs a check gets.
-    Each check uses what it needs; dispatch hands all three to all of them.
-    """
-    from unittest.mock import patch as _patch
-
-    from rapid7_healthcheck.__main__ import _run_checks
-
-    received: dict[str, dict] = {}
-
-    def make_check(check_name: str):
-        class _FakeCheck:
-            name = check_name
-            description = ""
-
-            def run(self, client, config, *, snapshot=None, cloud_client=None, progress=None):
-                received[check_name] = {
-                    "snapshot": snapshot,
-                    "cloud_client": cloud_client,
-                    "progress": progress,
-                }
-                return CheckResult(name=check_name, description="", status="pass")
-
-        return _FakeCheck
-
-    fake_registry = {"alpha_check": make_check("alpha_check"), "beta_check": make_check("beta_check")}
-
-    class _Cfg:
-        # checks.get(name, False) -- enable both fakes
-        checks = {"alpha_check": True, "beta_check": True}
-
-    sentinel_client = object()
-    sentinel_snapshot = object()
-    sentinel_cloud = object()
-
-    with _patch("rapid7_healthcheck.__main__._REGISTRY", fake_registry):
-        results = _run_checks(
-            sentinel_client,
-            _Cfg(),
-            sentinel_snapshot,
-            progress=None,
-            cloud_client=sentinel_cloud,
-        )
-
-    assert len(results) == 2
-    # Both checks received the SAME uniform kwargs -- dispatch did not special-case by name.
-    for name in ("alpha_check", "beta_check"):
-        assert received[name]["snapshot"] is sentinel_snapshot
-        assert received[name]["cloud_client"] is sentinel_cloud
+# The dispatch loop moved from __main__._run_checks to checks.dispatcher.
+# CheckDispatcher; its behavior (uniform kwargs, enable-gate, skip synthesis,
+# per-check isolation, progress choreography) is tested directly with an
+# injected fake registry in tests/checks/test_check_dispatcher.py -- no longer
+# by monkeypatching __main__._REGISTRY. The real-signature guard below stays
+# here because it introspects the actual _REGISTRY.
 
 
 def test_every_registered_check_run_accepts_uniform_kwargs():

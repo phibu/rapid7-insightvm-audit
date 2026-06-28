@@ -4,7 +4,6 @@ import argparse
 import logging
 import os
 import sys
-import time
 from dataclasses import fields
 from datetime import datetime, timezone
 from pathlib import Path
@@ -20,6 +19,7 @@ from rapid7_healthcheck.audit.cloud_drift import CloudDriftAuditCheck
 from rapid7_healthcheck.audit.template import TemplateAuditCheck
 from rapid7_healthcheck.audit.user_permission import UserPermissionAuditCheck
 from rapid7_healthcheck.checks import Check, CheckResult
+from rapid7_healthcheck.checks.dispatcher import CheckDispatcher
 from rapid7_healthcheck.checks.asset_coverage import AssetCoverageCheck
 from rapid7_healthcheck.checks.data_quality import DataQualityCheck
 from rapid7_healthcheck.checks.scan_activity import ScanActivityCheck
@@ -285,67 +285,6 @@ def _build_inventory_totals(snapshot: Any) -> "InventoryTotals | None":
         return None
 
 
-def _run_checks(
-    client: Any,
-    cfg: AppConfig,
-    snapshot: Any,
-    progress: "ProgressReporter | None" = None,
-    *,
-    cloud_client: Any = None,
-) -> list[CheckResult]:
-    # The caller owns the snapshot (since 0.6.6) so it can be shared with the
-    # inventory-totals builder. Op-checks accept it via the `snapshot=` kwarg;
-    # audit checks still build their own snapshot internally today (deferred
-    # cleanup -- see backlog).
-    results: list[CheckResult] = []
-    total = len(_REGISTRY)
-    for idx, (name, check_cls) in enumerate(_REGISTRY.items(), start=1):
-        enabled = cfg.checks.get(name, False)
-        instance = check_cls()
-        if not enabled:
-            results.append(CheckResult(
-                name=instance.name,
-                description=instance.description,
-                status="skipped",
-            ))
-            if progress is not None:
-                progress.finish_check(idx, total, instance.name, status_text="skipped")
-            continue
-        if progress is not None:
-            progress.start_check(idx, total, instance.name)
-        logger.info("running check: %s", instance.name)
-        start = time.monotonic()
-        try:
-            try:
-                # Every check accepts the same optional-kwarg superset and uses
-                # only what it needs (op-checks read snapshot, cloud-drift reads
-                # cloud_client, audits read progress). Dispatch is uniform -- no
-                # branching on check identity. See CONTEXT.md "Check dispatch".
-                results.append(instance.run(
-                    client, cfg,
-                    snapshot=snapshot,
-                    cloud_client=cloud_client,
-                    progress=progress,
-                ))
-            except Exception as e:  # per-check isolation
-                logger.exception("check %s failed", instance.name)
-                results.append(CheckResult(
-                    name=instance.name,
-                    description=instance.description,
-                    status="error",
-                    error=str(e),
-                    duration_ms=int((time.monotonic() - start) * 1000),
-                ))
-        finally:
-            if progress is not None:
-                from rapid7_healthcheck.progress import format_duration
-                progress.finish_check(
-                    idx, total, instance.name,
-                    status_text=format_duration(int((time.monotonic() - start) * 1000)),
-                )
-    return results
-
-
 def run(argv: list[str] | None = None) -> int:
     args = _parse_args(argv if argv is not None else sys.argv[1:])
     # First pass: stderr-only so config errors are visible. log_format is plain
@@ -426,7 +365,9 @@ def run(argv: list[str] | None = None) -> int:
         agents_timeout_seconds=cfg.audit.agents_timeout_seconds,
     )
 
-    results = _run_checks(client, cfg, snapshot, progress=progress, cloud_client=cloud_client)
+    results = CheckDispatcher(_REGISTRY).run(
+        client, cfg, snapshot, cloud_client=cloud_client, progress=progress,
+    )
 
     inventory_totals = _build_inventory_totals(snapshot)
 
