@@ -21,9 +21,11 @@ from dataclasses import dataclass
 
 from rapid7_healthcheck.checks import CheckResult
 
-# Rule-id -> summary-key map for the coverage figure. Owned here so report.py
-# and the checks stay ignorant of which keys feed the diagram (layer rules).
-_COVERAGE_CHECK_NAME = "Asset Coverage"
+# Rule-ids the coverage figure reads. Owned here so report.py and the checks
+# stay ignorant of which summary keys feed the diagram (layer rules). The
+# coverage *check name* is NOT owned here -- the caller passes it in, so
+# diagrams.py doesn't hardcode which check it reads (the figure -> section
+# binding lives in report.py).
 _STALE_RULE = "op.asset_coverage.stale_assets"
 _NEVER_RULE = "op.asset_coverage.never_scanned_assets"
 _AGENT_RULE = "op.asset_coverage.agent_only_assets"
@@ -62,18 +64,20 @@ def _summary_of(check: CheckResult, rule_id: str) -> dict:
 
 
 def extract_coverage_counts(
-    results: list[CheckResult], inventory
+    results: list[CheckResult], inventory, *, check_name: str
 ) -> CoverageData | None:
     """Pull the coverage figure's numbers from the run.
 
-    Returns ``None`` -- so the report omits the figure -- when there is no
-    inventory total to anchor the bands, no Asset Coverage check, or not one
-    usable band count among its rules. A diagram that can't be honest does not
-    render.
+    ``check_name`` is the name of the operational check whose rule-summaries
+    carry the coverage counts -- the caller supplies it (report.py owns the
+    figure -> section binding) so this module does not hardcode which check it
+    reads. Returns ``None`` -- so the report omits the figure -- when there is
+    no inventory total to anchor the bands, no matching check, or not one usable
+    band count among its rules. A diagram that can't be honest does not render.
     """
     if inventory is None:
         return None
-    check = _find(results, _COVERAGE_CHECK_NAME)
+    check = _find(results, check_name)
     if check is None:
         return None
 
