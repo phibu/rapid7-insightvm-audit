@@ -88,6 +88,23 @@ class IncludedTargets:
         return any(addr in net for net in self.networks)
 
 
+@dataclass(frozen=True)
+class SitePairing:
+    """Which sites pair to which scan-engine target -- the base pairing
+    invariant, computed once.
+
+    `by_engine` maps each `scanEngine` target id to the site ids that point at
+    it. The target may be an **engine id or a pool id** (the v3 `scanEngine`
+    field shares the id space); this container does **not** resolve pooling --
+    pool membership and unpaired-engine logic live in the topology builder, the
+    one caller that needs them. A site is paired iff its `scanEngine` is
+    *truthy*; `0` / `""` / `None` / missing all land in `orphan_site_ids`
+    (engine ids are positive ints in v3, so a `0` is not a valid engine).
+    """
+    by_engine: dict[int, list[int]] = field(default_factory=dict)
+    orphan_site_ids: list[int] = field(default_factory=list)
+
+
 def _expand_target(entry: str, *, range_cap: int = 1024) -> tuple[list[IPv4Network | IPv6Network], set[str]]:
     """Parse a single included-targets entry into (networks, literals).
 
@@ -151,6 +168,7 @@ class EnvSnapshot:
         self._agents_timeout = agents_timeout_seconds
 
         self._sites: list[dict] | None = None
+        self._sites_by_engine: SitePairing | None = None
         self._scan_engines: list[dict] | None = None
         self._scan_engine_pools: list[dict] | None = None
         self._shared_credentials: list[dict] | None = None
@@ -229,6 +247,29 @@ class EnvSnapshot:
 
     def sites(self) -> list[dict]:
         return self._cached("_sites", lambda: list(self._client.paginate("/api/3/sites")))
+
+    def sites_by_engine(self) -> SitePairing:
+        """Group site ids by their `scanEngine` pairing target.
+
+        The single home of the base pairing invariant (see [[SitePairing]] in
+        CONTEXT.md). A site is paired iff `scanEngine` is truthy; everything
+        else is an orphan. The target id may be an engine **or** a pool id --
+        this accessor groups by the raw value and does not resolve pools.
+        Reads the already-cached `sites()` listing, so it adds no API call;
+        cached so the grouping is computed once per run.
+        """
+        def _build() -> SitePairing:
+            by_engine: dict[int, list[int]] = {}
+            orphans: list[int] = []
+            for site in self.sites():
+                target = site.get("scanEngine")
+                if not target:
+                    orphans.append(site["id"])
+                    continue
+                by_engine.setdefault(target, []).append(site["id"])
+            return SitePairing(by_engine=by_engine, orphan_site_ids=orphans)
+
+        return self._cached("_sites_by_engine", _build)
 
     def scan_engines(self) -> list[dict]:
         """Return all scan engines from /api/3/scan_engines.

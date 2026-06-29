@@ -13,8 +13,10 @@ from rapid7_healthcheck.diagrams import (
 class _FakeSnapshot:
     """Minimal snapshot stand-in: returns canned lists, records nothing else.
 
-    build_topology must read only sites(), scan_engines(), scan_engine_pools(),
+    build_topology reads sites_by_engine(), scan_engines(), scan_engine_pools(),
     and site_asset_count() -- all already cached in a real run, so no new API.
+    The base site→engine grouping comes from the snapshot's SitePairing
+    accessor (CONTEXT.md "SitePairing"), not a re-derivation here.
     """
 
     def __init__(self, *, sites, engines, pools, asset_counts):
@@ -26,6 +28,18 @@ class _FakeSnapshot:
 
     def sites(self):
         return self._sites
+
+    def sites_by_engine(self):
+        from rapid7_healthcheck.audit.snapshot import SitePairing
+        by_engine: dict[int, list[int]] = {}
+        orphans: list[int] = []
+        for site in self._sites:
+            target = site.get("scanEngine")
+            if not target:
+                orphans.append(site["id"])
+                continue
+            by_engine.setdefault(target, []).append(site["id"])
+        return SitePairing(by_engine=by_engine, orphan_site_ids=orphans)
 
     def scan_engines(self):
         return self._engines

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from collections import defaultdict
-
 from rapid7_healthcheck.audit import AuditRule, RuleResult, register
 from rapid7_healthcheck.checks import Finding
 
@@ -27,11 +25,10 @@ class SingleEngineOverloadRule(AuditRule):
     def run(self, snapshot, severity, full_scan, sample_size, rule_config) -> RuleResult:
         threshold = int(rule_config.get("asset_count_threshold", _DEFAULT_THRESHOLD))
         engines_by_id = {e["id"]: e for e in snapshot.scan_engines()}
-        sites_by_engine: dict[int, list[int]] = defaultdict(list)
-        for site in snapshot.sites():
-            engine_id = site.get("scanEngine")
-            if engine_id is not None:
-                sites_by_engine[engine_id].append(site["id"])
+        # The base pairing invariant lives once, on the snapshot (see
+        # CONTEXT.md "SitePairing"); this rule reads the grouping rather than
+        # re-deriving it from sites().
+        sites_by_engine = snapshot.sites_by_engine().by_engine
 
         findings: list[Finding] = []
         engines_flagged = 0

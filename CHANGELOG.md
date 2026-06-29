@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Internal:** the site→scan-engine pairing invariant — "a site's `scanEngine` is its pairing target (an engine *or* a pool id)" — now lives in one cached accessor, `EnvSnapshot.sites_by_engine() -> SitePairing(by_engine, orphan_site_ids)`, instead of being re-derived in three places (`single_engine_overload`, `local_engine_production_scope`, and `diagrams.build_topology`). Those callers now read the grouping; a v3 schema change touches one module. The orphan guard is unified to *truthy* (`0`/`""`/`None`/missing all mean "no engine"), which only changes behavior for the degenerate `scanEngine == 0` case that does not occur in real v3 data (and where treating it as orphan is the more correct reading). No new API calls — `sites_by_engine()` reads the already-cached `sites()` listing. New `sites_by_engine()` tests in `test_snapshot.py`; the three callers' tests read through their fakes' new `sites_by_engine()`. See CONTEXT.md "SitePairing".
+
 ## [1.2.0] - 2026-06-29
 
 ### Added

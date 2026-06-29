@@ -486,6 +486,73 @@ def test_asset_group_member_count_cached_per_id():
     assert sum(1 for path, _ in c.get_calls if path == "/api/3/asset_groups/7/assets") == 1
 
 
+# --- sites_by_engine() / SitePairing ---------------------------------------
+
+
+def test_sites_by_engine_groups_by_scan_engine():
+    """Sites grouped by their `scanEngine` target id; one entry per target."""
+    c = _FakeClient()
+    c.set_paginate("/api/3/sites", [
+        {"id": 1, "scanEngine": 10},
+        {"id": 2, "scanEngine": 10},
+        {"id": 3, "scanEngine": 11},
+    ])
+    s = EnvSnapshot(c, full_scan=False, sample_size=500)
+    pairing = s.sites_by_engine()
+    assert pairing.by_engine == {10: [1, 2], 11: [3]}
+    assert pairing.orphan_site_ids == []
+
+
+def test_sites_by_engine_target_may_be_a_pool_id():
+    """A `scanEngine` value may reference a pool, not an engine; the accessor
+    groups by the raw target id and does NOT resolve pools (that lives in the
+    topology builder)."""
+    c = _FakeClient()
+    c.set_paginate("/api/3/sites", [
+        {"id": 1, "scanEngine": 99},   # 99 = a pool id
+        {"id": 2, "scanEngine": 10},
+    ])
+    s = EnvSnapshot(c, full_scan=False, sample_size=500)
+    pairing = s.sites_by_engine()
+    assert pairing.by_engine == {99: [1], 10: [2]}
+
+
+def test_sites_by_engine_truthy_guard_marks_orphans():
+    """Canonical guard is truthy: 0 / '' / None / missing scanEngine all mean
+    orphan (engine ids are positive ints in v3; 0 is not a valid engine)."""
+    c = _FakeClient()
+    c.set_paginate("/api/3/sites", [
+        {"id": 1, "scanEngine": 10},
+        {"id": 2},                      # missing
+        {"id": 3, "scanEngine": None},  # explicit None
+        {"id": 4, "scanEngine": 0},     # degenerate 0 -> orphan, not engine 0
+        {"id": 5, "scanEngine": ""},    # empty string -> orphan
+    ])
+    s = EnvSnapshot(c, full_scan=False, sample_size=500)
+    pairing = s.sites_by_engine()
+    assert pairing.by_engine == {10: [1]}
+    assert pairing.orphan_site_ids == [2, 3, 4, 5]
+
+
+def test_sites_by_engine_empty_when_no_sites():
+    c = _FakeClient()
+    c.set_paginate("/api/3/sites", [])
+    s = EnvSnapshot(c, full_scan=False, sample_size=500)
+    pairing = s.sites_by_engine()
+    assert pairing.by_engine == {}
+    assert pairing.orphan_site_ids == []
+
+
+def test_sites_by_engine_cached():
+    """Computed once: repeated calls don't re-paginate sites."""
+    c = _FakeClient()
+    c.set_paginate("/api/3/sites", [{"id": 1, "scanEngine": 10}])
+    s = EnvSnapshot(c, full_scan=False, sample_size=500)
+    s.sites_by_engine()
+    s.sites_by_engine()
+    assert sum(1 for path, _ in c.paginate_calls if path == "/api/3/sites") == 1
+
+
 def test_asset_group_member_count_returns_none_on_client_error():
     """Rapid7ClientError → None (caller surfaces an info finding)."""
     from rapid7_healthcheck.client import Rapid7ClientError

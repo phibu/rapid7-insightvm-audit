@@ -164,16 +164,12 @@ def build_topology(snapshot, *, overload_threshold: int = _OVERLOAD_THRESHOLD):
             pool_name_by_member[member_id] = pname
     pooled_engine_ids = set(pool_name_by_member)
 
-    # Sites grouped by their pairing target (engine id or pool id); orphans are
-    # sites with no scanEngine at all.
-    sites_by_target: dict[int, list[int]] = {}
-    orphan_site_count = 0
-    for site in snapshot.sites():
-        target = site.get("scanEngine")
-        if not target:
-            orphan_site_count += 1
-            continue
-        sites_by_target.setdefault(target, []).append(site["id"])
+    # Sites grouped by their pairing target (engine id or pool id) come from
+    # the snapshot's single SitePairing accessor (CONTEXT.md "SitePairing").
+    # Pool resolution below is topology-only and stays here.
+    pairing = snapshot.sites_by_engine()
+    sites_by_target = pairing.by_engine
+    orphan_site_count = len(pairing.orphan_site_ids)
 
     nodes: list[EngineNode] = []
     unpaired: list[str] = []
