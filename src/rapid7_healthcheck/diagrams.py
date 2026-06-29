@@ -411,7 +411,6 @@ def build_topology_svg(data: TopologyData) -> str:
 
     if data.unpaired_engines:
         names = ", ".join(data.unpaired_engines)
-        label = f"Unpaired engines (no sites): {names}"
         h = _ENGINE_H
         parts.append(f'<rect class="dg-mask" x="{right_x}" y="{ry}" width="{right_w}" height="{h}" rx="6"/>')
         parts.append(f'<rect class="dg-engine-warn" x="{right_x}" y="{ry}" width="{right_w}" height="{h}" rx="6"/>')
@@ -421,3 +420,125 @@ def build_topology_svg(data: TopologyData) -> str:
 
     height = max(y, ry) + _PAD
     return _svg(parts, height, "Scan engine topology")
+
+
+# --- health status map ------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class StatusRow:
+    """One check's rule-status rollup for the health status map.
+
+    ``error`` and ``skipped`` are kept distinct from pass/warn/fail because
+    they are not health signals: error = the rule could not be evaluated,
+    skipped = the rule is disabled. Folding either into "pass" would overstate
+    health.
+    """
+
+    check_name: str
+    rules_pass: int
+    rules_warn: int
+    rules_fail: int
+    rules_error: int
+    rules_skipped: int
+
+
+def extract_status_map(results: list[CheckResult]):
+    """One `StatusRow` per check that has `rule_results`, in render order.
+
+    Reads only the already-computed per-rule statuses -- no API, no snapshot.
+    Returns ``None`` when no check carries rule_results (a legacy/flat-only
+    run), so the report omits the figure.
+    """
+    rows: list[StatusRow] = []
+    for r in results:
+        if not r.rule_results:
+            continue
+        rows.append(StatusRow(
+            check_name=r.name,
+            rules_pass=sum(1 for rr in r.rule_results if rr.status == "pass"),
+            rules_warn=sum(1 for rr in r.rule_results if rr.status == "warn"),
+            rules_fail=sum(1 for rr in r.rule_results if rr.status == "fail"),
+            rules_error=sum(1 for rr in r.rule_results if rr.status == "error"),
+            rules_skipped=sum(1 for rr in r.rule_results if rr.status == "skipped"),
+        ))
+    return rows or None
+
+
+_ROW_H = 26
+_ROW_GAP = 6
+_NAME_W = 150
+_LEGEND_H = 22
+
+# Status -> segment class + legend label, in stack order (health first, then
+# the non-signal states). Order is the draw order left-to-right.
+_STATUS_SEGMENTS = [
+    ("pass", "dg-seg-pass", "pass"),
+    ("warn", "dg-seg-warn", "warn"),
+    ("fail", "dg-seg-fail", "fail"),
+    ("error", "dg-seg-error", "error"),
+    ("skipped", "dg-seg-skipped", "skipped"),
+]
+
+
+def build_status_map_svg(rows: list[StatusRow]) -> str:
+    """Build the health status map: one stacked bar per check.
+
+    Each bar's segments are proportional to that check's rule-status counts;
+    zero-count statuses emit no segment. Segment colors come from the report's
+    status palette via ``dg-seg-*`` classes. error/skipped render with their
+    own (non-health) colors so they never read as passing.
+    """
+    parts: list[str] = []
+    bar_x = _PAD + _NAME_W + 10
+    bar_w = _VIEW_W - _PAD - bar_x
+
+    y = _PAD
+    for row in rows:
+        counts = {
+            "pass": row.rules_pass, "warn": row.rules_warn, "fail": row.rules_fail,
+            "error": row.rules_error, "skipped": row.rules_skipped,
+        }
+        total = sum(counts.values())
+        # Check name (left), truncated by the column; right-aligned to the bar.
+        parts.append(f'<text class="dg-label" x="{_PAD}" y="{y + 18}">{_esc(row.check_name)}</text>')
+        # Track behind the segments so an all-zero row still reads as a bar.
+        parts.append(f'<rect class="dg-mask" x="{bar_x}" y="{y}" width="{bar_w}" height="{_ROW_H}" rx="4"/>')
+        parts.append(f'<rect class="dg-band-outer" x="{bar_x}" y="{y}" width="{bar_w}" height="{_ROW_H}" rx="4"/>')
+        if total > 0:
+            seg_x = bar_x
+            for key, cls, _label in _STATUS_SEGMENTS:
+                c = counts[key]
+                if not c:
+                    continue
+                seg_w = bar_w * c / total
+                parts.append(
+                    f'<rect class="{cls}" x="{seg_x:.1f}" y="{y}" '
+                    f'width="{seg_w:.1f}" height="{_ROW_H}"/>'
+                )
+                seg_x += seg_w
+        # Count label after the bar's worst-status summary.
+        summary = _status_summary(counts)
+        parts.append(
+            f'<text class="dg-count" x="{bar_x + bar_w - 6}" y="{y + 17}" '
+            f'text-anchor="end">{_esc(summary)}</text>'
+        )
+        y += _ROW_H + _ROW_GAP
+
+    # Legend row.
+    y += 4
+    lx = bar_x
+    for _key, cls, label in _STATUS_SEGMENTS:
+        parts.append(f'<rect class="{cls}" x="{lx}" y="{y}" width="11" height="11" rx="2"/>')
+        parts.append(f'<text class="dg-note" x="{lx + 15}" y="{y + 10}">{label}</text>')
+        lx += 22 + len(label) * 7
+    y += _LEGEND_H
+
+    height = y + _PAD
+    return _svg(parts, height, "Health status by check")
+
+
+def _status_summary(counts: dict[str, int]) -> str:
+    """Compact 'N pass · N warn · N fail' label; omits zero buckets."""
+    bits = [f"{counts[k]} {k}" for k in ("pass", "warn", "fail", "error", "skipped") if counts[k]]
+    return " · ".join(bits) if bits else "no rules"

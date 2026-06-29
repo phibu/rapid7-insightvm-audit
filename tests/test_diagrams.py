@@ -199,7 +199,9 @@ def test_report_embeds_coverage_diagram_in_asset_coverage_section():
         inventory_totals=_inventory(12000),
     )
     html = render_report(ctx)
-    assert 'class="dg-figure"' in html
+    # Match the coverage figure's aria-label specifically -- other diagrams
+    # (e.g. the status map) also carry class="dg-figure".
+    assert "Asset coverage threshold bands" in html
     # Themed via report vars -- the dg- CSS class block must be defined.
     assert ".dg-band-fail" in html
 
@@ -219,4 +221,6 @@ def test_report_omits_diagram_when_inventory_absent():
         inventory_totals=None,
     )
     html = render_report(ctx)
-    assert 'class="dg-figure"' not in html
+    # The coverage figure is omitted without inventory; assert on ITS label
+    # (the status map may still render from the same results).
+    assert "Asset coverage threshold bands" not in html

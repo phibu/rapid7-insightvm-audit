@@ -412,6 +412,13 @@
   .dg-engine-warn { fill: var(--warn-bg); stroke: var(--warn-fg); stroke-width: 1.5; }
   .dg-pool        { fill: none; stroke: var(--info-fg); stroke-width: 1; stroke-dasharray: 4 3; }
   .dg-edge        { stroke: var(--neutral-muted); stroke-width: 1.5; }
+  /* Health status map: per-check stacked bars. error/skipped use non-health
+     (info / muted) colors so they never read as passing. */
+  .dg-seg-pass    { fill: var(--pass-fg); }
+  .dg-seg-warn    { fill: var(--warn-fg); }
+  .dg-seg-fail    { fill: var(--fail-fg); }
+  .dg-seg-error   { fill: var(--info-fg); }
+  .dg-seg-skipped { fill: var(--neutral-muted); }
 
   /* Filter bar -- sticky from where it first appears in flow. */
   .filter-bar {
@@ -705,6 +712,9 @@
 {% endif %}
 
 <h2>Summary</h2>
+{% if status_map_svg %}
+<figure class="dg-wrap">{{ status_map_svg | safe }}</figure>
+{% endif %}
 <table>
   <thead>
     <tr><th>Check</th><th>Status</th><th>Findings</th><th style="text-align:right">Duration</th></tr>

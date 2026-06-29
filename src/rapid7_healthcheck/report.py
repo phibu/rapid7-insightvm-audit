@@ -208,6 +208,19 @@ def build_section_diagrams(
     return out
 
 
+def build_status_map(results: list[CheckResult]) -> str | None:
+    """Build the Summary-section health status map SVG, or None to omit it.
+
+    Pure: delegates to `diagrams.py`. Unlike the per-check `section_diagrams`,
+    the status map spans all checks and renders in the Summary section, so it
+    is its own template variable. See CONTEXT.md "Report diagram".
+    """
+    rows = diagrams.extract_status_map(results)
+    if rows is None:
+        return None
+    return diagrams.build_status_map_svg(rows)
+
+
 @dataclass(frozen=True)
 class InventoryTotals:
     """At-a-glance inventory counters rendered at the top of the report."""
@@ -363,6 +376,7 @@ def render_report(ctx: ReportContext, *, prior_state: dict | None = None) -> str
     section_diagrams = build_section_diagrams(
         ctx.results, inventory_totals=ctx.inventory_totals, topology=ctx.topology
     )
+    status_map_svg = build_status_map(ctx.results)
 
     return template.render(
         title=ctx.title,
@@ -383,6 +397,7 @@ def render_report(ctx: ReportContext, *, prior_state: dict | None = None) -> str
         card_views=card_views,
         rail_counts=rail_counts,
         section_diagrams=section_diagrams,
+        status_map_svg=status_map_svg,
     )
 
 
