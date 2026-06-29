@@ -8,7 +8,7 @@ from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-from rapid7_healthcheck import state_engine
+from rapid7_healthcheck import diagrams, state_engine
 from rapid7_healthcheck.audit.rule_rollup import rule_summary, worst_status
 from rapid7_healthcheck.checks import CheckResult, Finding, findings_of
 
@@ -183,6 +183,31 @@ def build_rail_counts(results: list[CheckResult]) -> list[dict[str, int]]:
     return counts
 
 
+_SCAN_ENGINES_CHECK_NAME = "Scan Engines"
+
+
+def build_section_diagrams(
+    results: list[CheckResult],
+    *,
+    inventory_totals: "InventoryTotals | None",
+    topology: "diagrams.TopologyData | None" = None,
+) -> dict[str, str]:
+    """Build per-check inline-SVG diagrams, keyed by check name.
+
+    Pure: delegates to `diagrams.py` (which reads only numbers the run already
+    holds -- no API). A check appears in the dict only when its diagram has
+    honest inputs; the template emits `section_diagrams[r.name]` when present
+    and omits it otherwise. See CONTEXT.md "Report diagram".
+    """
+    out: dict[str, str] = {}
+    coverage = diagrams.extract_coverage_counts(results, inventory_totals)
+    if coverage is not None:
+        out[diagrams._COVERAGE_CHECK_NAME] = diagrams.build_coverage_svg(coverage)
+    if topology is not None and topology.engines:
+        out[_SCAN_ENGINES_CHECK_NAME] = diagrams.build_topology_svg(topology)
+    return out
+
+
 @dataclass(frozen=True)
 class InventoryTotals:
     """At-a-glance inventory counters rendered at the top of the report."""
@@ -208,6 +233,7 @@ class ReportContext:
     results: list[CheckResult]
     thresholds_table: list[tuple[str, str]] = field(default_factory=list)
     inventory_totals: "InventoryTotals | None" = None
+    topology: "diagrams.TopologyData | None" = None
 
 
 # The hero verdict for each worst-status outcome: (css-class, label). The
@@ -334,6 +360,9 @@ def render_report(ctx: ReportContext, *, prior_state: dict | None = None) -> str
     )
     card_views = build_card_views(ctx.results, delta=state.delta)
     rail_counts = build_rail_counts(ctx.results)
+    section_diagrams = build_section_diagrams(
+        ctx.results, inventory_totals=ctx.inventory_totals, topology=ctx.topology
+    )
 
     return template.render(
         title=ctx.title,
@@ -353,6 +382,7 @@ def render_report(ctx: ReportContext, *, prior_state: dict | None = None) -> str
         inventory_totals=ctx.inventory_totals,
         card_views=card_views,
         rail_counts=rail_counts,
+        section_diagrams=section_diagrams,
     )
 
 

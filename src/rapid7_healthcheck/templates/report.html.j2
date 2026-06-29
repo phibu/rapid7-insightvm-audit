@@ -390,6 +390,29 @@
     --info-fg: #6aa6ee; --info-bg: rgba(106,166,238,0.14);
     --builtin-fg: #c4a4ee; --builtin-bg: rgba(138,92,209,0.16); --builtin-accent: #8a5cd1;
   }
+
+  /* Report diagrams (diagrams.py). Inline SVG themed with the report's own
+     CSS vars via dg-* classes -- one theme system, one toggle (ADR-0008).
+     The two-rect mask sits opaque under each styled band so nothing bleeds
+     through; fills/strokes resolve to the active theme's variables. */
+  .dg-wrap { margin: 0 0 16px; }
+  .dg-figure { width: 100%; height: auto; font-family: var(--font-sans); }
+  .dg-mask { fill: var(--bg); }
+  .dg-band-outer { fill: var(--surface); stroke: var(--border); stroke-width: 1; }
+  .dg-band-warn  { fill: var(--warn-bg); stroke: var(--warn-fg); stroke-width: 1.5; }
+  .dg-band-fail  { fill: var(--fail-bg); stroke: var(--fail-fg); stroke-width: 1.5; }
+  .dg-flag       { fill: var(--info-bg); stroke: var(--info-fg); stroke-width: 1; }
+  .dg-label { fill: var(--neutral-fg); font-size: 12px; font-weight: 600; }
+  .dg-count { fill: var(--neutral-fg); font-size: 12px; font-weight: 700; }
+  .dg-chip  { fill: var(--info-fg); font-size: 11px; font-weight: 600; }
+  .dg-note  { fill: var(--neutral-muted); font-size: 10px; font-weight: 600; letter-spacing: 0.04em; }
+  /* Topology figure: engine cards, pool boundaries, the sites->engines edge. */
+  .dg-engine      { fill: var(--surface); stroke: var(--border); stroke-width: 1.5; }
+  .dg-engine-fail { fill: var(--fail-bg); stroke: var(--fail-fg); stroke-width: 1.5; }
+  .dg-engine-warn { fill: var(--warn-bg); stroke: var(--warn-fg); stroke-width: 1.5; }
+  .dg-pool        { fill: none; stroke: var(--info-fg); stroke-width: 1; stroke-dasharray: 4 3; }
+  .dg-edge        { stroke: var(--neutral-muted); stroke-width: 1.5; }
+
   /* Filter bar -- sticky from where it first appears in flow. */
   .filter-bar {
     position: sticky;
@@ -717,6 +740,10 @@
 <section class="check" id="check-{{ loop.index }}">
   <h2>{{ r.name }} <span class="badge {{ r.status }}">{{ r.status|upper }}</span></h2>
   <p class="check-desc">{{ r.description }}</p>
+
+  {% if section_diagrams and section_diagrams.get(r.name) %}
+  <figure class="dg-wrap">{{ section_diagrams[r.name] | safe }}</figure>
+  {% endif %}
 
   {% if r.status == "error" %}
     <div class="error-box"><b>Check failed to run:</b> {{ r.error }}</div>

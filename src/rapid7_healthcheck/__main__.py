@@ -12,7 +12,7 @@ from urllib.parse import urlparse
 
 from dotenv import load_dotenv
 
-from rapid7_healthcheck import __version__
+from rapid7_healthcheck import __version__, diagrams
 from rapid7_healthcheck.audit import ConfigurationAuditCheck
 from rapid7_healthcheck.audit.rule_rollup import worst_status
 from rapid7_healthcheck.audit.cloud_drift import CloudDriftAuditCheck
@@ -285,6 +285,22 @@ def _build_inventory_totals(snapshot: Any) -> "InventoryTotals | None":
         return None
 
 
+def _build_topology(snapshot: Any):
+    """Build the scan-topology view-model from the shared EnvSnapshot.
+
+    Reads only already-cached snapshot data (sites, scan_engines, pools, and
+    the inline per-site asset count) -- no new API calls. Like the inventory
+    strip, a single accessor failure logs and returns None so the report just
+    skips the topology figure rather than aborting. See CONTEXT.md
+    "Report diagram".
+    """
+    try:
+        return diagrams.build_topology(snapshot)
+    except Exception:
+        logger.exception("topology build failed; report will skip the figure")
+        return None
+
+
 def run(argv: list[str] | None = None) -> int:
     args = _parse_args(argv if argv is not None else sys.argv[1:])
     # First pass: stderr-only so config errors are visible. log_format is plain
@@ -370,6 +386,7 @@ def run(argv: list[str] | None = None) -> int:
     )
 
     inventory_totals = _build_inventory_totals(snapshot)
+    topology = _build_topology(snapshot)
 
     progress.newline_if_needed()
     ctx = ReportContext(
@@ -381,6 +398,7 @@ def run(argv: list[str] | None = None) -> int:
         results=results,
         thresholds_table=build_thresholds_table(cfg),
         inventory_totals=inventory_totals,
+        topology=topology,
     )
 
     if args.output:
