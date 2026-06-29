@@ -228,7 +228,9 @@ def _ctx_with_topology(topology):
     )
 
 
-def test_report_embeds_topology_in_scan_engines_section():
+def test_report_renders_topology_figure():
+    # Location (the Diagrams view) is asserted in test_report_view_switch;
+    # this just confirms the figure renders end-to-end through the report.
     from rapid7_healthcheck.report import render_report
 
     html = render_report(_ctx_with_topology(_topo()))

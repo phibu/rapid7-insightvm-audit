@@ -184,7 +184,8 @@ def _full_coverage_results() -> list[CheckResult]:
     ]
 
 
-def test_report_embeds_coverage_diagram_in_asset_coverage_section():
+def test_report_renders_coverage_diagram():
+    # Location (the Diagrams view) is asserted in test_report_view_switch.
     from datetime import datetime, timezone
 
     from rapid7_healthcheck.report import ReportContext, render_report

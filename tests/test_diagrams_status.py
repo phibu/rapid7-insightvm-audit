@@ -128,7 +128,8 @@ def test_status_svg_renders_skipped_and_error_distinctly():
 # --- report integration -----------------------------------------------------
 
 
-def test_report_embeds_status_map_in_summary():
+def test_report_renders_status_map():
+    # Location (the Diagrams view) is asserted in test_report_view_switch.
     from datetime import datetime, timezone
 
     from rapid7_healthcheck.report import ReportContext, render_report

@@ -7,7 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.2.1] - 2026-06-29
+### Changed
+
+- **Report:** the three diagrams (health status map, coverage bands, scan topology) moved out of the inline check sections / Summary into a dedicated **Diagrams view**, reached by a Findings/Diagrams **view switch** at the top of the report. The switch is CSS-only (hidden-radio + label tabs) so it works with JavaScript disabled, and it uses **no `location.hash`** so it can't collide with the filter bar's hash sync or scroll-spy (see [ADR-0009](docs/adr/0009-report-view-switch-hidden-radio-not-target.md)). Findings is the default view, so the diagrams take no vertical space until selected; the filter bar belongs to Findings and hides on the Diagrams view. Printing renders **both** views (the report stays a complete archival artifact). The view switch and Diagrams view appear only when there is at least one diagram. See CONTEXT.md "View switch".
+- **Report:** the scan-topology figure is more compact — engine/orphan/unpaired cards are now a single line (name + "N sites · M assets") in a shorter box (`_ENGINE_H` 40→28, tighter gaps), cutting the figure's height ~25–30% at every fleet size without dropping any engine. SVG content is unchanged (same engines, counts, classes); only the layout footprint shrank.
 
 ### Changed
 
