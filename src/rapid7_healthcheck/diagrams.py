@@ -21,9 +21,11 @@ from dataclasses import dataclass
 
 from rapid7_healthcheck.checks import CheckResult
 
-# Rule-id -> summary-key map for the coverage figure. Owned here so report.py
-# and the checks stay ignorant of which keys feed the diagram (layer rules).
-_COVERAGE_CHECK_NAME = "Asset Coverage"
+# Rule-ids the coverage figure reads. Owned here so report.py and the checks
+# stay ignorant of which summary keys feed the diagram (layer rules). The
+# coverage *check name* is NOT owned here -- the caller passes it in, so
+# diagrams.py doesn't hardcode which check it reads (the figure -> section
+# binding lives in report.py).
 _STALE_RULE = "op.asset_coverage.stale_assets"
 _NEVER_RULE = "op.asset_coverage.never_scanned_assets"
 _AGENT_RULE = "op.asset_coverage.agent_only_assets"
@@ -62,18 +64,20 @@ def _summary_of(check: CheckResult, rule_id: str) -> dict:
 
 
 def extract_coverage_counts(
-    results: list[CheckResult], inventory
+    results: list[CheckResult], inventory, *, check_name: str
 ) -> CoverageData | None:
     """Pull the coverage figure's numbers from the run.
 
-    Returns ``None`` -- so the report omits the figure -- when there is no
-    inventory total to anchor the bands, no Asset Coverage check, or not one
-    usable band count among its rules. A diagram that can't be honest does not
-    render.
+    ``check_name`` is the name of the operational check whose rule-summaries
+    carry the coverage counts -- the caller supplies it (report.py owns the
+    figure -> section binding) so this module does not hardcode which check it
+    reads. Returns ``None`` -- so the report omits the figure -- when there is
+    no inventory total to anchor the bands, no matching check, or not one usable
+    band count among its rules. A diagram that can't be honest does not render.
     """
     if inventory is None:
         return None
-    check = _find(results, _COVERAGE_CHECK_NAME)
+    check = _find(results, check_name)
     if check is None:
         return None
 
@@ -164,16 +168,12 @@ def build_topology(snapshot, *, overload_threshold: int = _OVERLOAD_THRESHOLD):
             pool_name_by_member[member_id] = pname
     pooled_engine_ids = set(pool_name_by_member)
 
-    # Sites grouped by their pairing target (engine id or pool id); orphans are
-    # sites with no scanEngine at all.
-    sites_by_target: dict[int, list[int]] = {}
-    orphan_site_count = 0
-    for site in snapshot.sites():
-        target = site.get("scanEngine")
-        if not target:
-            orphan_site_count += 1
-            continue
-        sites_by_target.setdefault(target, []).append(site["id"])
+    # Sites grouped by their pairing target (engine id or pool id) come from
+    # the snapshot's single SitePairing accessor (CONTEXT.md "SitePairing").
+    # Pool resolution below is topology-only and stays here.
+    pairing = snapshot.sites_by_engine()
+    sites_by_target = pairing.by_engine
+    orphan_site_count = len(pairing.orphan_site_ids)
 
     nodes: list[EngineNode] = []
     unpaired: list[str] = []
@@ -221,6 +221,20 @@ def _num(n: int) -> str:
     return f"{n:,}"
 
 
+def _masked_rect(parts: list[str], x, y, w, h, cls: str, *, rx: int = 6) -> None:
+    """Append the cardinal two-rect mask pair: an opaque `dg-mask` rect, then
+    the styled `cls` rect of identical geometry on top.
+
+    The one home of the archify cardinal rule (ADR-0008) -- a styled box's fill
+    may be semi-transparent, so it must sit on an opaque mask or arrows/segments
+    bleed through. Open-coded 7× before this; the per-figure label/count/sub
+    placement legitimately varies and stays in each builder. `rx` is 6 for the
+    rounded figure boxes, 4 for the status-map row track. The
+    test_diagrams_mask_invariant suite locks "every styled box is masked"."""
+    parts.append(f'<rect class="dg-mask" x="{x}" y="{y}" width="{w}" height="{h}" rx="{rx}"/>')
+    parts.append(f'<rect class="{cls}" x="{x}" y="{y}" width="{w}" height="{h}" rx="{rx}"/>')
+
+
 def build_coverage_svg(data: CoverageData) -> str:
     """Build the coverage-bands SVG: honest *nested* threshold bands.
 
@@ -255,9 +269,7 @@ def build_coverage_svg(data: CoverageData) -> str:
         x = _PAD + inset
         w = _VIEW_W - 2 * _PAD - inset
         cls = "dg-band-outer" if i == 0 else ("dg-band-warn" if i < n - 1 else "dg-band-fail")
-        # Two-rect mask: opaque under styled (archify cardinal pattern).
-        parts.append(f'<rect class="dg-mask" x="{x}" y="{y}" width="{w}" height="{_BAND_H}" rx="6"/>')
-        parts.append(f'<rect class="{cls}" x="{x}" y="{y}" width="{w}" height="{_BAND_H}" rx="6"/>')
+        _masked_rect(parts, x, y, w, _BAND_H, cls)
         parts.append(
             f'<text class="dg-label" x="{x + 12}" y="{y + 27}">{_esc(label)}</text>'
         )
@@ -283,8 +295,7 @@ def build_coverage_svg(data: CoverageData) -> str:
         for label, count in flags:
             chip = f"{label}: {_num(count)}"
             cw = 12 + len(chip) * 7
-            parts.append(f'<rect class="dg-mask" x="{fx}" y="{y}" width="{cw}" height="{_FLAG_H}" rx="6"/>')
-            parts.append(f'<rect class="dg-flag" x="{fx}" y="{y}" width="{cw}" height="{_FLAG_H}" rx="6"/>')
+            _masked_rect(parts, fx, y, cw, _FLAG_H, "dg-flag")
             parts.append(
                 f'<text class="dg-chip" x="{fx + cw / 2:.0f}" y="{y + 20}" text-anchor="middle">{_esc(chip)}</text>'
             )
@@ -345,8 +356,7 @@ def build_topology_svg(data: TopologyData) -> str:
 
     # Left lane: paired + orphan buckets.
     paired_label = f"Paired sites: {_num(data.total_paired_sites)}"
-    parts.append(f'<rect class="dg-mask" x="{left_x}" y="{y}" width="{left_w}" height="{_ENGINE_H}" rx="6"/>')
-    parts.append(f'<rect class="dg-band-outer" x="{left_x}" y="{y}" width="{left_w}" height="{_ENGINE_H}" rx="6"/>')
+    _masked_rect(parts, left_x, y, left_w, _ENGINE_H, "dg-band-outer")
     parts.append(f'<text class="dg-label" x="{left_x + 10}" y="{y + 25}">{_esc(paired_label)}</text>')
     # The "flows to" connector into the right lane.
     arrow_y = y + _ENGINE_H // 2
@@ -358,8 +368,7 @@ def build_topology_svg(data: TopologyData) -> str:
 
     if data.orphan_site_count:
         orphan_label = f"Orphan sites (no engine): {_num(data.orphan_site_count)}"
-        parts.append(f'<rect class="dg-mask" x="{left_x}" y="{y}" width="{left_w}" height="{_ENGINE_H}" rx="6"/>')
-        parts.append(f'<rect class="dg-band-fail" x="{left_x}" y="{y}" width="{left_w}" height="{_ENGINE_H}" rx="6"/>')
+        _masked_rect(parts, left_x, y, left_w, _ENGINE_H, "dg-band-fail")
         parts.append(f'<text class="dg-label" x="{left_x + 10}" y="{y + 18}">Orphan sites ⚠</text>')
         parts.append(f'<text class="dg-count" x="{left_x + 10}" y="{y + 33}" text-anchor="start">{_num(data.orphan_site_count)} no engine</text>')
         y += _ENGINE_H + _ENGINE_GAP
@@ -377,8 +386,7 @@ def build_topology_svg(data: TopologyData) -> str:
     def _engine_card(e: EngineNode, x: int, w: int, yy: int) -> int:
         cls = "dg-engine-fail" if e.overloaded else "dg-engine"
         flag = " ⚠" if e.overloaded else ""
-        parts.append(f'<rect class="dg-mask" x="{x}" y="{yy}" width="{w}" height="{_ENGINE_H}" rx="6"/>')
-        parts.append(f'<rect class="{cls}" x="{x}" y="{yy}" width="{w}" height="{_ENGINE_H}" rx="6"/>')
+        _masked_rect(parts, x, yy, w, _ENGINE_H, cls)
         parts.append(f'<text class="dg-label" x="{x + 10}" y="{yy + 18}">{_esc(e.name)}{flag}</text>')
         sub = f"{_num(e.site_count)} sites · {_num(e.asset_load)} assets"
         parts.append(f'<text class="dg-count" x="{x + 10}" y="{yy + 33}" text-anchor="start">{_esc(sub)}</text>')
@@ -412,8 +420,7 @@ def build_topology_svg(data: TopologyData) -> str:
     if data.unpaired_engines:
         names = ", ".join(data.unpaired_engines)
         h = _ENGINE_H
-        parts.append(f'<rect class="dg-mask" x="{right_x}" y="{ry}" width="{right_w}" height="{h}" rx="6"/>')
-        parts.append(f'<rect class="dg-engine-warn" x="{right_x}" y="{ry}" width="{right_w}" height="{h}" rx="6"/>')
+        _masked_rect(parts, right_x, ry, right_w, h, "dg-engine-warn")
         parts.append(f'<text class="dg-label" x="{right_x + 10}" y="{ry + 18}">Unpaired engines ⚠</text>')
         parts.append(f'<text class="dg-count" x="{right_x + 10}" y="{ry + 33}" text-anchor="start">{_esc(names)}</text>')
         ry += h + _ENGINE_GAP
@@ -503,8 +510,7 @@ def build_status_map_svg(rows: list[StatusRow]) -> str:
         # Check name (left), truncated by the column; right-aligned to the bar.
         parts.append(f'<text class="dg-label" x="{_PAD}" y="{y + 18}">{_esc(row.check_name)}</text>')
         # Track behind the segments so an all-zero row still reads as a bar.
-        parts.append(f'<rect class="dg-mask" x="{bar_x}" y="{y}" width="{bar_w}" height="{_ROW_H}" rx="4"/>')
-        parts.append(f'<rect class="dg-band-outer" x="{bar_x}" y="{y}" width="{bar_w}" height="{_ROW_H}" rx="4"/>')
+        _masked_rect(parts, bar_x, y, bar_w, _ROW_H, "dg-band-outer", rx=4)
         if total > 0:
             seg_x = bar_x
             for key, cls, _label in _STATUS_SEGMENTS:

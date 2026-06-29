@@ -53,7 +53,7 @@ def test_extract_pulls_counts_from_rule_summaries_and_inventory():
         _rule("op.asset_coverage.agent_only_assets", {"agent_only_count": 400}),
         _rule("op.asset_coverage.ghost_assets", {"ghost_count": 120}),
     )
-    data = extract_coverage_counts([check], _inventory(12000))
+    data = extract_coverage_counts([check], _inventory(12000), check_name="Asset Coverage")
     assert data == CoverageData(
         total_assets=12000,
         stale=3000,
@@ -69,18 +69,18 @@ def test_extract_returns_none_without_inventory():
     check = _coverage_check(
         _rule("op.asset_coverage.stale_assets", {"stale_count": 3000}),
     )
-    assert extract_coverage_counts([check], None) is None
+    assert extract_coverage_counts([check], None, check_name="Asset Coverage") is None
 
 
 def test_extract_returns_none_when_total_assets_missing():
     # total_asset_count() can be unavailable -> InventoryTotals absent is the
     # signal; but a zero total is a real, drawable population (empty console).
-    assert extract_coverage_counts([_coverage_check()], None) is None
+    assert extract_coverage_counts([_coverage_check()], None, check_name="Asset Coverage") is None
 
 
 def test_extract_returns_none_without_coverage_check():
     other = CheckResult(name="Scan Engines", description="x", status="pass")
-    assert extract_coverage_counts([other], _inventory()) is None
+    assert extract_coverage_counts([other], _inventory(), check_name="Asset Coverage") is None
 
 
 def test_extract_returns_none_when_no_usable_band_counts():
@@ -88,7 +88,7 @@ def test_extract_returns_none_when_no_usable_band_counts():
     check = _coverage_check(
         _rule("op.asset_coverage.stale_assets", {"stale_asset_days": 30}),  # no stale_count
     )
-    assert extract_coverage_counts([check], _inventory()) is None
+    assert extract_coverage_counts([check], _inventory(), check_name="Asset Coverage") is None
 
 
 def test_extract_tolerates_missing_optional_bands():
@@ -96,7 +96,7 @@ def test_extract_tolerates_missing_optional_bands():
     check = _coverage_check(
         _rule("op.asset_coverage.stale_assets", {"stale_count": 3000, "stale_asset_days": 30}),
     )
-    data = extract_coverage_counts([check], _inventory(12000))
+    data = extract_coverage_counts([check], _inventory(12000), check_name="Asset Coverage")
     assert data is not None
     assert data.stale == 3000
     assert data.never_scanned is None

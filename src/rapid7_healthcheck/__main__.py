@@ -7,12 +7,11 @@ import sys
 from dataclasses import fields
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
 from urllib.parse import urlparse
 
 from dotenv import load_dotenv
 
-from rapid7_healthcheck import __version__, diagrams
+from rapid7_healthcheck import __version__
 from rapid7_healthcheck.audit import ConfigurationAuditCheck
 from rapid7_healthcheck.audit.rule_rollup import worst_status
 from rapid7_healthcheck.audit.cloud_drift import CloudDriftAuditCheck
@@ -38,7 +37,12 @@ from rapid7_healthcheck.config import (
     Rapid7Config,
     load_config,
 )
-from rapid7_healthcheck.report import InventoryTotals, ReportContext, write_report
+from rapid7_healthcheck.report import (
+    ReportContext,
+    build_inventory_totals,
+    build_topology,
+    write_report,
+)
 
 
 EXIT_HEALTHY = 0
@@ -261,46 +265,6 @@ def pick_exit_code(results: list[CheckResult]) -> int:
     return _EXIT_BY_STATUS[worst_status(results)]
 
 
-def _build_inventory_totals(snapshot: Any) -> "InventoryTotals | None":
-    """Build the InventoryTotals dataclass from the shared EnvSnapshot.
-
-    A single snapshot-accessor failure should not kill the whole report --
-    if any accessor raises, log and return None, and the template skips
-    the inventory strip.
-    """
-    try:
-        groups = snapshot.asset_groups()
-        static = sum(1 for g in groups if g.get("type") == "static")
-        dynamic = sum(1 for g in groups if g.get("type") == "dynamic")
-        return InventoryTotals(
-            total_assets=snapshot.total_asset_count(),
-            total_sites=len(snapshot.sites()),
-            total_scan_engines=len(snapshot.scan_engines()),
-            total_asset_groups_static=static,
-            total_asset_groups_dynamic=dynamic,
-            total_scans=snapshot.scans_total(),
-        )
-    except Exception:
-        logger.exception("inventory totals build failed; report will skip the strip")
-        return None
-
-
-def _build_topology(snapshot: Any):
-    """Build the scan-topology view-model from the shared EnvSnapshot.
-
-    Reads only already-cached snapshot data (sites, scan_engines, pools, and
-    the inline per-site asset count) -- no new API calls. Like the inventory
-    strip, a single accessor failure logs and returns None so the report just
-    skips the topology figure rather than aborting. See CONTEXT.md
-    "Report diagram".
-    """
-    try:
-        return diagrams.build_topology(snapshot)
-    except Exception:
-        logger.exception("topology build failed; report will skip the figure")
-        return None
-
-
 def run(argv: list[str] | None = None) -> int:
     args = _parse_args(argv if argv is not None else sys.argv[1:])
     # First pass: stderr-only so config errors are visible. log_format is plain
@@ -385,8 +349,8 @@ def run(argv: list[str] | None = None) -> int:
         client, cfg, snapshot, cloud_client=cloud_client, progress=progress,
     )
 
-    inventory_totals = _build_inventory_totals(snapshot)
-    topology = _build_topology(snapshot)
+    inventory_totals = build_inventory_totals(snapshot)
+    topology = build_topology(snapshot)
 
     progress.newline_if_needed()
     ctx = ReportContext(

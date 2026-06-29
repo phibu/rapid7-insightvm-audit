@@ -2,15 +2,19 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from rapid7_healthcheck import diagrams, state_engine
 from rapid7_healthcheck.audit.rule_rollup import rule_summary, worst_status
 from rapid7_healthcheck.checks import CheckResult, Finding, findings_of
+
+logger = logging.getLogger(__name__)
 
 _TEMPLATE_DIR = Path(__file__).parent / "templates"
 
@@ -183,7 +187,54 @@ def build_rail_counts(results: list[CheckResult]) -> list[dict[str, int]]:
     return counts
 
 
+# The figure -> check-section binding lives here: report owns which diagram
+# renders in which check section. `diagrams.py` stays ignorant of section names
+# (it is handed the coverage check name, rather than hardcoding it).
+_COVERAGE_CHECK_NAME = "Asset Coverage"
 _SCAN_ENGINES_CHECK_NAME = "Scan Engines"
+
+
+def build_inventory_totals(snapshot: Any) -> "InventoryTotals | None":
+    """Build the InventoryTotals view-model from the shared EnvSnapshot.
+
+    A single snapshot-accessor failure should not kill the whole report -- if
+    any accessor raises, log and return None, and the template skips the
+    inventory strip. Reads already-cached snapshot accessors only (no new API).
+    Lives in the report layer (not `__main__`) because it constructs a report
+    view-model; `__main__` only wires.
+    """
+    try:
+        groups = snapshot.asset_groups()
+        static = sum(1 for g in groups if g.get("type") == "static")
+        dynamic = sum(1 for g in groups if g.get("type") == "dynamic")
+        return InventoryTotals(
+            total_assets=snapshot.total_asset_count(),
+            total_sites=len(snapshot.sites()),
+            total_scan_engines=len(snapshot.scan_engines()),
+            total_asset_groups_static=static,
+            total_asset_groups_dynamic=dynamic,
+            total_scans=snapshot.scans_total(),
+        )
+    except Exception:
+        logger.exception("inventory totals build failed; report will skip the strip")
+        return None
+
+
+def build_topology(snapshot: Any) -> "diagrams.TopologyData | None":
+    """Build the scan-topology view-model from the shared EnvSnapshot.
+
+    Reads only already-cached snapshot data (sites, scan_engines, pools, the
+    inline per-site asset count) -- no new API calls. Like the inventory strip,
+    a single accessor failure logs and returns None so the report just skips the
+    topology figure rather than aborting. Lives in the report layer beside the
+    other view-model builders; `__main__` only wires. See CONTEXT.md
+    "Report diagram".
+    """
+    try:
+        return diagrams.build_topology(snapshot)
+    except Exception:
+        logger.exception("topology build failed; report will skip the figure")
+        return None
 
 
 def build_section_diagrams(
@@ -197,12 +248,15 @@ def build_section_diagrams(
     Pure: delegates to `diagrams.py` (which reads only numbers the run already
     holds -- no API). A check appears in the dict only when its diagram has
     honest inputs; the template emits `section_diagrams[r.name]` when present
-    and omits it otherwise. See CONTEXT.md "Report diagram".
+    and omits it otherwise. The figure -> section binding (which check name keys
+    each SVG) lives here, not in `diagrams.py`. See CONTEXT.md "Report diagram".
     """
     out: dict[str, str] = {}
-    coverage = diagrams.extract_coverage_counts(results, inventory_totals)
+    coverage = diagrams.extract_coverage_counts(
+        results, inventory_totals, check_name=_COVERAGE_CHECK_NAME
+    )
     if coverage is not None:
-        out[diagrams._COVERAGE_CHECK_NAME] = diagrams.build_coverage_svg(coverage)
+        out[_COVERAGE_CHECK_NAME] = diagrams.build_coverage_svg(coverage)
     if topology is not None and topology.engines:
         out[_SCAN_ENGINES_CHECK_NAME] = diagrams.build_topology_svg(topology)
     return out

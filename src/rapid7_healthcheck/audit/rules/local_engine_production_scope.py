@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from collections import defaultdict
-
 from rapid7_healthcheck._local_engine import is_local_engine
 from rapid7_healthcheck.audit import AuditRule, RuleResult, register
 from rapid7_healthcheck.checks import Finding
@@ -46,11 +44,9 @@ class LocalEngineProductionScopeRule(AuditRule):
             if isinstance(n, str)
         }
 
-        sites_by_engine: dict[int, list[int]] = defaultdict(list)
-        for site in snapshot.sites():
-            engine_id = site.get("scanEngine")
-            if engine_id is not None:
-                sites_by_engine[engine_id].append(site["id"])
+        # Base pairing invariant lives once on the snapshot (CONTEXT.md
+        # "SitePairing"); read the grouping instead of re-deriving it.
+        sites_by_engine = snapshot.sites_by_engine().by_engine
 
         findings: list[Finding] = []
         engines_examined = 0
