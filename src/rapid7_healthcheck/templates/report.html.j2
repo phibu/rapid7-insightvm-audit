@@ -348,6 +348,11 @@
     .section-rail { display: none; }
     .report-grid { display: block; }
     .content-column { max-width: none; }
+    /* A printed report is a complete archival artifact: show BOTH views and
+       hide the (non-functional on paper) view switch -- regardless of which
+       view was active on screen (ADR-0009). */
+    .view-switch { display: none; }
+    .view, .findings-view, .diagrams-view { display: block !important; }
   }
   /* JS-disabled fallback: hide chrome that depends on JS to function. */
   .no-js .filter-bar,
@@ -419,6 +424,62 @@
   .dg-seg-fail    { fill: var(--fail-fg); }
   .dg-seg-error   { fill: var(--info-fg); }
   .dg-seg-skipped { fill: var(--neutral-muted); }
+
+  /* ── View switch (CSS-only, hidden-radio; no location.hash -- ADR-0009) ──
+     The radios are visually hidden but focusable; their :checked state drives
+     which sibling .view panel shows. Findings is default-checked. */
+  .view-radio {
+    position: absolute;
+    width: 1px; height: 1px;
+    padding: 0; margin: -1px; border: 0;
+    clip: rect(0 0 0 0); clip-path: inset(50%);
+    overflow: hidden; white-space: nowrap;
+  }
+  .view-switch {
+    display: flex;
+    gap: 0.25rem;
+    margin: 1rem 0 1.25rem 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .view-tab {
+    padding: 0.5rem 1rem;
+    cursor: pointer;
+    font-weight: 600;
+    color: var(--neutral-muted);
+    border: 1px solid transparent;
+    border-bottom: none;
+    border-radius: 6px 6px 0 0;
+    margin-bottom: -1px;
+  }
+  .view-tab:hover { color: var(--neutral-fg); }
+  /* Active-tab styling follows the checked radio. */
+  #view-findings:checked ~ .view-switch label[for="view-findings"],
+  #view-diagrams:checked ~ .view-switch label[for="view-diagrams"] {
+    color: var(--neutral-fg);
+    border-color: var(--border);
+    border-bottom: 1px solid var(--bg);
+    background: var(--bg);
+  }
+  /* Keyboard focus visibility (the radio is hidden, so style the label). */
+  .view-radio:focus-visible ~ .view-switch label[for="view-findings"],
+  .view-radio:focus-visible ~ .view-switch label[for="view-diagrams"] {
+    outline: 2px solid var(--info-fg);
+    outline-offset: 2px;
+  }
+  /* Panel visibility: show the panel whose radio is checked, hide the other. */
+  .view { display: none; }
+  #view-findings:checked ~ .findings-view,
+  #view-diagrams:checked ~ .diagrams-view { display: block; }
+  /* The filter bar belongs to the Findings view -- it filters rule cards, which
+     only exist there. When Diagrams is active there is nothing to filter, and
+     the findings-view (which contains the bar) is already display:none. */
+  .diagrams-view { padding-top: 0.5rem; }
+  .dg-caption {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--neutral-muted);
+    margin-bottom: 0.4rem;
+  }
 
   /* Filter bar -- sticky from where it first appears in flow. */
   .filter-bar {
@@ -654,6 +715,21 @@
   {% endif %}
 </div>
 
+{# View switch (CSS-only, hidden-radio; no location.hash -- ADR-0009). The
+   radios live before both panels so the :checked ~ .view sibling selector can
+   reach them. Findings is default-checked, so diagrams take no space until
+   asked for. Only rendered when there is at least one diagram to show. #}
+{% set has_diagrams = status_map_svg or section_diagrams %}
+{% if has_diagrams %}
+<input class="view-radio" type="radio" name="view" id="view-findings" checked>
+<input class="view-radio" type="radio" name="view" id="view-diagrams">
+<div class="view-switch" role="tablist" aria-label="Report view">
+  <label class="view-tab" for="view-findings">Findings</label>
+  <label class="view-tab" for="view-diagrams">Diagrams</label>
+</div>
+{% endif %}
+
+<div class="findings-view view">
 {% if inventory_totals %}
 <section class="inventory-totals" aria-label="Inventory totals">
   <h2>Inventory</h2>
@@ -712,9 +788,6 @@
 {% endif %}
 
 <h2>Summary</h2>
-{% if status_map_svg %}
-<figure class="dg-wrap">{{ status_map_svg | safe }}</figure>
-{% endif %}
 <table>
   <thead>
     <tr><th>Check</th><th>Status</th><th>Findings</th><th style="text-align:right">Duration</th></tr>
@@ -750,10 +823,6 @@
 <section class="check" id="check-{{ loop.index }}">
   <h2>{{ r.name }} <span class="badge {{ r.status }}">{{ r.status|upper }}</span></h2>
   <p class="check-desc">{{ r.description }}</p>
-
-  {% if section_diagrams and section_diagrams.get(r.name) %}
-  <figure class="dg-wrap">{{ section_diagrams[r.name] | safe }}</figure>
-  {% endif %}
 
   {% if r.status == "error" %}
     <div class="error-box"><b>Check failed to run:</b> {{ r.error }}</div>
@@ -901,6 +970,20 @@
   </table>
   {% endif %}
 </footer>
+</div><!-- /.findings-view -->
+
+{% if has_diagrams %}
+<section class="diagrams-view view" aria-label="Diagrams">
+  {% if status_map_svg %}
+  <figure class="dg-wrap">{{ status_map_svg | safe }}</figure>
+  {% endif %}
+  {% for r in results %}
+    {% if section_diagrams and section_diagrams.get(r.name) %}
+    <figure class="dg-wrap"><figcaption class="dg-caption">{{ r.name }}</figcaption>{{ section_diagrams[r.name] | safe }}</figure>
+    {% endif %}
+  {% endfor %}
+</section>
+{% endif %}
 </div><!-- /.content-column -->
 </div><!-- /.report-grid -->
 

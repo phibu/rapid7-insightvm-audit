@@ -326,8 +326,8 @@ def _svg(parts: list[str], height: int, aria: str) -> str:
     )
 
 
-_ENGINE_H = 40
-_ENGINE_GAP = 8
+_ENGINE_H = 28
+_ENGINE_GAP = 6
 _POOL_PAD = 10
 
 
@@ -357,7 +357,7 @@ def build_topology_svg(data: TopologyData) -> str:
     # Left lane: paired + orphan buckets.
     paired_label = f"Paired sites: {_num(data.total_paired_sites)}"
     _masked_rect(parts, left_x, y, left_w, _ENGINE_H, "dg-band-outer")
-    parts.append(f'<text class="dg-label" x="{left_x + 10}" y="{y + 25}">{_esc(paired_label)}</text>')
+    parts.append(f'<text class="dg-label" x="{left_x + 10}" y="{y + 18}">{_esc(paired_label)}</text>')
     # The "flows to" connector into the right lane.
     arrow_y = y + _ENGINE_H // 2
     parts.append(
@@ -367,10 +367,9 @@ def build_topology_svg(data: TopologyData) -> str:
     y += _ENGINE_H + _ENGINE_GAP
 
     if data.orphan_site_count:
-        orphan_label = f"Orphan sites (no engine): {_num(data.orphan_site_count)}"
         _masked_rect(parts, left_x, y, left_w, _ENGINE_H, "dg-band-fail")
-        parts.append(f'<text class="dg-label" x="{left_x + 10}" y="{y + 18}">Orphan sites ⚠</text>')
-        parts.append(f'<text class="dg-count" x="{left_x + 10}" y="{y + 33}" text-anchor="start">{_num(data.orphan_site_count)} no engine</text>')
+        parts.append(f'<text class="dg-label" x="{left_x + 10}" y="{y + 18}">Orphan ⚠</text>')
+        parts.append(f'<text class="dg-count" x="{left_x + left_w - 10}" y="{y + 18}" text-anchor="end">{_num(data.orphan_site_count)} no engine</text>')
         y += _ENGINE_H + _ENGINE_GAP
 
     # Right lane: engines grouped by pool, then standalone, then unpaired.
@@ -384,12 +383,15 @@ def build_topology_svg(data: TopologyData) -> str:
             standalone.append(e)
 
     def _engine_card(e: EngineNode, x: int, w: int, yy: int) -> int:
+        # One-line card (name left, stats right) in a compact box, so the
+        # figure's height stays modest as the fleet grows -- the per-card
+        # footprint is the topology's dominant height cost.
         cls = "dg-engine-fail" if e.overloaded else "dg-engine"
         flag = " ⚠" if e.overloaded else ""
         _masked_rect(parts, x, yy, w, _ENGINE_H, cls)
         parts.append(f'<text class="dg-label" x="{x + 10}" y="{yy + 18}">{_esc(e.name)}{flag}</text>')
         sub = f"{_num(e.site_count)} sites · {_num(e.asset_load)} assets"
-        parts.append(f'<text class="dg-count" x="{x + 10}" y="{yy + 33}" text-anchor="start">{_esc(sub)}</text>')
+        parts.append(f'<text class="dg-count" x="{x + w - 10}" y="{yy + 18}" text-anchor="end">{_esc(sub)}</text>')
         return yy + _ENGINE_H + _ENGINE_GAP
 
     for pool_name, members in pools.items():
@@ -421,8 +423,8 @@ def build_topology_svg(data: TopologyData) -> str:
         names = ", ".join(data.unpaired_engines)
         h = _ENGINE_H
         _masked_rect(parts, right_x, ry, right_w, h, "dg-engine-warn")
-        parts.append(f'<text class="dg-label" x="{right_x + 10}" y="{ry + 18}">Unpaired engines ⚠</text>')
-        parts.append(f'<text class="dg-count" x="{right_x + 10}" y="{ry + 33}" text-anchor="start">{_esc(names)}</text>')
+        parts.append(f'<text class="dg-label" x="{right_x + 10}" y="{ry + 18}">Unpaired ⚠</text>')
+        parts.append(f'<text class="dg-count" x="{right_x + right_w - 10}" y="{ry + 18}" text-anchor="end">{_esc(names)}</text>')
         ry += h + _ENGINE_GAP
 
     height = max(y, ry) + _PAD
