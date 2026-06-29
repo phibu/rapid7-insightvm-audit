@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-06-29
+
 ### Added
 
 - **Report:** the Asset Coverage section now renders an inline-SVG **coverage-bands diagram** — honest *nested* threshold bands (all assets ⊇ stale `>Nd` ⊇ never-scanned `>Md`), with agent-only and ghost shown as cross-cutting flags rather than funnel stages, because never-scanned is a subset of stale and those flags overlap the bands (a funnel would assert a partition that does not exist). Built in pure Python by a new `diagrams.py` module from numbers the run already holds (`CheckResult` rule-summaries + `InventoryTotals`) — it issues **no API calls**. The SVG reuses the report's own theme variables via `dg-*` classes, so it follows the existing single theme toggle (no second toggle, no extra JS). When the inputs are missing or untrustworthy the figure is omitted entirely (same "no lines we can't stand behind" discipline as the ghost-asset rule). `diagrams.py` is the design-language port of the `archify` skill, which is a spec — not a runtime dependency (no Node). See CONTEXT.md "Report diagram" and [ADR-0008](docs/adr/0008-report-diagrams-port-archify-design-not-runtime.md). Covered by `test_diagrams.py` (extractor honesty, SVG cardinal-rule/theming, report integration).
